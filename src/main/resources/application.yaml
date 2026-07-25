@@ -5,11 +5,9 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/cen_edu}
     username: ${DB_USERNAME:cen}
     password: ${DB_PASSWORD:cen_local_password}
-  flyway:
-    enabled: true
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     open-in-view: false
 
 server:
