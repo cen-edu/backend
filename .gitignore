@@ -36,3 +36,13 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### 환경 변수 ###
+.env
+.env.*
+!.env.example
+
+# Claude Code
+CLAUDE.md
+CLAUDE.local.md
+.claude/
