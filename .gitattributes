@@ -1,13 +1,10 @@
-# 기본 : 텍스트로 판단되는 모든 파일을 LF로
-* text = auto eol=lf
+* text=auto eol=lf
 
-# Gradle 래퍼 (기존 설정 유지)
 /gradlew text eol=lf
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.jar binary
 
-# 기타 바이너리
 *.png binary
 *.jpg binary
 *.jpeg binary
