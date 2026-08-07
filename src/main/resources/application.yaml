@@ -22,6 +22,12 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+logging:
+  pattern:
+    # AgentDispatcher 가 채우는 traceId 를 로그 레벨 옆에 찍는다. 한 번의 에이전트 호출에
+    # 걸린 로그를 이 값으로 묶어서 본다. 디스패치 밖의 로그는 빈 대괄호로 나온다.
+    level: "%5p [%X{traceId:-}]"
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

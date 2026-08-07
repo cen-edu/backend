@@ -16,7 +16,7 @@
 | DB | PostgreSQL 17 + pgvector (Docker) |
 | 마이그레이션 | Flyway (도입 예정 — 6절) |
 | 인증 | Spring Security + JWT (TEACHER / STUDENT) |
-| LLM | `com.anthropic:anthropic-java`, 모델 `claude-opus-5` |
+| LLM | `com.openai:openai-java`, 모델 `gpt-4o-mini` |
 | API 문서 | springdoc-openapi (`/swagger-ui.html`) |
 | 패키지 루트 | `com.cenedu.backend` |
 
@@ -40,8 +40,9 @@ com.cenedu.backend
 │   ├── guard/output/           이동규   출력 검증 인터페이스 (구현은 각 에이전트 경로)
 │   ├── prompt/                 이동규   프롬프트 템플릿 버전 관리
 │   ├── agent/                  이동규   AgentRequest/AgentResponse, 에이전트 인터페이스
-│   ├── client/                 배세빈   AnthropicClient 래퍼, 재시도, 토큰 사용량 로깅
-│   └── embedding/              모수환   임베딩 클라이언트 (Anthropic 아님)
+│   ├── dev/                    이동규   local 전용 에코 에이전트 (5절)
+│   ├── client/                 배세빈   OpenAIClient 래퍼, 재시도, 토큰 사용량 로깅
+│   └── embedding/              모수환   임베딩 클라이언트
 ├── domain/
 │   ├── auth/                   배세빈   로그인, 토큰 재발급, 비밀번호 변경
 │   ├── member/                 배세빈   교사·학생·반(class), 명단 등록
@@ -155,6 +156,12 @@ domain/problem/
 
 > **지금은 껍데기입니다.** 가드레일 구현체가 0개라 요청과 응답이 그대로 통과합니다. 자리를 먼저 잡아 둔 것이고, 나중에 가드레일을 채울 때 에이전트 코드는 건드리지 않게 하려는 것입니다. 그러니 "아직 가드레일이 없으니 대충" 이 아니라, **경계만 지켜 두면 나중에 아무것도 안 고쳐도 된다**는 뜻입니다.
 
+### 참조 구현 — 에코 에이전트
+
+`ai/dev/LocalEchoAgent`가 받은 요청을 그대로 되돌려줍니다. LLM을 부르지 않고 `local` 프로파일에서만 뜹니다. 자기 에이전트를 만들 때 최소 형태로 베껴 쓰세요.
+
+`AgentKind.ECHO`라는 전용 값을 씁니다. **세 서피스 중 하나를 빌려 쓰지 않은 이유**는, 그랬다면 그 서피스의 진짜 구현체가 생기는 순간 담당이 둘이 되어 만든 사람 로컬에서 앱이 기동하지 않기 때문입니다. 같은 이유로 `ECHO`에는 진짜 구현체를 만들지 마세요.
+
 ### 만드는 법
 
 ```java
@@ -208,6 +215,21 @@ AgentResponse response = agentDispatcher.dispatch(
 
 > 3절 3번대로 **라벨과 상수 값**(난이도, 문항 유형 등)은 프론트 `labels.js`에 맞춥니다. 하지만 **문제·학습지 데이터 구조는 다릅니다.** 프론트 mock은 화면을 그리려고 만든 것이라 알려진 결함이 있습니다 — 서술형 정답이 `modelAnswer`와 `answer` 두 곳에 중복 저장되어 있고, 맞춤 학습 단계에는 일반 학습에 있는 필드 일부가 빠져 있습니다. 그대로 베끼지 말고 백엔드에서 제대로 정한 뒤 프론트가 맞추게 합니다.
 
+### 로그 추적 (`traceId`)
+
+`dispatch()` 구간의 모든 로그에는 `traceId`가 붙습니다. 한 번의 에이전트 호출에 걸린 로그를 이 값으로 묶어서 봅니다.
+
+```
+INFO [04bcc0bc] c.c.b.ai.dispatcher.AgentDispatcher : 에이전트 호출 — agent=ECHO, userId=7, ...
+INFO [04bcc0bc] c.cenedu.backend.ai.dev.LocalEchoAgent : 에코 에이전트 수신 — ...
+```
+
+에이전트에서 따로 할 일은 없습니다. SLF4J로 찍기만 하면 자동으로 붙습니다. **단, 내부에서 비동기로 갈라지면 MDC는 스레드를 따라가지 않습니다.** 그 경우 호출 스레드에서 `MDC.get("traceId")`로 읽어 직접 넘기세요.
+
+> 아직 HTTP 헤더와는 연결돼 있지 않아 디스패치 단위로만 묶입니다. `global`에 `X-Request-Id` 헤더를 MDC 키 `traceId`로 옮기는 서블릿 필터가 생기면, 디스패처는 그 값을 그대로 이어받습니다(있으면 쓰고 없을 때만 만듭니다). 그때 `ai` 쪽 코드는 고칠 게 없습니다.
+
+**사용자 입력 원문을 로그에 남기지 마세요.** 길이만 찍습니다. 학생이 쓴 문장과 시험 문항이 그대로 로그 파일로 나가면, 정답 유출 정책을 로그가 무너뜨립니다. (`LocalEchoAgent`는 `local` 전용이라 예외입니다.)
+
 ### 에러
 
 디스패처가 던지는 예외입니다. 직접 잡지 말고 그대로 올립니다.
@@ -223,7 +245,7 @@ AgentResponse response = agentDispatcher.dispatch(
 `AiClientAccessTest`가 아래를 강제합니다. 어기면 PR이 막힙니다.
 
 - `domain.problem..` / `domain.chat..` → `ai.client..` 직접 참조 (세 서피스를 담당하는 도메인)
-- `domain.problem..` / `domain.chat..` → `com.anthropic..` 직접 참조
+- `domain.problem..` / `domain.chat..` → `com.openai..` 직접 참조
 - `ai..` → `..controller..` 참조 (에이전트는 HTTP 진입점이 아님)
 
 `domain.grading..`은 이 규칙에서 제외됩니다. 답안 검증·서술형 채점이 `ai/client`를 직접 쓰기 때문입니다.
@@ -248,6 +270,7 @@ V20260810_1615__analysis_add_weakness_score.sql  (모수환)
 - `spring.jpa.hibernate.ddl-auto: validate` 고정. `update` / `create` 금지.
 - 테이블 접두어를 도메인별로 붙입니다 (`problem_`, `analysis_`).
 - 벡터 컬럼은 `vector(1024)`로 통일합니다. 임베딩 모델을 바꿔도 스키마는 유지됩니다.
+  - OpenAI 임베딩 모델은 기본 차원이 1024가 아니므로(`text-embedding-3-small` 1536, `-large` 3072), 호출 시 `dimensions` 파라미터로 1024를 지정해 맞춥니다.
 - 유사도 검색은 네이티브 쿼리(`<=>` 연산자)로 씁니다. 여기서만 JPA를 우회합니다.
 
 ---
