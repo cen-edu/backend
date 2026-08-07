@@ -96,7 +96,8 @@ public class AnalysisAttempt extends BaseTimeEntity {
     @Column(name = "topic")
     private String topic;
 
-    @Column(name = "reference_success_rate", precision = 5, scale = 4)
+    /** 원본이 주는 참고 정답률. 비율(0~1)이 아니라 백분율(0~100)이다. */
+    @Column(name = "reference_success_rate", precision = 5, scale = 2)
     private BigDecimal referenceSuccessRate;
 
     @Column(name = "difficulty_band", length = 20)

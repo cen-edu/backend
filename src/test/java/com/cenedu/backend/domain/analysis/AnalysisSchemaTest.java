@@ -79,7 +79,8 @@ class AnalysisSchemaTest {
                 .conceptId("C-1").stepId("STEP_2")
                 .correct(false).hintUsed(true).submissionFailed(false)
                 .evaluationArea("계산").topic("이항")
-                .referenceSuccessRate(new BigDecimal("0.6250"))
+                // 백분율이다. 실데이터 범위(73.74~96.82)와 같은 자릿수를 쓴다.
+                .referenceSuccessRate(new BigDecimal("83.01"))
                 .difficultyBand("mid")
                 .choicesJson("[\"1\",\"2\",\"3\"]")
                 .responseType("choice")
@@ -92,7 +93,7 @@ class AnalysisSchemaTest {
 
         assertThat(found.getChoicesJson()).contains("\"2\"");
         assertThat(found.getStepResponsesJson()).contains("STEP_2");
-        assertThat(found.getReferenceSuccessRate()).isEqualByComparingTo("0.6250");
+        assertThat(found.getReferenceSuccessRate()).isEqualByComparingTo("83.01");
         assertThat(found.getOccurredAt()).isEqualTo(Instant.parse("2026-08-07T01:00:00Z"));
         assertThat(found.isHintUsed()).isTrue();
 

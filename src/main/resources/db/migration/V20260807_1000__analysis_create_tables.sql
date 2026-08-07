@@ -51,7 +51,7 @@ CREATE TABLE analysis_attempt
     source_dataset         VARCHAR(64),
     evaluation_area        VARCHAR(100),
     topic                  VARCHAR(255),
-    reference_success_rate NUMERIC(5, 4),
+    reference_success_rate NUMERIC(5, 2),
     difficulty_band        VARCHAR(20),
     source_difficulty      VARCHAR(40),
     difficulty_basis       VARCHAR(255),
@@ -75,6 +75,9 @@ CREATE INDEX idx_analysis_attempt_lookup
 COMMENT ON TABLE analysis_attempt IS '문항 단위 풀이 시도';
 COMMENT ON COLUMN analysis_attempt.event_id IS '멱등 키. 같은 이벤트 재전송을 중복 저장하지 않는다';
 COMMENT ON COLUMN analysis_attempt.submission_failed IS '제출 자체가 기록되지 않은 문항. 보고서·집계에서 제외한다';
+COMMENT ON COLUMN analysis_attempt.reference_success_rate IS
+    '원본 데이터가 제공하는 참고 정답률. 비율(0~1)이 아니라 백분율(0~100)이다. 실데이터 범위는 '
+    '73.74~96.82이며 소수 두 자리까지 온다. 화면에 쓸 때 100을 곱하지 않는다';
 COMMENT ON COLUMN analysis_attempt.purpose IS
     'DIAGNOSTIC / APPLIED. 진단 응답만 취약점 상태를 움직인다. 응용 오답은 새 맥락을 읽지 못한 것인지 '
     '개념을 잊은 것인지 구분할 수 없어 취약 근거로 쓰지 않는다. 기본값을 진단으로 두어 값을 채우지 않는 '
