@@ -70,10 +70,27 @@ public class AgentDispatcher {
     /**
      * 입력 가드레일 → 에이전트 → 출력 가드레일 순으로 처리하고 완성된 응답을 돌려준다.
      *
+     * <p>이 호출 구간의 모든 로그에는 {@code traceId} 가 붙는다. 자세한 건 {@link TraceId} 참고.
+     *
      * @throws BusinessException 가드레일이 막았거나 해당 에이전트가 등록되지 않은 경우
      */
     public AgentResponse dispatch(AgentRequest request) {
+        try (TraceId ignored = TraceId.ensure()) {
+            return doDispatch(request);
+        }
+    }
+
+    private AgentResponse doDispatch(AgentRequest request) {
         Agent agent = agentFor(request.kind());
+
+        // 입력 원문은 남기지 않는다. 학생 입력과 시험 문항이 그대로 로그로 나가면
+        // 정답 유출 정책을 로그 파일이 무너뜨린다. 길이만으로도 대부분의 추적은 된다.
+        log.info("에이전트 호출 — agent={}, userId={}, role={}, inputLength={}, historySize={}",
+                request.kind(),
+                request.actor().userId(),
+                request.actor().role(),
+                request.userInput() == null ? 0 : request.userInput().length(),
+                request.history().size());
 
         for (InputGuard guard : inputGuards) {
             GuardDecision decision = guard.inspect(request);
