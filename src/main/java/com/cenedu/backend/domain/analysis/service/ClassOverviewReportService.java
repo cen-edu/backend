@@ -2,6 +2,7 @@ package com.cenedu.backend.domain.analysis.service;
 
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.List;
 
 import com.cenedu.backend.domain.analysis.dto.ClassDashboard;
 import com.cenedu.backend.global.common.enums.DisplayLabels;
@@ -22,6 +23,12 @@ public class ClassOverviewReportService {
 
     private static final int TOP_PROBLEM_COUNT = 8;
 
+    /** 한 장에 담을 학생 수. A4 한 장에 머리말과 표 머리를 빼고 들어가는 줄 수다. */
+    private static final int STUDENT_ROWS_PER_PAGE = 18;
+
+    private static final int STABLE_RATE = 80;
+    private static final int REVIEW_RATE = 60;
+
     private final ClassDashboardService dashboard;
     private final BrowserPdfRenderer renderer;
 
@@ -39,106 +46,282 @@ public class ClassOverviewReportService {
         return renderer.render("class-" + safeFileName(assessmentId), html(assessmentId)).pdf();
     }
 
+    /**
+     * 취약점 분석 화면의 스타일을 그대로 옮긴 조판.
+     *
+     * <p>프론트 {@code WeaknessComponents.scss} 의 <b>후반부 개정본</b>을 기준으로 한다. 파일
+     * 앞부분에 진한 파랑 계열이 남아 있지만 뒤에서 덮여 화면에 나오지 않는다. 앞부분을 보고
+     * 옮기면 화면에 없는 색이 종이에만 생긴다.
+     *
+     * <p>본문 글꼴은 화면과 같은 스택을 쓴다. 다만 서버에 Pretendard 가 없으면 맑은 고딕으로
+     * 내려앉는다. 글꼴 파일을 보고서에 심지 않은 것은 배포처마다 라이선스와 용량을 다시 따져야
+     * 해서다. 크기·자간·색은 화면 값 그대로라 대체 글꼴에서도 위계는 유지된다.
+     */
     private static String render(ClassDashboard data) {
-        StringBuilder students = new StringBuilder();
-        for (ClassDashboard.StudentRow student : data.students()) {
-            String css = student.correctRatePercent() >= 80 ? "stable"
-                    : student.correctRatePercent() >= 60 ? "watch" : "attention";
-            students.append("<tr><td><strong>").append(escape(student.studentName()))
-                    .append("</strong><small>").append(escape(student.studentId()))
-                    .append("</small></td><td>").append(student.correctCount()).append("/")
-                    .append(student.totalCount()).append("</td><td><b>")
-                    .append(student.correctRatePercent()).append("%</b></td><td>")
-                    .append(student.hintCount()).append("회</td><td><span class='")
-                    .append(css).append("'>")
-                    .append(escape(DisplayLabels.status(student.status())))
-                    .append("</span></td></tr>");
-        }
-
-        StringBuilder areas = new StringBuilder();
-        for (ClassDashboard.ClassAreaRow area : data.areas()) {
-            areas.append("<article><small>")
-                    .append(escape(DisplayLabels.area(area.evaluationArea())))
-                    .append("</small><b>").append(area.correctRatePercent())
-                    .append("%</b><span>").append(area.correctCount()).append("/")
-                    .append(area.totalCount()).append(" 정답 · ")
-                    .append(area.problemCount()).append("문항</span></article>");
-        }
-
-        StringBuilder difficulties = new StringBuilder();
-        for (ClassDashboard.DifficultyRow row : data.difficulties()) {
-            difficulties.append("<article><small>").append(difficulty(row.difficultyBand()))
-                    .append(" 난이도</small><b>").append(row.correctRatePercent())
-                    .append("%</b><span>").append(row.correctCount()).append("/")
-                    .append(row.totalCount()).append(" 정답</span></article>");
-        }
-
-        StringBuilder problems = new StringBuilder();
-        data.problems().stream()
-                .sorted(Comparator.comparingInt(ClassDashboard.ProblemRow::classCorrectRatePercent))
-                .limit(TOP_PROBLEM_COUNT)
-                .forEach(problem -> problems.append("<tr><td>").append(problem.problemNumber())
-                        .append("</td><td><strong>").append(escape(problem.problemTitle()))
-                        .append("</strong><small>")
-                        .append(escape(DisplayLabels.area(problem.evaluationArea())))
-                        .append(" · ").append(difficulty(problem.difficultyBand()))
-                        .append("</small></td><td><b>").append(problem.classCorrectRatePercent())
-                        .append("%</b><small>").append(problem.correctCount()).append("/")
-                        .append(problem.totalCount()).append(" 정답</small></td><td>")
-                        .append(problem.referenceSuccessRate() == null ? "-"
-                                : problem.referenceSuccessRate() + "%")
-                        .append("</td></tr>"));
-
         ClassDashboard.Overall o = data.overall();
+        StringBuilder pages = new StringBuilder();
+
+        pages.append(page(pageHeader(data)
+                + summaryCards(o)
+                + notice("학급 정답률은 자료 부족 학생과 채점 대기 문항을 제외한 값이며, "
+                        + "등수나 전체 학업 능력을 의미하지 않습니다.")
+                + card("사고 유형 기준", "영역별 결과", null, areaBars(data.areas()))
+                + card("문항 난이도 기준", "난이도별 결과", null,
+                        difficultyBars(data.difficulties()))));
+
+        // 학생 수는 학급마다 다르다. 한 장에 몰아넣으면 정원이 큰 학급에서 뒷줄이 잘린다.
+        List<List<ClassDashboard.StudentRow>> chunks = chunk(data.students(), STUDENT_ROWS_PER_PAGE);
+        for (int index = 0; index < chunks.size(); index++) {
+            String title = chunks.size() == 1
+                    ? "학생별 결과"
+                    : "학생별 결과 (" + (index + 1) + "/" + chunks.size() + ")";
+            boolean last = index == chunks.size() - 1;
+            pages.append(page(pageHeader(data)
+                    + card("학생 진단", title,
+                            last ? "상태 기준: 80% 이상 현재 확인 기준 충족 · 60~79% 추가 확인 필요 · "
+                                    + "60% 미만 집중 지도 필요" : null,
+                            studentTable(chunks.get(index)))));
+        }
+
+        pages.append(page(pageHeader(data)
+                + card("학급 정답률 낮은 순", "먼저 확인할 문항",
+                        "원본 참고값은 원래 문항과 당시 응답 집단에서 계산된 값으로, "
+                                + "현재 학급 평균과 직접 동일시하지 않습니다.",
+                        problemTable(data.problems()))));
+
+        return "<!doctype html><html lang='ko'><head><meta charset='utf-8'><title>"
+                + escape(data.assessmentTitle()) + " 학급 분석</title><style>" + css() + "</style>"
+                + "</head><body>" + pages + "</body></html>";
+    }
+
+    /**
+     * 표를 장 단위로 자른다.
+     *
+     * <p>장 높이를 고정해 두었기 때문에 넘치는 줄은 {@code overflow:hidden} 으로 사라진다.
+     * 화면이라면 스크롤로 드러나지만 종이에서는 그냥 없어진다 — 누락을 알아챌 방법이 없다.
+     * 그래서 넘칠 것 같으면 장을 넘긴다.
+     */
+    private static <T> List<List<T>> chunk(List<T> rows, int size) {
+        if (rows.isEmpty()) {
+            return List.of(List.of());
+        }
+        List<List<T>> chunks = new java.util.ArrayList<>();
+        for (int start = 0; start < rows.size(); start += size) {
+            chunks.add(rows.subList(start, Math.min(start + size, rows.size())));
+        }
+        return chunks;
+    }
+
+    private static String css() {
         return """
-                <!doctype html><html lang='ko'><head><meta charset='utf-8'><style>
-                @page{size:A4;margin:0}*{box-sizing:border-box}body{margin:0;background:#dce5ee;color:#17243b;font-family:'Malgun Gothic',sans-serif}.page{width:210mm;height:297mm;margin:0 auto 8mm;background:#f7f9fc;padding:16mm 17mm;page-break-after:always;overflow:hidden}.page:last-child{page-break-after:auto}
-                .top{display:flex;justify-content:space-between;border-bottom:2px solid #14395b;padding-bottom:7mm}.k{font-size:10px;color:#16858b;font-weight:900;letter-spacing:1.4px}h1{font-size:26px;color:#14395b;margin:4px 0}.meta{text-align:right;color:#64748b;font-size:11px;line-height:1.7}h2{font-size:17px;color:#14395b;margin:8mm 0 4mm}
-                .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.grid article{background:#fff;border:1px solid #dbe4ee;border-radius:11px;padding:11px}.grid small,.grid b,.grid span{display:block}.grid small,.grid span{color:#64748b;font-size:9px}.grid b{font-size:20px;color:#14395b;margin:3px 0}.area-grid{grid-template-columns:repeat(4,1fr)}
-                table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #dbe4ee;font-size:10.5px}th,td{padding:7px 9px;border-bottom:1px solid #e8edf2;text-align:left}th{background:#edf3f8;color:#3e5872}td small{display:block;color:#64748b;margin-top:2px}.stable,.watch,.attention{display:inline-block;border-radius:20px;padding:3px 8px;font-weight:800}.stable{background:#dcfce7;color:#147544}.watch{background:#fff3c4;color:#8a6500}.attention{background:#fee2e2;color:#b42318}
-                .notice{margin-top:8px;color:#64748b;font-size:9px}.simulation{display:inline-block;background:#dcf5ef;color:#087866;border-radius:99px;padding:5px 9px;font-weight:800}
-                </style></head><body>
-                """ + header(data, "담당 학생 전체 현황")
-                + "<h2>학급 한눈에 보기</h2><section class='grid'>"
-                + stat("참여 학생", o.studentCount() + "명", o.problemCount() + "문항")
-                + stat("학급 정답률", o.correctRatePercent() + "%",
+                @page{size:A4;margin:0}
+                *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+                body{background:#e9edf1;color:#465166;
+                  font-family:"Pretendard Variable",Pretendard,-apple-system,system-ui,
+                    "Noto Sans KR","Malgun Gothic",sans-serif;
+                  text-rendering:optimizeLegibility;-webkit-print-color-adjust:exact;
+                  print-color-adjust:exact}
+                .sheet{width:210mm;height:297mm;margin:0 auto;padding:14mm 15mm;background:#f4f6f8;
+                  page-break-after:always;overflow:hidden}
+                .sheet:last-child{page-break-after:auto}
+
+                /* weakness-page__page-header */
+                .page-header{margin-bottom:12px;padding:18px 20px 16px;display:flex;
+                  align-items:flex-end;justify-content:space-between;gap:20px;background:#fff;
+                  border:1px solid #dde2e8;border-radius:10px}
+                .page-header h1{color:#172033;font-size:22px;font-weight:700;line-height:1.35;
+                  letter-spacing:-.4px}
+                .page-header p{margin-top:5px;color:#747f91;font-size:13px}
+                .page-header>span{color:#596579;font-size:12px;white-space:nowrap;text-align:right;
+                  line-height:1.7}
+
+                /* diagnosis-summary__card */
+                .summary{margin-bottom:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+                .summary article{padding:16px 18px;background:#fff;border:1px solid #dde2e8;
+                  border-radius:10px}
+                .summary small{display:block;color:#596579;font-size:12px}
+                .summary b{display:block;margin-top:6px;color:#172033;font-size:24px;font-weight:700;
+                  font-variant-numeric:tabular-nums}
+                .summary span{display:block;margin-top:3px;color:#747f91;font-size:11px}
+
+                /* grading-notice */
+                .notice{margin-bottom:12px;padding:11px 14px;background:#f7f5ef;
+                  border:1px solid #ded7c5;border-radius:8px;color:#6f6248;font-size:12px}
+
+                /* diagnosis-card */
+                .card{margin-bottom:12px;padding:20px;background:#fff;border:1px solid #dde2e8;
+                  border-radius:10px}
+                .card>header{margin-bottom:16px}
+                .card>header>span{display:block;color:#596579;font-size:11px;font-weight:600}
+                .card>header>h2{margin-top:3px;color:#172033;font-size:18px;font-weight:700}
+                .card>footer{margin-top:12px;color:#8995a3;font-size:11px;line-height:1.55}
+
+                /* concept-bars */
+                .bars{display:grid;gap:4px;list-style:none}
+                .bars li{padding:9px 8px}
+                .bars .row{display:grid;grid-template-columns:16px 1fr auto;align-items:center;
+                  gap:8px}
+                .bars .rank{color:#747f91;font-size:12px;font-variant-numeric:tabular-nums}
+                .bars .label{min-width:0;color:#172033;font-size:13px;font-weight:600;
+                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+                .bars .value{color:#465166;font-size:12px;font-variant-numeric:tabular-nums}
+                .bars .value small{margin-left:4px;color:#747f91;font-size:11px}
+                .bars .track{height:6px;margin:6px 0 0 24px;background:#eef0f3;border-radius:2px}
+                .bars .track i{display:block;height:100%;background:#8a94a3;border-radius:inherit}
+                .bars .track.high i{background:#a96762}
+                .bars .track.mid i{background:#a58a55}
+                .bars .muted .label{color:#747f91;font-weight:500}
+
+                /* matrix-table */
+                table{width:100%;border-collapse:collapse;font-size:13px}
+                th{padding:0 8px 8px;color:#7c8997;font-size:12px;font-weight:700;text-align:left;
+                  border-bottom:1px solid #ebeef2}
+                td{padding:9px 8px;color:#34475c;border-bottom:1px solid #f1f3f5;
+                  vertical-align:middle}
+                tbody tr:last-child td{border-bottom:0}
+                td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+                td small{display:block;margin-top:2px;color:#747f91;font-size:11px}
+                td strong{font-weight:600;color:#172033}
+
+                /* status-badge */
+                .badge{display:inline-flex;align-items:center;gap:6px;color:#667185;font-size:12px;
+                  font-weight:600;white-space:nowrap}
+                .badge::before{width:7px;height:7px;border-radius:50%;background:#9aa4b1;content:""}
+                .badge.priority{color:#8f4d48}
+                .badge.priority::before{background:#a96762}
+                .badge.review{color:#80652f}
+                .badge.review::before{background:#a58a55}
+                .badge.stable{color:#356c55}
+                .badge.stable::before{background:#4f806b}
+
+                /* score-rate */
+                .rate{color:#279268;font-weight:600;font-variant-numeric:tabular-nums}
+                .rate.low{color:#d65b53}
+                """;
+    }
+
+    private static String page(String body) {
+        return "<section class='sheet'>" + body + "</section>";
+    }
+
+    private static String pageHeader(ClassDashboard data) {
+        return "<header class='page-header'><div><h1>취약점 분석</h1>"
+                + "<p>학급과 학생의 응답을 분석하고 보고서에 담길 내용을 확인합니다.</p></div>"
+                + "<span>" + escape(data.assessmentTitle()) + "<br>"
+                + data.assessmentDate() + " 기준<br>"
+                + (data.simulation() ? "가상 학급" : "담당 학급") + "</span></header>";
+    }
+
+    private static String summaryCards(ClassDashboard.Overall o) {
+        return "<section class='summary'>"
+                + statCard("참여 학생", o.studentCount() + "명", o.problemCount() + "문항")
+                + statCard("학급 정답률", o.correctRatePercent() + "%",
                         o.correctCount() + "/" + o.attemptCount() + " 정답")
-                + stat("힌트 사용", o.hintCount() + "회", "독립 정답과 구분")
-                + stat("집중 지도", o.attentionStudentCount() + "명", "정답률 60% 미만")
-                + "</section><h2>평가 영역별 학급 결과</h2><section class='grid area-grid'>" + areas
-                + "</section><h2>난이도별 학급 결과</h2><section class='grid'>" + difficulties
-                + "</section><h2>학생별 결과</h2><table><thead><tr><th>학생</th><th>정답</th>"
-                + "<th>정답률</th><th>힌트</th><th>상태</th></tr></thead><tbody>" + students
-                + "</tbody></table><p class='notice'>상태 기준: 80% 이상 현재 확인 기준 충족 · "
-                + "60~79% 추가 확인 필요 · 60% 미만 집중 지도 필요</p></main>"
-                + header(data, "먼저 확인할 문항")
-                + "<h2>학급 정답률이 낮은 문항</h2><table><thead><tr><th>#</th><th>문항·영역</th>"
-                + "<th>학급 결과</th><th>원본 참고</th></tr></thead><tbody>" + problems
-                + "</tbody></table><p class='notice'>원본 참고값은 원래 문항과 당시 응답 집단에서 "
-                + "계산된 값으로, 현재 학급 평균과 직접 동일시하지 않습니다.</p>"
-                + "<h2>교사 확인 순서</h2><section class='grid'>"
-                + stat("1", "문항 확인", "학급 전체가 어려워한 문항")
-                + stat("2", "학생 확인", "집중 지도 학생의 개별 결과")
-                + stat("3", "영역 확인", "개념·문제해결·계산·해석")
-                + stat("4", "다음 수업", "재설명 후 확인 문제 배치")
-                + "</section></main></body></html>";
+                + statCard("힌트 사용", o.hintCount() + "회", "독립 정답과 구분")
+                + statCard("집중 지도", o.attentionStudentCount() + "명", "정답률 60% 미만")
+                + "</section>";
     }
 
-    private static String header(ClassDashboard data, String title) {
-        return "<main class='page'><header class='top'><div><span class='k'>ONE REPORT · CLASS"
-                + "</span><h1>" + escape(title) + "</h1></div><div class='meta'>"
-                + escape(data.assessmentTitle()) + "<br>" + data.assessmentDate() + "<br>"
-                + (data.simulation() ? "<span class='simulation'>가상 데이터</span>" : "실제 학급 데이터")
-                + "</div></header>";
-    }
-
-    private static String stat(String label, String value, String note) {
-        return "<article><small>" + escape(label) + "</small><b>" + escape(value)
+    private static String statCard(String title, String value, String note) {
+        return "<article><small>" + escape(title) + "</small><b>" + escape(value)
                 + "</b><span>" + escape(note) + "</span></article>";
     }
 
-    private static String difficulty(String band) {
-        return DisplayLabels.difficulty(band);
+    private static String notice(String text) {
+        return "<p class='notice'>" + escape(text) + "</p>";
+    }
+
+    private static String card(String kicker, String title, String footer, String body) {
+        return "<section class='card'><header><span>" + escape(kicker) + "</span><h2>"
+                + escape(title) + "</h2></header>" + body
+                + (footer == null ? "" : "<footer>" + escape(footer) + "</footer>")
+                + "</section>";
+    }
+
+    private static String areaBars(List<ClassDashboard.ClassAreaRow> areas) {
+        StringBuilder out = new StringBuilder("<ul class='bars'>");
+        int rank = 1;
+        for (ClassDashboard.ClassAreaRow area : areas) {
+            out.append(bar(rank++, DisplayLabels.area(area.evaluationArea()),
+                    area.correctRatePercent(),
+                    area.problemCount() + "문항", area.problemCount() == 0));
+        }
+        return out.append("</ul>").toString();
+    }
+
+    private static String difficultyBars(List<ClassDashboard.DifficultyRow> rows) {
+        StringBuilder out = new StringBuilder("<ul class='bars'>");
+        int rank = 1;
+        for (ClassDashboard.DifficultyRow row : rows) {
+            out.append(bar(rank++, DisplayLabels.difficulty(row.difficultyBand()) + " 난이도",
+                    row.correctRatePercent(),
+                    row.correctCount() + "/" + row.totalCount() + " 정답",
+                    row.problemCount() == 0));
+        }
+        return out.append("</ul>").toString();
+    }
+
+    /**
+     * 막대 한 줄.
+     *
+     * <p>정답률이 낮을수록 진한 색을 쓴다. 화면의 취약 순위 막대와 같은 규칙이다. 값이 없는 줄은
+     * 흐리게 두고 막대를 그리지 않는다 — 0%로 그리면 "전부 틀렸다"로 읽힌다.
+     */
+    private static String bar(int rank, String label, int percent, String note, boolean empty) {
+        String tone = empty ? "" : percent < REVIEW_RATE ? " high" : percent < STABLE_RATE ? " mid" : "";
+        return "<li" + (empty ? " class='muted'" : "") + "><div class='row'>"
+                + "<span class='rank'>" + rank + "</span>"
+                + "<span class='label'>" + escape(label) + "</span>"
+                + "<span class='value'>" + (empty ? "-" : percent + "%")
+                + "<small>" + escape(note) + "</small></span></div>"
+                + (empty ? "" : "<div class='track" + tone + "'><i style='width:" + percent
+                        + "%'></i></div>")
+                + "</li>";
+    }
+
+    private static String studentTable(List<ClassDashboard.StudentRow> students) {
+        StringBuilder rows = new StringBuilder();
+        for (ClassDashboard.StudentRow student : students) {
+            rows.append("<tr><td><strong>").append(escape(student.studentName()))
+                    .append("</strong><small>").append(escape(student.studentId()))
+                    .append("</small></td><td class='num'>").append(student.correctCount())
+                    .append("/").append(student.totalCount())
+                    .append("</td><td class='num'><span class='rate")
+                    .append(student.correctRatePercent() < REVIEW_RATE ? " low" : "").append("'>")
+                    .append(student.correctRatePercent()).append("%</span></td><td class='num'>")
+                    .append(student.hintCount()).append("회</td><td><span class='badge ")
+                    .append(escape(student.status())).append("'>")
+                    .append(escape(DisplayLabels.status(student.status())))
+                    .append("</span></td></tr>");
+        }
+        return "<table><thead><tr><th>학생</th><th class='num'>정답</th><th class='num'>정답률</th>"
+                + "<th class='num'>힌트</th><th>상태</th></tr></thead><tbody>" + rows
+                + "</tbody></table>";
+    }
+
+    private static String problemTable(List<ClassDashboard.ProblemRow> problems) {
+        StringBuilder rows = new StringBuilder();
+        problems.stream()
+                .sorted(Comparator.comparingInt(ClassDashboard.ProblemRow::classCorrectRatePercent))
+                .limit(TOP_PROBLEM_COUNT)
+                .forEach(problem -> rows.append("<tr><td class='num'>")
+                        .append(problem.problemNumber())
+                        .append("</td><td><strong>").append(escape(problem.problemTitle()))
+                        .append("</strong><small>")
+                        .append(escape(DisplayLabels.area(problem.evaluationArea())))
+                        .append(" · ").append(escape(DisplayLabels.difficulty(
+                                problem.difficultyBand())))
+                        .append("</small></td><td class='num'><span class='rate")
+                        .append(problem.classCorrectRatePercent() < REVIEW_RATE ? " low" : "")
+                        .append("'>").append(problem.classCorrectRatePercent())
+                        .append("%</span><small>").append(problem.correctCount()).append("/")
+                        .append(problem.totalCount()).append(" 정답</small></td><td class='num'>")
+                        .append(problem.referenceSuccessRate() == null ? "-"
+                                : problem.referenceSuccessRate() + "%")
+                        .append("</td></tr>"));
+        return "<table><thead><tr><th class='num'>문항</th><th>문항 · 영역</th>"
+                + "<th class='num'>학급 정답률</th><th class='num'>원본 참고</th></tr></thead><tbody>"
+                + rows + "</tbody></table>";
     }
 
     private static String safeFileName(String value) {
