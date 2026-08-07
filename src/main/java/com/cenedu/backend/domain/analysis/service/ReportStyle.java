@@ -22,8 +22,16 @@ final class ReportStyle {
     }
 
     static String document(String title, String pages) {
+        return document(title, pages, "");
+    }
+
+    /**
+     * @param extraCss 보고서 종류마다 다른 규칙. 공통 css 뒤에 붙어 필요한 것만 덮는다.
+     *                 두 보고서에 다 쓰이는 규칙은 여기가 아니라 {@link #css()} 로 올린다.
+     */
+    static String document(String title, String pages, String extraCss) {
         return "<!doctype html><html lang='ko'><head><meta charset='utf-8'><title>"
-                + escape(title) + "</title><style>" + css() + "</style></head><body>"
+                + escape(title) + "</title><style>" + css() + extraCss + "</style></head><body>"
                 + pages + "</body></html>";
     }
 
