@@ -14,18 +14,59 @@ java {
     }
 }
 
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
 repositories {
     mavenCentral()
+}
+
+// Spring Boot BOM 밖의 의존성만 버전을 명시한다.
+ext {
+    jjwtVersion = '0.13.0'
+    springdocVersion = '3.1.0'
+    anthropicVersion = '2.52.0'
+    archunitVersion = '1.5.0'
 }
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // 스키마 마이그레이션 (3단계에서 활성화)
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    // JWT (5단계)
+    implementation "io.jsonwebtoken:jjwt-api:${jjwtVersion}"
+    runtimeOnly "io.jsonwebtoken:jjwt-impl:${jjwtVersion}"
+    runtimeOnly "io.jsonwebtoken:jjwt-jackson:${jjwtVersion}"
+
+    // Swagger UI — 프론트와의 API 계약서 (5단계)
+    implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
+
+    // LLM 호출 (6단계~). 도메인 패키지에서 직접 참조 금지, AgentDispatcher 경유.
+    implementation "com.anthropic:anthropic-java:${anthropicVersion}"
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
     runtimeOnly 'org.postgresql:postgresql'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+    // domain.. -> ai.client.. 직접 참조 금지 규칙 강제 (6단계)
+    testImplementation "com.tngtech.archunit:archunit-junit5:${archunitVersion}"
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

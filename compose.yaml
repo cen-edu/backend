@@ -1,11 +1,12 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: cen-edu-postgres
     environment:
       POSTGRES_DB: cen_edu
       POSTGRES_USER: cen
       POSTGRES_PASSWORD: cen_local_password
+      TZ: Asia/Seoul
     ports:
       - "5432:5432"
     volumes:
