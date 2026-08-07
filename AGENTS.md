@@ -2,7 +2,7 @@
 
 이 문서는 **어떻게 작업할지**를 정합니다. 실행 방법은 [README.md](README.md), 전체 설계와 착수 순서는 [BACKEND_SETUP.md](BACKEND_SETUP.md)를 보세요.
 
-새 코드를 쓰기 전에 3절(교차 도메인 규칙)과 5절(Flyway 규칙)은 반드시 읽으세요. 이 두 가지가 팀 작업에서 가장 자주 깨집니다.
+새 코드를 쓰기 전에 3절(교차 도메인 규칙)과 6절(Flyway 규칙)은 반드시 읽으세요. 이 두 가지가 팀 작업에서 가장 자주 깨집니다. LLM을 쓰는 기능을 맡았다면 5절(에이전트 개발)도 함께 읽으세요.
 
 ---
 
@@ -14,7 +14,7 @@
 | 프레임워크 | Spring Boot 4.1.0 |
 | 빌드 | Gradle (Groovy DSL), 단일 모듈 |
 | DB | PostgreSQL 17 + pgvector (Docker) |
-| 마이그레이션 | Flyway (도입 예정 — 5절) |
+| 마이그레이션 | Flyway (도입 예정 — 6절) |
 | 인증 | Spring Security + JWT (TEACHER / STUDENT) |
 | LLM | `com.anthropic:anthropic-java`, 모델 `claude-opus-5` |
 | API 문서 | springdoc-openapi (`/swagger-ui.html`) |
@@ -35,6 +35,7 @@ com.cenedu.backend
 │   └── util/
 ├── ai/
 │   ├── dispatcher/             이동규   AgentDispatcher — 모든 에이전트 호출의 유일한 진입점
+│   ├── guard/                  이동규   GuardDecision — 가드레일 판정 결과 공용 타입
 │   ├── guard/input/            이동규   공통 입력 가드레일 (역할·인젝션·범위·개인정보)
 │   ├── guard/output/           이동규   출력 검증 인터페이스 (구현은 각 에이전트 경로)
 │   ├── prompt/                 이동규   프롬프트 템플릿 버전 관리
@@ -108,7 +109,7 @@ private Long studentId;
 | 문항 유형 | `choice` / `short` / `essay` |
 
 **4. `ai/client`의 Anthropic 클라이언트를 도메인 패키지에서 직접 호출하지 않는다.**
-LLM 호출은 예외 없이 `AgentDispatcher`를 거칩니다. 시스템 트리거 요청(답안 검증·서술형 채점)도 예외가 아닙니다.
+LLM 호출은 예외 없이 `AgentDispatcher`를 거칩니다. 시스템 트리거 요청(답안 검증·서술형 채점)도 예외가 아닙니다. 실제로 어떻게 만드는지는 5절을 보세요.
 
 > 왜: 챗봇이 N개로 늘 때 가드레일을 N번 구현하면 N개의 서로 다른 안전 수준이 생깁니다. 디스패처는 공통 정책을 단일 지점에서 집행해 이 편차를 없앱니다. 예외 경로를 하나 열어두면 그 경로만 무방비가 되고, 나중에 누가 거기에 사용자 입력을 얹으면 원칙이 무너집니다.
 >
@@ -133,7 +134,86 @@ domain/problem/
 
 ---
 
-## 5. Flyway 규칙
+## 5. 에이전트 개발
+
+LLM을 쓰는 기능은 전부 `Agent` 구현체로 만듭니다. 뼈대(`ai/agent`, `ai/guard`, `ai/dispatcher`)는 올라가 있습니다.
+
+> **지금은 껍데기입니다.** 가드레일 구현체가 0개라 요청과 응답이 그대로 통과합니다. 자리를 먼저 잡아 둔 것이고, 나중에 가드레일을 채울 때 에이전트 코드는 건드리지 않게 하려는 것입니다. 그러니 "아직 가드레일이 없으니 대충" 이 아니라, **경계만 지켜 두면 나중에 아무것도 안 고쳐도 된다**는 뜻입니다.
+
+### 만드는 법
+
+```java
+@Component
+public class SolveChatAgent implements Agent {
+
+    @Override
+    public AgentKind kind() {
+        return AgentKind.SOLVE_CHAT;
+    }
+
+    @Override
+    public AgentResponse handle(AgentRequest request) {
+        // request.userInput() / history() / actor() / payload()
+        return AgentResponse.ofText("...");
+    }
+}
+```
+
+`@Component`만 붙이면 기동 시 디스패처가 자동으로 찾습니다. 별도 등록 작업은 없습니다.
+
+새 에이전트는 `AgentKind`의 자기 도메인 블록 **끝에** 추가합니다. 같은 값을 두 구현체가 담당하면 조용히 덮어쓰지 않고 기동 시점에 실패합니다.
+
+### 부르는 법
+
+도메인 서비스에서 이렇게 부릅니다. HTTP 홉이 아니라 같은 프로세스 안의 호출입니다.
+
+```java
+AgentResponse response = agentDispatcher.dispatch(
+        AgentRequest.of(AgentKind.PROBLEM_EDIT, actor, userPrompt, Map.of("problemId", problemId)));
+```
+
+컨트롤러는 2절 엔드포인트 소유 표대로 각자 도메인 것을 그대로 씁니다. 디스패처가 별도 엔드포인트를 갖지 않습니다.
+
+### 지킬 것 4가지
+
+| 규칙 | 왜 |
+|---|---|
+| HTTP 컨트롤러가 아니라 `Agent` 구현체로 만든다. 인증·DB 조회를 그 안에 섞지 않는다 | 앞에 가드레일을 끼울 수 있어야 합니다. 컨트롤러에 인증·조회·응답 포맷팅이 녹아 있으면 나중에 경계를 다시 째야 합니다 |
+| 사용자 식별 정보는 `request.actor()`로 받는다. 토큰을 직접 파싱하지 않는다 | 에이전트가 토큰을 직접 읽으면 호출 경로가 바뀌는 순간 전부 깨집니다. 인증은 시큐리티 필터가, 소유권 검증은 도메인 서비스가 이미 끝낸 뒤에 넘어옵니다 |
+| LLM 스트리밍 응답을 그대로 흘려보내지 않는다. 모아서 `AgentResponse`로 돌려준다 | 출력 가드레일이 전체 응답을 보고 판단해야 합니다. 토큰을 내보낸 뒤에는 되돌릴 수 없습니다. **내부에서 스트리밍을 쓰는 것은 자유입니다** |
+| 대화 히스토리를 직접 저장하지 않는다. `request.history()`로 받는다 | 저장 주체가 에이전트마다 흩어지면, 여러 턴에 나눠서 우회하는 시도를 가드레일이 볼 수 없습니다 |
+
+스트리밍을 막아서 생기는 체감 지연은 프론트가 완성 응답을 타이핑 효과로 뿌려 흡수합니다.
+
+### 각자 자유인 것
+
+프롬프트 내용, 시스템 프롬프트, 모델 선택, 파라미터, 내부 RAG·툴 구성은 전부 구현체의 몫입니다. 디스패처는 관여하지 않습니다.
+
+`AgentRequest.payload()`는 `Map<String, Object>`입니다. 문제·학습지 데이터의 정본 스키마는 각 도메인이 정하는 것이라 지금 타입을 박지 않았습니다. 스키마가 굳으면 그때 전용 타입으로 바꿉니다.
+
+> 3절 3번대로 **라벨과 상수 값**(난이도, 문항 유형 등)은 프론트 `labels.js`에 맞춥니다. 하지만 **문제·학습지 데이터 구조는 다릅니다.** 프론트 mock은 화면을 그리려고 만든 것이라 알려진 결함이 있습니다 — 서술형 정답이 `modelAnswer`와 `answer` 두 곳에 중복 저장되어 있고, 맞춤 학습 단계에는 일반 학습에 있는 필드 일부가 빠져 있습니다. 그대로 베끼지 말고 백엔드에서 제대로 정한 뒤 프론트가 맞추게 합니다.
+
+### 에러
+
+디스패처가 던지는 예외입니다. 직접 잡지 말고 그대로 올립니다.
+
+| 코드 | 언제 |
+|---|---|
+| `AI_AGENT_NOT_FOUND` | 해당 `AgentKind`를 담당하는 구현체가 없음 |
+| `AI_REQUEST_BLOCKED` | 입력 가드레일이 막음 (400) |
+| `AI_RESPONSE_BLOCKED` | 출력 가드레일이 막음 (500) |
+
+### CI가 막는 것
+
+`AiClientAccessTest`가 아래를 강제합니다. 어기면 PR이 막힙니다.
+
+- `domain..` → `ai.client..` 직접 참조
+- `domain..` → `com.anthropic..` 직접 참조
+- `ai..` → `..controller..` 참조 (에이전트는 HTTP 진입점이 아님)
+
+---
+
+## 6. Flyway 규칙
 
 > Flyway는 의존성만 추가된 상태이고 아직 비활성입니다(`spring.flyway.enabled: false`). `V1` baseline 작성 시 활성화하며, 그때부터 아래 규칙이 적용됩니다.
 
@@ -155,7 +235,7 @@ V20260810_1615__analysis_add_weakness_score.sql  (모수환)
 
 ---
 
-## 6. 응답 포맷
+## 7. 응답 포맷
 
 모든 API 응답은 `ApiResponse<T>`로 감쌉니다. 각자 예외 처리 방식을 만들지 않습니다.
 
@@ -173,7 +253,7 @@ V20260810_1615__analysis_add_weakness_score.sql  (모수환)
 
 ---
 
-## 7. 브랜치·커밋
+## 8. 브랜치·커밋
 
 ```
 main ← develop ← feat/{도메인}-{작업}
@@ -193,7 +273,7 @@ chore : gitignore 파일 추가
 
 ---
 
-## 8. 환경 변수·비밀값
+## 9. 환경 변수·비밀값
 
 - **비밀값을 `application.yaml`이나 리포지토리에 커밋하지 않습니다.** `ANTHROPIC_API_KEY`, `JWT_SECRET`이 해당합니다.
 - 로컬에서는 `.env.example`을 `.env`로 복사해 값을 채웁니다. `.env`는 gitignore 대상입니다.
@@ -203,7 +283,7 @@ chore : gitignore 파일 추가
 
 ---
 
-## 9. 로컬 실행
+## 10. 로컬 실행
 
 [README.md](README.md)를 참고하세요. 요약하면:
 

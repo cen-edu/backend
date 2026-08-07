@@ -43,6 +43,9 @@ public enum ErrorCode {
     // ===== dashboard (모수환) =====
 
     // ===== ai (이동규) =====
+    AI_AGENT_NOT_FOUND(HttpStatus.INTERNAL_SERVER_ERROR, "요청을 처리할 수 있는 에이전트가 없습니다."),
+    AI_REQUEST_BLOCKED(HttpStatus.BAD_REQUEST, "이 요청은 처리할 수 없습니다."),
+    AI_RESPONSE_BLOCKED(HttpStatus.INTERNAL_SERVER_ERROR, "답변을 생성하지 못했습니다. 다시 시도해 주세요."),
     ;
 
     private final HttpStatus status;
