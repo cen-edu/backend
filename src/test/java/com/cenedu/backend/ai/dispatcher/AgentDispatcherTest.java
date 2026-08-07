@@ -15,12 +15,20 @@ import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 
 class AgentDispatcherTest {
 
-    private static final Actor STUDENT = new Actor(1L, "STUDENT");
+    private static final Actor STUDENT = new Actor(1L, Actor.Role.STUDENT);
+
+    @AfterEach
+    void clearMdc() {
+        MDC.clear();
+    }
 
     /** 받은 요청을 그대로 되돌려주는 가짜 에이전트. 팀원들이 만들 구현체의 최소 형태이기도 하다. */
     private record EchoAgent(AgentKind kind) implements Agent {
@@ -112,5 +120,50 @@ class AgentDispatcherTest {
         AgentDispatcher dispatcher = new AgentDispatcher(List.of(), List.of(), List.of());
 
         assertThat(dispatcher).isNotNull();
+    }
+
+    /** 에이전트가 실행되는 동안 MDC 에서 본 traceId 를 붙잡아 두는 에이전트. */
+    private record TraceCapturingAgent(AtomicReference<String> seen) implements Agent {
+        @Override
+        public AgentKind kind() {
+            return AgentKind.SOLVE_CHAT;
+        }
+
+        @Override
+        public AgentResponse handle(AgentRequest request) {
+            seen.set(MDC.get(TraceId.MDC_KEY));
+            return AgentResponse.ofText("ok");
+        }
+    }
+
+    @Test
+    @DisplayName("에이전트가 도는 동안 traceId 가 MDC 에 있고, 끝나면 지워진다")
+    void traceIdIsVisibleToAgentAndClearedAfterwards() {
+        AtomicReference<String> seen = new AtomicReference<>();
+        AgentDispatcher dispatcher = new AgentDispatcher(
+                List.of(new TraceCapturingAgent(seen)), List.of(), List.of());
+
+        dispatcher.dispatch(request(AgentKind.SOLVE_CHAT, "이 문제 어떻게 시작해요?"));
+
+        assertThat(seen.get()).isNotBlank();
+        assertThat(MDC.get(TraceId.MDC_KEY))
+                .as("자기가 만든 traceId 를 남겨 두면 스레드 재사용 시 다음 요청 로그에 붙는다")
+                .isNull();
+    }
+
+    @Test
+    @DisplayName("이미 traceId 가 있으면 새로 만들지 않고 그대로 쓰며, 끝나도 지우지 않는다")
+    void existingTraceIdIsReusedAndPreserved() {
+        MDC.put(TraceId.MDC_KEY, "outer123");
+        AtomicReference<String> seen = new AtomicReference<>();
+        AgentDispatcher dispatcher = new AgentDispatcher(
+                List.of(new TraceCapturingAgent(seen)), List.of(), List.of());
+
+        dispatcher.dispatch(request(AgentKind.SOLVE_CHAT, "왜 틀렸어요?"));
+
+        assertThat(seen.get()).isEqualTo("outer123");
+        assertThat(MDC.get(TraceId.MDC_KEY))
+                .as("나중에 생길 서블릿 필터가 넣은 값을 디스패처가 뺏으면 안 된다")
+                .isEqualTo("outer123");
     }
 }
