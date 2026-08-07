@@ -43,6 +43,7 @@ public enum ErrorCode {
     STUDENT_ATTEMPT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 풀이를 찾을 수 없습니다."),
     ASSESSMENT_NOT_COMPLETED(HttpStatus.CONFLICT, "평가를 마친 뒤에 정답을 확인할 수 있습니다."),
     ASSESSMENT_HEADER_CONFLICT(HttpStatus.CONFLICT, "같은 평가 ID의 기본 정보가 서로 다릅니다."),
+    REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "보고서를 찾을 수 없습니다."),
     REPORT_RENDERER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "보고서를 PDF로 만들 수 없습니다. 서버에 브라우저가 설치되어 있지 않습니다."),
     REPORT_RENDER_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "보고서를 만들지 못했습니다."),
 
