@@ -30,16 +30,19 @@ public class ClassOverviewReportService {
     private static final int REVIEW_RATE = 60;
 
     private final ClassDashboardService dashboard;
+    private final WeaknessAnalysisQueryService worksheets;
     private final BrowserPdfRenderer renderer;
 
     public ClassOverviewReportService(ClassDashboardService dashboard,
+                                      WeaknessAnalysisQueryService worksheets,
                                       BrowserPdfRenderer renderer) {
         this.dashboard = dashboard;
+        this.worksheets = worksheets;
         this.renderer = renderer;
     }
 
     public String html(String assessmentId) {
-        return render(dashboard.summary(assessmentId));
+        return render(dashboard.summary(assessmentId), worksheets.metrics(assessmentId));
     }
 
     public Path pdf(String assessmentId) {
@@ -57,14 +60,15 @@ public class ClassOverviewReportService {
      * 내려앉는다. 글꼴 파일을 보고서에 심지 않은 것은 배포처마다 라이선스와 용량을 다시 따져야
      * 해서다. 크기·자간·색은 화면 값 그대로라 대체 글꼴에서도 위계는 유지된다.
      */
-    private static String render(ClassDashboard data) {
+    private static String render(ClassDashboard data,
+                                 WeaknessAnalysisQueryService.WorksheetMetrics metrics) {
         ClassDashboard.Overall o = data.overall();
         StringBuilder pages = new StringBuilder();
 
         pages.append(page(pageHeader(data)
-                + summaryCards(o)
-                + notice("학급 정답률은 자료 부족 학생과 채점 대기 문항을 제외한 값이며, "
-                        + "등수나 전체 학업 능력을 의미하지 않습니다.")
+                + summaryCards(o, metrics)
+                + notice("학급 정답률과 취약 판정은 자료 부족 학생과 채점 대기 문항을 제외한 "
+                        + "값이며, 등수나 전체 학업 능력을 의미하지 않습니다.")
                 + card("사고 유형 기준", "영역별 결과", null, areaBars(data.areas()))
                 + card("문항 난이도 기준", "난이도별 결과", null,
                         difficultyBars(data.difficulties()))));
@@ -212,13 +216,24 @@ public class ClassOverviewReportService {
                 + (data.simulation() ? "가상 학급" : "담당 학급") + "</span></header>";
     }
 
-    private static String summaryCards(ClassDashboard.Overall o) {
+    /**
+     * 화면 상단 요약 카드 네 장.
+     *
+     * <p>화면은 종합평가일 때 세 번째 자리에 평균 소요 시간을 보여 주지만 여기서는 항상 취약
+     * 개념을 쓴다. 백엔드가 문항별 소요 시간을 기록하지 않아 그 자리에 늘 0분이 찍힌다.
+     * 시간을 저장하기 시작하면 화면과 같은 분기를 넣는다.
+     *
+     * <p>취약 개념·취약 학생은 화면과 같은 계산({@code getWorksheetMetrics})에서 가져온다.
+     * 학급 정답률 옆 두 칸이 화면과 다른 숫자를 말하면 교사가 어느 쪽을 믿을지 알 수 없다.
+     */
+    private static String summaryCards(ClassDashboard.Overall o,
+                                       WeaknessAnalysisQueryService.WorksheetMetrics metrics) {
         return "<section class='summary'>"
                 + statCard("참여 학생", o.studentCount() + "명", o.problemCount() + "문항")
                 + statCard("학급 정답률", o.correctRatePercent() + "%",
                         o.correctCount() + "/" + o.attemptCount() + " 정답")
-                + statCard("힌트 사용", o.hintCount() + "회", "독립 정답과 구분")
-                + statCard("집중 지도", o.attentionStudentCount() + "명", "정답률 60% 미만")
+                + statCard("취약 개념", metrics.weakConceptCount() + "개", "달성률 60% 미만")
+                + statCard("취약 학생", metrics.priorityCount() + "명", "정답률 60% 미만")
                 + "</section>";
     }
 

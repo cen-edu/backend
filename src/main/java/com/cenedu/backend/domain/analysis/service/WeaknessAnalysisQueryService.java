@@ -58,6 +58,103 @@ public class WeaknessAnalysisQueryService {
                 .toList();
     }
 
+    /**
+     * 화면 상단 요약 카드가 쓰는 값.
+     *
+     * <p>계산 규칙은 프론트 {@code getWorksheetMetrics} 와 같다. 보고서가 화면과 다른 숫자를
+     * 말하지 않게 하려는 것이므로, 규칙을 여기서 "개선"하지 않는다.
+     */
+    public WorksheetMetrics metrics(String assessmentId) {
+        return metricsOf(worksheet(assessmentId));
+    }
+
+    static WorksheetMetrics metricsOf(WorksheetDetail worksheet) {
+        // 자료가 부족한 학생은 평균과 취약 판정에서 뺀다. 낸 문항을 다 풀지 않은 학생의
+        // 정답률을 그대로 섞으면 학급 평균이 실제보다 낮아 보인다.
+        List<WorksheetDetail.Student> reliable = worksheet.students().stream()
+                .filter(student -> !"insufficient".equals(student.status()))
+                .toList();
+
+        int weakConcepts = (int) worksheet.concepts().stream()
+                .map(concept -> conceptMastery(worksheet, reliable, concept.id()))
+                .filter(mastery -> mastery.total() > 0 && mastery.masteryRate() < REVIEW_RATE)
+                .count();
+
+        int priority = (int) reliable.stream()
+                .filter(student -> scoreRate(student) < REVIEW_RATE)
+                .count();
+
+        int average = reliable.isEmpty() ? 0
+                : (int) Math.round(reliable.stream()
+                        .mapToInt(WeaknessAnalysisQueryService::scoreRate).average().orElse(0));
+
+        return new WorksheetMetrics(
+                worksheet.students().size(), reliable.size(), average, weakConcepts, priority);
+    }
+
+    /**
+     * 한 개념에 걸린 구간의 달성도.
+     *
+     * <p>분모는 <b>도달한 구간이 아니라 문항 구성 전체</b>다. 앞에서 막혀 못 간 구간도 해내지
+     * 못한 것으로 센다. 도달한 구간만 세면 앞에서 막힌 학생일수록 달성률이 높게 나와, 정작
+     * 취약한 개념이 판정선을 넘어 목록에서 빠진다.
+     */
+    private static ConceptMastery conceptMastery(WorksheetDetail worksheet,
+                                                 List<WorksheetDetail.Student> students,
+                                                 String conceptId) {
+        int total = 0;
+        int correct = 0;
+        for (WorksheetDetail.Student student : students) {
+            for (WorksheetDetail.Question question : worksheet.questions()) {
+                for (WorksheetDetail.QuestionStep step : question.steps()) {
+                    if (conceptId == null || !conceptId.equals(step.conceptId())) {
+                        continue;
+                    }
+                    total++;
+                    WorksheetDetail.ResponseStep answered = findStep(student, question, step);
+                    if (answered != null && answered.attempted() && answered.correct()) {
+                        correct++;
+                    }
+                }
+            }
+        }
+        int rate = total == 0 ? 0 : (int) Math.round(correct * 100.0 / total);
+        return new ConceptMastery(total, rate);
+    }
+
+    private static WorksheetDetail.ResponseStep findStep(WorksheetDetail.Student student,
+                                                         WorksheetDetail.Question question,
+                                                         WorksheetDetail.QuestionStep step) {
+        return student.responses().stream()
+                .filter(response -> response.no() == question.no())
+                .flatMap(response -> response.steps().stream())
+                .filter(item -> item.order() == step.order())
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** 채점된 응답만 분모로 센다. 채점 대기 문항을 틀린 것으로 세지 않는다. */
+    private static int scoreRate(WorksheetDetail.Student student) {
+        List<WorksheetDetail.Response> graded = student.responses().stream()
+                .filter(response -> response.gradedBy() != null)
+                .toList();
+        if (graded.isEmpty()) {
+            return 0;
+        }
+        long correct = graded.stream()
+                .filter(response -> response.score() == response.maxScore())
+                .count();
+        return (int) Math.round(correct * 100.0 / graded.size());
+    }
+
+    /** 화면 상단 요약 카드 값. */
+    public record WorksheetMetrics(int responseCount, int reliableCount, int average,
+                                   int weakConceptCount, int priorityCount) {
+    }
+
+    private record ConceptMastery(int total, int masteryRate) {
+    }
+
     public WorksheetDetail worksheet(String assessmentId) {
         List<AnalysisAssessment> rows = assessments.findByAssessmentIdOrderByStudentName(assessmentId);
         if (rows.isEmpty()) {
