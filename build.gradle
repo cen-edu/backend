@@ -28,7 +28,7 @@ repositories {
 ext {
     jjwtVersion = '0.13.0'
     springdocVersion = '3.1.0'
-    anthropicVersion = '2.52.0'
+    openaiVersion = '4.50.0'
     archunitVersion = '1.5.0'
 }
 
@@ -52,7 +52,9 @@ dependencies {
     implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
 
     // LLM 호출 (6단계~). 도메인 패키지에서 직접 참조 금지, AgentDispatcher 경유.
-    implementation "com.anthropic:anthropic-java:${anthropicVersion}"
+    // openai-java-spring-boot-starter 를 쓰지 않는다. 그 스타터는 Spring Boot 2 기준이라
+    // 이 프로젝트(Boot 4.1.0)와 맞지 않는다. OpenAIClient 빈은 ai/client 래퍼가 직접 만든다.
+    implementation "com.openai:openai-java:${openaiVersion}"
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

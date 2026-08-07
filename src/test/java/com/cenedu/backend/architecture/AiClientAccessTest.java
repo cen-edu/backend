@@ -52,11 +52,11 @@ class AiClientAccessTest {
     }
 
     @Test
-    @DisplayName("세 서피스 담당 도메인은 Anthropic SDK 를 직접 참조하지 않는다")
-    void dispatcherBoundDomainsMustNotUseAnthropicSdkDirectly() {
+    @DisplayName("세 서피스 담당 도메인은 OpenAI SDK 를 직접 참조하지 않는다")
+    void dispatcherBoundDomainsMustNotUseOpenAiSdkDirectly() {
         ArchRule rule = ArchRuleDefinition.noClasses()
                 .that().resideInAnyPackage(DISPATCHER_BOUND_DOMAINS)
-                .should().dependOnClassesThat().resideInAPackage("com.anthropic..")
+                .should().dependOnClassesThat().resideInAPackage("com.openai..")
                 .because("이 도메인들은 ai.client 래퍼조차 모르고 AgentDispatcher 만 알아야 한다")
                 .allowEmptyShould(true);
 
