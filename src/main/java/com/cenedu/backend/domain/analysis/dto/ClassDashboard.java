@@ -1,6 +1,7 @@
 package com.cenedu.backend.domain.analysis.dto;
 
 import java.math.BigDecimal;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -53,6 +54,7 @@ public record ClassDashboard(
             String topic,
             String sourceDataset,
             String difficultyBand,
+            @Schema(description = "원본이 주는 참고 정답률. 비율(0~1)이 아니라 백분율(0~100)이다. 100을 곱하지 않는다", example = "83.76")
             BigDecimal referenceSuccessRate,
             int totalCount,
             int correctCount,
