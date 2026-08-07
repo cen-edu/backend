@@ -13,10 +13,10 @@ spring:
     password: ${DB_PASSWORD:cen_local_password}
   jpa:
     hibernate:
-      ddl-auto: update          # 3단계에서 validate 로 고정 전환
+      ddl-auto: validate        # 스키마 변경은 Flyway 로만 한다. update / create 금지
     open-in-view: false
   flyway:
-    enabled: false              # 3단계에서 V1 baseline 과 함께 true
+    enabled: true               # analysis baseline(V20260807_1000) 부터 활성
     locations: classpath:db/migration
 
 server:

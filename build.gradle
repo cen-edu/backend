@@ -39,7 +39,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
-    // 스키마 마이그레이션 (3단계에서 활성화)
+    // 스키마 마이그레이션.
+    // spring-boot-flyway 가 있어야 자동 설정이 붙는다. Boot 4 는 자동 설정을 기술별 모듈로
+    // 쪼개서, flyway-core 만 넣으면 마이그레이션이 조용히 실행되지 않는다.
+    implementation 'org.springframework.boot:spring-boot-flyway'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
 
