@@ -7,6 +7,8 @@ import com.cenedu.backend.global.common.BaseTimeEntity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -63,6 +65,16 @@ public class AnalysisAttempt extends BaseTimeEntity {
     /** 풀이 단계. 평가 영역과는 다른 축이며 합치지 않는다. 원본에 없으면 비워 둔다. */
     @Column(name = "step_id", length = 64)
     private String stepId;
+
+    /**
+     * 이 응답을 무엇을 보려고 냈는지.
+     *
+     * <p>지금은 제출 경로가 값을 채우지 않아 전부 진단으로 들어온다. 재출제가 붙으면 문항을 왜
+     * 냈는지 아는 쪽이 재출제라서, 클라이언트가 아니라 서버가 이 값을 정하게 된다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "purpose", nullable = false, length = 20)
+    private AttemptPurpose purpose;
 
     @Column(name = "is_correct", nullable = false)
     private boolean correct;
@@ -125,7 +137,8 @@ public class AnalysisAttempt extends BaseTimeEntity {
     @Builder
     private AnalysisAttempt(String eventId, String assessmentId, String studentId,
                             int problemNumber, String problemId, String problemTitle,
-                            String conceptId, String stepId, boolean correct, boolean hintUsed,
+                            String conceptId, String stepId, AttemptPurpose purpose,
+                            boolean correct, boolean hintUsed,
                             boolean submissionFailed, String sourceDataset, String evaluationArea,
                             String topic, BigDecimal referenceSuccessRate, String difficultyBand,
                             String sourceDifficulty, String difficultyBasis, String problemText,
@@ -140,6 +153,8 @@ public class AnalysisAttempt extends BaseTimeEntity {
         this.problemTitle = problemTitle;
         this.conceptId = conceptId;
         this.stepId = stepId;
+        // 목적을 밝히지 않은 응답은 진단으로 본다. dto.AttemptResult 와 같은 규칙이다.
+        this.purpose = purpose == null ? AttemptPurpose.DIAGNOSTIC : purpose;
         this.correct = correct;
         this.hintUsed = hintUsed;
         this.submissionFailed = submissionFailed;

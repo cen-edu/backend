@@ -44,6 +44,7 @@ CREATE TABLE analysis_attempt
     problem_title          VARCHAR(255),
     concept_id             VARCHAR(64),
     step_id                VARCHAR(64),
+    purpose                VARCHAR(20)  NOT NULL DEFAULT 'DIAGNOSTIC',
     is_correct             BOOLEAN      NOT NULL DEFAULT FALSE,
     hint_used              BOOLEAN      NOT NULL DEFAULT FALSE,
     submission_failed      BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -74,6 +75,10 @@ CREATE INDEX idx_analysis_attempt_lookup
 COMMENT ON TABLE analysis_attempt IS '문항 단위 풀이 시도';
 COMMENT ON COLUMN analysis_attempt.event_id IS '멱등 키. 같은 이벤트 재전송을 중복 저장하지 않는다';
 COMMENT ON COLUMN analysis_attempt.submission_failed IS '제출 자체가 기록되지 않은 문항. 보고서·집계에서 제외한다';
+COMMENT ON COLUMN analysis_attempt.purpose IS
+    'DIAGNOSTIC / APPLIED. 진단 응답만 취약점 상태를 움직인다. 응용 오답은 새 맥락을 읽지 못한 것인지 '
+    '개념을 잊은 것인지 구분할 수 없어 취약 근거로 쓰지 않는다. 기본값을 진단으로 두어 값을 채우지 않는 '
+    '경로도 지금까지와 같게 동작한다';
 COMMENT ON COLUMN analysis_attempt.evaluation_area IS '평가 영역. 풀이 단계(step_id)와는 다른 축이며 합치지 않는다';
 COMMENT ON COLUMN analysis_attempt.step_id IS '풀이 단계. 평가 영역(evaluation_area)과는 다른 축이며 합치지 않는다';
 

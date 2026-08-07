@@ -9,6 +9,7 @@ import com.cenedu.backend.domain.analysis.entity.AnalysisAssessment;
 import com.cenedu.backend.domain.analysis.entity.AnalysisAttempt;
 import com.cenedu.backend.domain.analysis.entity.AnalysisReport;
 import com.cenedu.backend.domain.analysis.entity.AssessmentStatus;
+import com.cenedu.backend.domain.analysis.entity.AttemptPurpose;
 import com.cenedu.backend.domain.analysis.entity.ReportStatus;
 import com.cenedu.backend.domain.analysis.repository.AnalysisAssessmentRepository;
 import com.cenedu.backend.domain.analysis.repository.AnalysisAttemptRepository;
@@ -98,6 +99,33 @@ class AnalysisSchemaTest {
         // 평가 영역과 풀이 단계는 다른 축이라 둘 다 살아 있어야 한다.
         assertThat(found.getEvaluationArea()).isEqualTo("계산");
         assertThat(found.getStepId()).isEqualTo("STEP_2");
+    }
+
+    @Test
+    @DisplayName("목적을 밝히지 않은 응답은 진단으로 저장된다")
+    void attemptDefaultsToDiagnostic() {
+        attempts.save(AnalysisAttempt.builder()
+                .eventId("E-3").assessmentId("A-4").studentId("S-4")
+                .problemNumber(1)
+                .occurredAt(Instant.parse("2026-08-07T03:00:00Z"))
+                .build());
+
+        // 제출 경로가 값을 채우지 않아도 지금까지와 같게 동작해야 한다.
+        assertThat(attempts.findByEventId("E-3").orElseThrow().getPurpose())
+                .isEqualTo(AttemptPurpose.DIAGNOSTIC);
+    }
+
+    @Test
+    @DisplayName("응용 응답은 응용으로 저장된다")
+    void attemptKeepsAppliedPurpose() {
+        attempts.save(AnalysisAttempt.builder()
+                .eventId("E-4").assessmentId("A-4").studentId("S-4")
+                .problemNumber(2).purpose(AttemptPurpose.APPLIED)
+                .occurredAt(Instant.parse("2026-08-07T04:00:00Z"))
+                .build());
+
+        assertThat(attempts.findByEventId("E-4").orElseThrow().getPurpose())
+                .isEqualTo(AttemptPurpose.APPLIED);
     }
 
     @Test
