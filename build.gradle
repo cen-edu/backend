@@ -64,6 +64,9 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // MockMvc 자동 설정. Boot 4 에서 웹 계층 테스트 지원이 별도 모듈로 빠져,
+    // starter-test 만으로는 @AutoConfigureMockMvc 를 쓸 수 없다.
+    testImplementation 'org.springframework.boot:spring-boot-webmvc-test'
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'

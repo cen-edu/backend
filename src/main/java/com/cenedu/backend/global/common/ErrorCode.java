@@ -39,6 +39,10 @@ public enum ErrorCode {
     // ===== problem (이하영) =====
 
     // ===== analysis (모수환) =====
+    ASSESSMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "평가를 찾을 수 없습니다."),
+    STUDENT_ATTEMPT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 풀이를 찾을 수 없습니다."),
+    ASSESSMENT_NOT_COMPLETED(HttpStatus.CONFLICT, "평가를 마친 뒤에 정답을 확인할 수 있습니다."),
+    ASSESSMENT_HEADER_CONFLICT(HttpStatus.CONFLICT, "같은 평가 ID의 기본 정보가 서로 다릅니다."),
 
     // ===== dashboard (모수환) =====
 
