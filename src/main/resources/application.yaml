@@ -22,6 +22,12 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+app:
+  ai:
+    guard:
+      input:
+        max-length: ${AI_INPUT_MAX_LENGTH:100}
+
 logging:
   pattern:
     # AgentDispatcher 가 채우는 traceId 를 로그 레벨 옆에 찍는다. 한 번의 에이전트 호출에
