@@ -7,7 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
+
 import java.util.Set;
 
 import com.cenedu.backend.domain.analysis.dto.AttemptResult;
@@ -15,6 +15,8 @@ import com.cenedu.backend.domain.analysis.dto.LearningState;
 import com.cenedu.backend.domain.analysis.entity.AnalysisAttempt;
 import com.cenedu.backend.domain.analysis.entity.LearningStatus;
 import com.cenedu.backend.domain.analysis.repository.AnalysisAttemptRepository;
+import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.domain.analysis.service.WeaknessAnalyzer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,13 +54,13 @@ public class ReissueService {
     @Transactional(readOnly = true)
     public Plan plan(String assessmentId, String studentId) {
         if (bank.isEmpty()) {
-            throw new IllegalStateException(bank.missingMessage());
+            throw new BusinessException(ErrorCode.REISSUE_BANK_UNAVAILABLE, bank.missingMessage());
         }
         List<AnalysisAttempt> rows = attempts
                 .findByAssessmentIdAndStudentIdOrderByProblemNumberAscOccurredAtAscEventIdAsc(
                         assessmentId, studentId);
         if (rows.isEmpty()) {
-            throw new NoSuchElementException(
+            throw new BusinessException(ErrorCode.STUDENT_ATTEMPT_NOT_FOUND,
                     "저장된 응답이 없습니다: " + assessmentId + " / " + studentId);
         }
 
@@ -74,7 +76,8 @@ public class ReissueService {
         String conceptId = state == null ? rows.get(0).getConceptId() : state.conceptId();
         String unit = crosswalk.bankUnit(conceptId);
         if (unit == null) {
-            throw new IllegalStateException("뱅크 소단원 대응이 없는 개념입니다: " + conceptId);
+            throw new BusinessException(ErrorCode.REISSUE_UNIT_NOT_MAPPED,
+                    "뱅크 소단원 대응이 없는 개념입니다: " + conceptId);
         }
 
         // 체류 난이도는 이전 문제지에서 읽는다. 재출제가 그 한 회분만 참조하므로 따로 저장해

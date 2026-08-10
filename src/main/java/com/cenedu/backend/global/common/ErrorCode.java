@@ -46,6 +46,12 @@ public enum ErrorCode {
     REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "보고서를 찾을 수 없습니다."),
     REPORT_RENDERER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "보고서를 PDF로 만들 수 없습니다. 서버에 브라우저가 설치되어 있지 않습니다."),
     REPORT_RENDER_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "보고서를 만들지 못했습니다."),
+    REISSUE_BANK_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE,
+            "재출제 문항 뱅크를 읽을 수 없습니다. 서버에 뱅크 파일이 없습니다."),
+    REISSUE_UNIT_NOT_MAPPED(HttpStatus.CONFLICT,
+            "뱅크 소단원 대응이 없는 개념입니다."),
+    REISSUE_CONCEPT_NOT_OBSERVED(HttpStatus.BAD_REQUEST,
+            "이 회차에서 관찰되지 않은 개념입니다."),
 
     // ===== dashboard (모수환) =====
 

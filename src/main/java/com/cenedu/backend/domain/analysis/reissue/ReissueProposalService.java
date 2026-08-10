@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
+
 import java.util.Set;
 
 import com.cenedu.backend.domain.analysis.dto.AttemptResult;
@@ -14,6 +14,8 @@ import com.cenedu.backend.domain.analysis.dto.LearningState;
 import com.cenedu.backend.domain.analysis.entity.AnalysisAttempt;
 import com.cenedu.backend.domain.analysis.entity.LearningStatus;
 import com.cenedu.backend.domain.analysis.repository.AnalysisAttemptRepository;
+import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.domain.analysis.service.WeaknessAnalyzer;
 import com.cenedu.backend.global.common.enums.DisplayLabels;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -54,14 +56,25 @@ public class ReissueProposalService {
     /** 개념별 세 칸의 문항 수 제안과, 세 칸을 아우르는 선정 이유. */
     @Transactional(readOnly = true)
     public Proposal propose(String assessmentId, String studentId) {
-        List<ConceptFocus> focuses = analyze(assessmentId, studentId);
+        List<AnalysisAttempt> rows = load(assessmentId, studentId);
+        Set<String> served = servedIds(rows);
         List<Config> configs = new ArrayList<>();
-        for (ConceptFocus focus : focuses) {
+        for (ConceptFocus focus : analyze(rows, studentId)) {
             Map<ReissueStage, Integer> counts = new LinkedHashMap<>();
             Map<ReissueStage, Integer> available = new LinkedHashMap<>();
             for (ReissueStage stage : ReissueStage.values()) {
-                counts.put(stage, focus.proposedCount(stage, SET_SIZE));
-                available.put(stage, available(focus, stage));
+                int stock = available(focus, stage, served);
+                int proposed = focus.proposedCount(stage, SET_SIZE);
+                // 유사는 뱅크 재고에서 뽑으므로 재고보다 많이 제안하지 않는다. 3을 제안해
+                // 놓고 1문항만 나가면 교사는 왜 줄었는지 알 수 없고 합계도 어긋난다.
+                //
+                // 응용은 깎지 않는다. 재고에서 뽑는 것이 아니라 생성이라, available 0 은
+                // "문항이 없다" 가 아니라 "아직 만들 수 없다" 는 뜻이다.
+                if (stage == ReissueStage.BASIC) {
+                    proposed = Math.min(proposed, stock);
+                }
+                counts.put(stage, proposed);
+                available.put(stage, stock);
             }
             configs.add(new Config(focus, counts, available));
         }
@@ -77,20 +90,21 @@ public class ReissueProposalService {
     @Transactional(readOnly = true)
     public Generated generate(String assessmentId, String studentId, List<Request> requests) {
         if (bank.isEmpty()) {
-            throw new IllegalStateException(bank.missingMessage());
+            throw new BusinessException(ErrorCode.REISSUE_BANK_UNAVAILABLE, bank.missingMessage());
         }
+        List<AnalysisAttempt> rows = load(assessmentId, studentId);
         Map<String, ConceptFocus> byConcept = new LinkedHashMap<>();
-        for (ConceptFocus focus : analyze(assessmentId, studentId)) {
+        for (ConceptFocus focus : analyze(rows, studentId)) {
             byConcept.put(focus.conceptId(), focus);
         }
-        Set<String> served = servedIds(load(assessmentId, studentId));
+        Set<String> served = servedIds(rows);
 
         List<Picked> picked = new ArrayList<>();
         int pendingApplied = 0;
         for (Request request : requests) {
             ConceptFocus focus = byConcept.get(request.conceptId());
             if (focus == null) {
-                throw new NoSuchElementException(
+                throw new BusinessException(ErrorCode.REISSUE_CONCEPT_NOT_OBSERVED,
                         "이 회차에서 관찰되지 않은 개념입니다: " + request.conceptId());
             }
             pendingApplied += request.count(ReissueStage.INDEPENDENT);
@@ -123,13 +137,7 @@ public class ReissueProposalService {
      * <p>기록되지 않은 문항은 판정에서 뺀다. 학생이 틀린 것이 아니라 재지 못한 것이라, 오답으로
      * 세면 없는 취약점을 만들어 낸다. 대신 그 문항 목록은 복습 칸의 근거로 따로 들고 간다.
      */
-    private List<ConceptFocus> analyze(String assessmentId, String studentId) {
-        List<AnalysisAttempt> rows = load(assessmentId, studentId);
-        if (rows.isEmpty()) {
-            throw new NoSuchElementException(
-                    "저장된 응답이 없습니다: " + assessmentId + " / " + studentId);
-        }
-
+    private List<ConceptFocus> analyze(List<AnalysisAttempt> rows, String studentId) {
         Map<String, List<AnalysisAttempt>> byStep = new LinkedHashMap<>();
         for (AnalysisAttempt row : rows) {
             byStep.computeIfAbsent(row.getConceptId() + "::" + row.getStepId(),
@@ -174,23 +182,34 @@ public class ReissueProposalService {
         return focuses;
     }
 
-    /** 그 칸에서 실제로 고를 수 있는 문항 수. 재고가 마르는지 화면에서 바로 보인다. */
-    private int available(ConceptFocus focus, ReissueStage stage) {
+    /**
+     * 그 칸에서 실제로 고를 수 있는 문항 수. 재고가 마르는지 화면에서 바로 보인다.
+     *
+     * <p>이미 낸 문항을 반드시 빼야 한다. 생성이 그것을 빼고 고르므로, 여기서 빼지 않으면
+     * 화면에 보이는 재고가 실제보다 많아진다.
+     */
+    private int available(ConceptFocus focus, ReissueStage stage, Set<String> served) {
         return switch (stage) {
             case RETRACE -> focus.lostProblemIds().size();
             case BASIC -> bank.isEmpty() ? 0 : ReissueSelector.select(
                     bank.questions(),
                     new ReissueSelector.ReissueTarget(focus.bankUnit(), focus.nextDifficulty()),
-                    Set.of(), null, 0).candidateCount();
+                    served, null, 0).candidateCount();
             // 응용은 생성이라 재고라는 개념이 없다. 미구현임을 0 으로 알린다.
             case INDEPENDENT -> 0;
         };
     }
 
+    /** 저장된 응답이 없으면 여기서 막는다. 빈 제안을 만들어 내지 않는다. */
     private List<AnalysisAttempt> load(String assessmentId, String studentId) {
-        return attempts
+        List<AnalysisAttempt> rows = attempts
                 .findByAssessmentIdAndStudentIdOrderByProblemNumberAscOccurredAtAscEventIdAsc(
                         assessmentId, studentId);
+        if (rows.isEmpty()) {
+            throw new BusinessException(ErrorCode.STUDENT_ATTEMPT_NOT_FOUND,
+                    "저장된 응답이 없습니다: " + assessmentId + " / " + studentId);
+        }
+        return rows;
     }
 
     private static AttemptResult toAttemptResult(AnalysisAttempt row, String studentId) {

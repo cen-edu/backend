@@ -3,6 +3,7 @@ package com.cenedu.backend.domain.analysis.reissue;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.cenedu.backend.domain.analysis.entity.LearningStatus;
 import com.cenedu.backend.global.common.enums.DisplayLabels;
 
 /**
@@ -108,8 +109,7 @@ final class ReissueReason {
                                 + DisplayLabels.difficulty(focus.dwell().band())
                                 + " 난이도에서 " + name + "으로 옮겨";
                 String why = focus.state() != null
-                        && focus.state().status() == com.cenedu.backend.domain.analysis
-                                .entity.LearningStatus.NEEDS_SUPPORT
+                        && focus.state().status() == LearningStatus.NEEDS_SUPPORT
                         ? "서로 다른 문항 " + focus.wrongProblemIds().size()
                                 + "개를 틀려 지원이 필요한 상태라"
                         : "오류가 보여";
