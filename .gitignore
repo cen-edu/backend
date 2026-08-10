@@ -2,6 +2,10 @@ HELP.md
 .gradle
 build/
 *.log
+
+# 보고서 렌더링 산출물. app.report.output-dir 기본값이라 앱을 저장소 루트에서 띄우면
+# 여기에 쌓인다. 커밋되면 학생 이름이 든 PDF 가 저장소에 남는다.
+output/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
