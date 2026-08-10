@@ -27,7 +27,9 @@ app:
     guard:
       input:
         max-length: ${AI_INPUT_MAX_LENGTH:100}
-
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:1h}
 logging:
   pattern:
     # AgentDispatcher 가 채우는 traceId 를 로그 레벨 옆에 찍는다. 한 번의 에이전트 호출에
@@ -38,7 +40,3 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
-app:
-  jwt:
-    secret: ${JWT_SECRET}
-    access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:1h}
