@@ -143,11 +143,10 @@ domain/problem/
 ├── entity/
 └── dto/
     ├── request/                 HTTP 요청 DTO (`*Request`)
-    ├── response/                HTTP 응답 DTO (`*Response`)
-    └── result/                  서비스·도메인 간 반환 DTO (`*Result`)
+    └── response/                HTTP 응답·서비스 반환 DTO (`*Response`)
 ```
 
-요청·응답 DTO는 패키지와 클래스 이름 모두로 용도를 구분합니다. HTTP 계약이 아닌 서비스 처리 결과나 도메인 간 공개 데이터는 `dto/result`에 두고 `*Result`로 이름 짓습니다. JPA 엔티티를 DTO로 반환하지 않습니다.
+요청·응답 DTO는 패키지와 클래스 이름 모두로 용도를 구분합니다. HTTP 응답과 서비스 처리 결과, 도메인 간 공개 데이터는 `dto/response`에 두고 기본적으로 `*Response`로 이름 짓습니다. 비밀번호 해시처럼 API로 반환하면 안 되는 특수 목적 데이터는 `*Credentials`처럼 용도가 드러나는 이름을 사용하고, API 응답으로 반환하지 않습니다. JPA 엔티티를 DTO로 반환하지 않습니다.
 
 같은 도메인의 JPA 엔티티를 DTO로 변환할 때는 DTO 내부에 `from(Entity entity)` 형태의 정적 팩토리 메서드를 둡니다. 서비스에 변환용 private 메서드를 반복해서 만들지 않습니다. 다른 도메인의 엔티티를 DTO에서 참조하는 것은 3절의 소유 경계 규칙을 어기므로 금지합니다.
 
