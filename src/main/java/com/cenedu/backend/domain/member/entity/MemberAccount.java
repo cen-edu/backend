@@ -15,7 +15,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
@@ -60,12 +59,16 @@ public class MemberAccount {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
-    @Builder
     private MemberAccount(UserRole role, String loginId, String passwordHash, String name) {
         this.role = role;
         this.loginId = loginId;
         this.passwordHash = passwordHash;
         this.name = name;
+    }
+
+    /** 교사 계정을 생성한다. */
+    public static MemberAccount createTeacher(String loginId, String passwordHash, String name) {
+        return new MemberAccount(UserRole.TEACHER, loginId, passwordHash, name);
     }
 
     public void changePassword(String passwordHash) {

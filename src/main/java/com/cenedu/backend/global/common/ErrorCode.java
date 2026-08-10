@@ -22,9 +22,10 @@ public enum ErrorCode {
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
 
-    // ===== auth (배세빈) =====
+    // ===== auth (이동규) =====
 
-    // ===== member (배세빈) =====
+    // ===== member (이동규) =====
+    MEMBER_LOGIN_ID_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 로그인 아이디입니다."),
 
     // ===== worksheet (배세빈) =====
 
