@@ -1,5 +1,0 @@
-concept_id	concept_name	step_id	step_name	approved_for_diagnosis	next_action
-PRIME	소인수분해	PRIME_FACTORIZE	소인수분해하기	true	소인수분해 문제 2개를 힌트 없이 다시 풀기
-GCD	최대공약수	GCD_COMPUTE	최대공약수 구하기	true	최대공약수 계산 문제 2개를 힌트 없이 다시 풀기
-GCD	최대공약수	GCD_PROPERTY	최대공약수의 성질	true	최대공약수의 성질 문제를 다른 형태로 다시 확인하기
-LCM	최소공배수	LCM_COMPUTE	최소공배수 구하기	true	최소공배수 계산 문제 2개를 힌트 없이 다시 풀기
