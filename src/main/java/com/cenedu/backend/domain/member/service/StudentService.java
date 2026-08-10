@@ -25,17 +25,16 @@ public class StudentService {
     private final StudentAccountCreator studentAccountCreator;
     private final PasswordEncoder passwordEncoder;
 
-    /** 인증된 교사를 소유자로 지정해 학생 계정과 프로필을 함께 생성한다. */
+    /** 인증된 교사를 소유자로 지정하고 로그인 아이디를 초기 비밀번호로 설정한다. */
     public StudentCreateResponse createStudent(long teacherId, StudentCreateRequest request) {
-        String passwordHash = passwordEncoder.encode(request.password());
-
         // 아이디 생성할 때 중복되면 최대 3회까지 재시도
         for (int attempt = 0; attempt <= MAX_LOGIN_ID_GENERATION_RETRIES; attempt++) {
+            String loginId = generateStudentLoginId();
             try {
                 return studentAccountCreator.createStudent(
                         teacherId,
-                        generateStudentLoginId(),
-                        passwordHash,
+                        loginId,
+                        passwordEncoder.encode(loginId),
                         request.name().trim(),
                         (short) request.registrationYear(),
                         (short) request.grade()
