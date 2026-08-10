@@ -7,6 +7,7 @@ import com.cenedu.backend.domain.auth.dto.response.SignupResponse;
 import com.cenedu.backend.domain.auth.service.AuthService;
 import com.cenedu.backend.global.common.ApiResponse;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@SecurityRequirements
 public class AuthController {
 
     private final AuthService authService;
