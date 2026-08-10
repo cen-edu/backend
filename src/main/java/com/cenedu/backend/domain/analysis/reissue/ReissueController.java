@@ -5,8 +5,11 @@ import com.cenedu.backend.global.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -26,9 +29,54 @@ import org.springframework.web.bind.annotation.RestController;
 public class ReissueController {
 
     private final ReissueService reissue;
+    private final ReissueProposalService proposals;
 
-    public ReissueController(ReissueService reissue) {
+    public ReissueController(ReissueService reissue, ReissueProposalService proposals) {
         this.reissue = reissue;
+        this.proposals = proposals;
+    }
+
+    @Operation(summary = "맞춤 문제 구성 제안",
+            description = """
+                    개념마다 세 칸(`retrace` 복습 / `basic` 유사 / `independent` 응용)의 문항 수를
+                    **서버가 정해서** 돌려준다. 교사는 이 숫자만 조정하고, 조정된 값으로
+                    `POST .../questions` 를 부른다.
+
+                    - `복습`은 시스템 오류로 답이 기록되지 않은 문항의 원본 재출제다. 그런 문항이
+                      없으면 0이다. 답을 쓴 문항을 다시 내면 실력이 아니라 기억을 잰다
+                    - `유사`는 오류가 관찰된 개념에만. 난이도는 이전 문제지의 체류 난이도에서
+                      상태에 따라 한 칸 오르내린다
+                    - `응용`은 상 난이도까지 올라와 오류가 없을 때만. **생성이 미구현이라
+                      `available` 이 항상 0이다**
+
+                    `reason` 은 세 칸을 아우르는 설명 하나다. 0인 칸도 왜 0인지 적는다.
+                    """)
+    @GetMapping("/assessments/{assessmentId}/students/{studentId}/proposal")
+    public ApiResponse<ProposalResponse> propose(
+            @Parameter(description = "회차 ID") @PathVariable String assessmentId,
+            @Parameter(description = "학생 ID") @PathVariable String studentId
+    ) {
+        return ApiResponse.success(
+                ProposalResponse.from(proposals.propose(assessmentId, studentId)));
+    }
+
+    @Operation(summary = "조정된 구성으로 문항 생성",
+            description = """
+                    제안을 교사가 조정한 값으로 실제 문항을 고른다. 칸당 최대 5문항이며 서버도
+                    같은 상한을 건다.
+
+                    `복습`은 뱅크를 보지 않고 기록되지 않은 원본 문항을 그대로 돌려준다.
+                    `응용`은 생성이 미구현이라 문항이 나가지 않고 `pendingAppliedCount` 로만
+                    알린다.
+                    """)
+    @PostMapping("/assessments/{assessmentId}/students/{studentId}/questions")
+    public ApiResponse<ReissueProposalService.Generated> generate(
+            @Parameter(description = "회차 ID") @PathVariable String assessmentId,
+            @Parameter(description = "학생 ID") @PathVariable String studentId,
+            @Valid @RequestBody GenerateRequest request
+    ) {
+        return ApiResponse.success(
+                proposals.generate(assessmentId, studentId, request.toRequests()));
     }
 
     @Operation(summary = "다음 회차 출제 계획",
