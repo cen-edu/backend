@@ -11,26 +11,43 @@ import com.cenedu.backend.domain.analysis.entity.LearningStatus;
  * <p>기존 {@code ReissueService.mode()} 는 셋 중 하나를 골랐다. 화면은 개념마다 세 칸을 함께
  * 요구하므로, 같은 판단을 배타적 모드가 아니라 <b>칸별 문항 수</b>로 편다. 규칙은 그대로다.
  *
- * @param dwell          이전 문제지에서 머물던 난이도. 승급 전 값이다.
- * @param nextDifficulty 유사 문항을 고를 난이도. 승급·강등이 반영된 값이다.
- * @param lostProblemIds 시스템 오류로 기록되지 않은 문항. 복습 칸의 근거이자 문항 수다.
- * @param targetStage    처음 틀린 풀이 구간. 관찰 표시 전용이고 선정에는 쓰지 않는다.
+ * @param conceptName     카탈로그의 개념명. 소단원명과 다르다(개념 "최대공약수" ⊂ 소단원
+ *                        "최대공약수와 최소공배수").
+ * @param dwell           이전 문제지에서 머물던 난이도. 승급 전 값이다.
+ * @param nextDifficulty  유사 문항을 고를 난이도. 승급·강등이 반영된 값이다.
+ * @param lostProblemIds  시스템 오류로 기록되지 않은 문항. 복습 칸의 근거이자 문항 수다.
+ * @param sourceQuestionNos 이 개념에서 틀린 문항의 번호. 교사 화면이 "원본 2번, 3번"으로 쓴다.
+ * @param incorrectSteps  틀린 구간과 학생이 실제로 쓴 답. 제안 근거 카드의 내용이다.
+ * @param evaluationArea  원본 평가 영역 코드. 선정에는 쓰지 않고, 교사 표시와 응용 문항 생성의
+ *                        참고 자료로 넘긴다.
+ * @param targetStage     처음 틀린 풀이 구간 코드. 쓰임은 {@code evaluationArea} 와 같다.
  */
 public record ConceptFocus(
         String conceptId,
+        String conceptName,
         String stepId,
         String bankUnit,
         LearningState state,
         QuestionDifficulty dwell,
         QuestionDifficulty nextDifficulty,
         List<String> lostProblemIds,
-        List<String> wrongProblemIds,
+        List<Integer> sourceQuestionNos,
+        List<IncorrectStep> incorrectSteps,
         String evaluationArea,
         String targetStage
 ) {
     public ConceptFocus {
         lostProblemIds = lostProblemIds == null ? List.of() : List.copyOf(lostProblemIds);
-        wrongProblemIds = wrongProblemIds == null ? List.of() : List.copyOf(wrongProblemIds);
+        sourceQuestionNos = sourceQuestionNos == null ? List.of() : List.copyOf(sourceQuestionNos);
+        incorrectSteps = incorrectSteps == null ? List.of() : List.copyOf(incorrectSteps);
+    }
+
+    /**
+     * 틀린 구간 하나. 교사가 "몇 번 문항의 어느 단계에서 무엇이라고 썼는가" 를 본다.
+     *
+     * @param input 학생이 실제로 쓴 답. 비어 있으면 미입력이다.
+     */
+    public record IncorrectStep(int questionNo, int stepOrder, String label, String input) {
     }
 
     /**

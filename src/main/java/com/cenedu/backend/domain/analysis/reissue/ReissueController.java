@@ -70,13 +70,13 @@ public class ReissueController {
                     알린다.
                     """)
     @PostMapping("/assessments/{assessmentId}/students/{studentId}/questions")
-    public ApiResponse<ReissueProposalService.Generated> generate(
+    public ApiResponse<GeneratedResponse> generate(
             @Parameter(description = "회차 ID") @PathVariable String assessmentId,
             @Parameter(description = "학생 ID") @PathVariable String studentId,
             @Valid @RequestBody GenerateRequest request
     ) {
-        return ApiResponse.success(
-                proposals.generate(assessmentId, studentId, request.toRequests()));
+        return ApiResponse.success(GeneratedResponse.from(
+                proposals.generate(assessmentId, studentId, request.toRequests())));
     }
 
     @Operation(summary = "다음 회차 출제 계획",

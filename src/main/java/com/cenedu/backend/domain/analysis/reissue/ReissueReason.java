@@ -110,7 +110,7 @@ final class ReissueReason {
                                 + " 난이도에서 " + name + "으로 옮겨";
                 String why = focus.state() != null
                         && focus.state().status() == LearningStatus.NEEDS_SUPPORT
-                        ? "서로 다른 문항 " + focus.wrongProblemIds().size()
+                        ? "서로 다른 문항 " + focus.sourceQuestionNos().size()
                                 + "개를 틀려 지원이 필요한 상태라"
                         : "오류가 보여";
                 yield focus.bankUnit() + topicParticle(focus.bankUnit()) + " "

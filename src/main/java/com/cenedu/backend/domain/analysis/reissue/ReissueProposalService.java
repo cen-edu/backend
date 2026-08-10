@@ -16,6 +16,7 @@ import com.cenedu.backend.domain.analysis.entity.LearningStatus;
 import com.cenedu.backend.domain.analysis.repository.AnalysisAttemptRepository;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
+import com.cenedu.backend.domain.analysis.service.LearningStepCatalog;
 import com.cenedu.backend.domain.analysis.service.WeaknessAnalyzer;
 import com.cenedu.backend.global.common.enums.DisplayLabels;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -45,12 +46,14 @@ public class ReissueProposalService {
     private final AnalysisAttemptRepository attempts;
     private final QuestionBank bank;
     private final BankUnitCrosswalk crosswalk;
+    private final LearningStepCatalog catalog;
 
-    public ReissueProposalService(AnalysisAttemptRepository attempts,
-                                  QuestionBank bank, BankUnitCrosswalk crosswalk) {
+    public ReissueProposalService(AnalysisAttemptRepository attempts, QuestionBank bank,
+                                  BankUnitCrosswalk crosswalk, LearningStepCatalog catalog) {
         this.attempts = attempts;
         this.bank = bank;
         this.crosswalk = crosswalk;
+        this.catalog = catalog;
     }
 
     /** 개념별 세 칸의 문항 수 제안과, 세 칸을 아우르는 선정 이유. */
@@ -170,10 +173,11 @@ public class ReissueProposalService {
                     ? dwell : ReissueService.nextDifficulty(state.status(), dwell);
 
             focuses.add(new ConceptFocus(
-                    first.getConceptId(), first.getStepId(), bankUnit, state, dwell, next,
-                    lost,
+                    first.getConceptId(), conceptName(first), first.getStepId(), bankUnit,
+                    state, dwell, next, lost,
                     answered.stream().filter(row -> !row.isCorrect())
-                            .map(AnalysisAttempt::getProblemId).distinct().toList(),
+                            .map(AnalysisAttempt::getProblemNumber).distinct().sorted().toList(),
+                    incorrectSteps(answered),
                     mostCommonArea(answered), firstWrongStage(answered)));
         }
 
@@ -231,6 +235,47 @@ public class ReissueProposalService {
         return base + focus.state().errorCount();
     }
 
+    /**
+     * 카탈로그의 개념명. 소단원명과 다르다.
+     *
+     * <p>카탈로그에 없거나 아직 승인되지 않은 조합이면 소단원명으로 대신한다. 여기서 막으면
+     * 표에 행 하나가 통째로 사라지는데, 교사에게는 이름이 조금 넓은 것보다 그게 더 나쁘다.
+     */
+    private String conceptName(AnalysisAttempt row) {
+        try {
+            return catalog.requireApproved(row.getConceptId(), row.getStepId()).conceptName();
+        } catch (RuntimeException e) {
+            return crosswalk.bankUnit(row.getConceptId());
+        }
+    }
+
+    /**
+     * 틀린 구간과 학생이 실제로 쓴 답. 교사 화면의 제안 근거 카드가 그대로 쓴다.
+     *
+     * <p>맞은 구간은 담지 않는다. 교사가 볼 것은 어디서 어긋났는가이지 전체 풀이가 아니다.
+     */
+    private List<ConceptFocus.IncorrectStep> incorrectSteps(List<AnalysisAttempt> group) {
+        List<ConceptFocus.IncorrectStep> steps = new ArrayList<>();
+        for (AnalysisAttempt row : group) {
+            if (row.isCorrect()) {
+                continue;
+            }
+            JsonNode parsed = readSteps(row.getStepResponsesJson());
+            int order = 0;
+            for (JsonNode step : parsed) {
+                order++;
+                if (step.path("correct").asBoolean(false)) {
+                    continue;
+                }
+                steps.add(new ConceptFocus.IncorrectStep(
+                        row.getProblemNumber(), order,
+                        step.path("stepName").asText(""),
+                        step.path("studentAnswer").asText("")));
+            }
+        }
+        return steps;
+    }
+
     private static String mostCommonArea(List<AnalysisAttempt> group) {
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (AnalysisAttempt row : group) {
@@ -249,19 +294,22 @@ public class ReissueProposalService {
             if (row.isCorrect()) {
                 continue;
             }
-            try {
-                String raw = row.getStepResponsesJson();
-                for (JsonNode step : JSON.readTree(raw == null || raw.isBlank() ? "[]" : raw)) {
-                    if (!step.path("correct").asBoolean(true)) {
-                        String category = step.path("category").asText(null);
-                        return category == null || category.isBlank() ? null : category;
-                    }
+            for (JsonNode step : readSteps(row.getStepResponsesJson())) {
+                if (!step.path("correct").asBoolean(true)) {
+                    String category = step.path("category").asText(null);
+                    return category == null || category.isBlank() ? null : category;
                 }
-            } catch (Exception e) {
-                throw new IllegalStateException("풀이 단계 JSON을 읽을 수 없습니다.", e);
             }
         }
         return null;
+    }
+
+    private static JsonNode readSteps(String raw) {
+        try {
+            return JSON.readTree(raw == null || raw.isBlank() ? "[]" : raw);
+        } catch (Exception e) {
+            throw new IllegalStateException("풀이 단계 JSON을 읽을 수 없습니다.", e);
+        }
     }
 
     private static Set<String> servedIds(List<AnalysisAttempt> rows) {

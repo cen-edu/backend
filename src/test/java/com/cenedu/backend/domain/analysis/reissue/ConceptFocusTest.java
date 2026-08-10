@@ -89,9 +89,10 @@ class ConceptFocusTest {
     /** 모든 응답이 기록되지 않았으면 읽을 상태가 없다. 복습만 남는다. */
     @Test
     void withoutAStateOnlyRetraceRemains() {
-        ConceptFocus focus = new ConceptFocus("GCD", "GCD_COMPUTE", "최대공약수와 최소공배수",
+        ConceptFocus focus = new ConceptFocus("GCD", "최대공약수", "GCD_COMPUTE",
+                "최대공약수와 최소공배수",
                 null, QuestionDifficulty.MEDIUM, QuestionDifficulty.MEDIUM,
-                List.of("P-1"), List.of(), null, null);
+                List.of("P-1"), List.of(), List.of(), null, null);
         assertEquals(1, focus.proposedCount(ReissueStage.RETRACE, SET));
         assertEquals(0, focus.proposedCount(ReissueStage.BASIC, SET));
         assertEquals(0, focus.proposedCount(ReissueStage.INDEPENDENT, SET));
@@ -101,8 +102,8 @@ class ConceptFocusTest {
             LearningStatus status, QuestionDifficulty dwell, List<String> lost) {
         LearningState state = new LearningState(
                 "L-1", "GCD", "GCD_COMPUTE", status, 1, 1, 0, 0, 0);
-        return new ConceptFocus("GCD", "GCD_COMPUTE", "최대공약수와 최소공배수",
+        return new ConceptFocus("GCD", "최대공약수", "GCD_COMPUTE", "최대공약수와 최소공배수",
                 state, dwell, ReissueService.nextDifficulty(status, dwell),
-                lost, List.of("P-W"), null, null);
+                lost, List.of(2), List.of(), null, null);
     }
 }
