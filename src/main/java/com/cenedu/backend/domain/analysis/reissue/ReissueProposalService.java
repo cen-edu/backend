@@ -253,6 +253,11 @@ public class ReissueProposalService {
      * 틀린 구간과 학생이 실제로 쓴 답. 교사 화면의 제안 근거 카드가 그대로 쓴다.
      *
      * <p>맞은 구간은 담지 않는다. 교사가 볼 것은 어디서 어긋났는가이지 전체 풀이가 아니다.
+     *
+     * <p><b>박스형(STEP_FILL) 문항에서만 값이 나온다.</b> 객관식·주관식·서술형에는 빈칸 구간이
+     * 없어 {@code step_responses_json} 이 비어 있고, 결과도 빈 목록이 된다. 학습평가는 박스형,
+     * 종합평가는 객관식·주관식·서술형으로 나가므로 <b>종합평가 회차를 근거로 재출제하면 제안
+     * 근거 카드가 빈다.</b> 문항 수 제안과 선정은 그대로 동작한다.
      */
     private List<ConceptFocus.IncorrectStep> incorrectSteps(List<AnalysisAttempt> group) {
         List<ConceptFocus.IncorrectStep> steps = new ArrayList<>();
