@@ -28,8 +28,23 @@ repositories {
 ext {
     jjwtVersion = '0.13.0'
     springdocVersion = '3.1.0'
+    // springdoc 이 쓰는 swagger-core 와 같은 버전으로 맞춘다. 위 resolutionStrategy 참고.
+    swaggerAnnotationsVersion = '2.2.52'
     openaiVersion = '4.50.0'
     archunitVersion = '1.5.0'
+}
+
+// openai-java-core 가 swagger-annotations 2.2.31 을 끌고 온다. springdoc 이 쓰는
+// swagger-core 2.2.52 와 같은 패키지(io.swagger.v3.oas.annotations)라, 클래스패스에서
+// 구버전이 이기면 Schema.$dynamicRef() 가 없어 /v3/api-docs 가 500 이 된다.
+//
+// 요청 본문이 있는 엔드포인트에서만 드러난다. springdoc 이 그때 처음 이 메서드를 부르므로
+// POST 가 하나도 없을 때는 멀쩡해 보인다. AGENTS.md 7절이 Swagger 를 프론트와의 계약서로
+// 정했으니 조용히 깨져 있으면 안 된다.
+configurations.all {
+    resolutionStrategy {
+        force "io.swagger.core.v3:swagger-annotations:${swaggerAnnotationsVersion}"
+    }
 }
 
 dependencies {
