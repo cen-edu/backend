@@ -23,12 +23,11 @@ import org.springframework.stereotype.Component;
  * 모든 에이전트 호출의 유일한 진입점.
  *
  * <p>도메인 서비스는 LLM 클라이언트를 직접 부르지 않고 {@link #dispatch(AgentRequest)} 만 부른다.
- * 시스템이 자동으로 트리거하는 호출(답안 검증, 서술형 채점)도 예외가 아니다.
  * 이 규칙은 {@code AiClientAccessTest} 가 CI 에서 강제한다.
  *
- * <p><b>지금은 껍데기다.</b> 가드레일 구현체가 하나도 없어서 요청은 그대로 에이전트로 가고
- * 응답도 그대로 돌아온다. 자리를 먼저 잡아 두는 게 목적이고, 나중에 가드레일을 채울 때
- * 에이전트나 도메인 코드를 고치지 않아도 되게 하려는 것이다.
+ * <p>입력 역할·길이·프롬프트 인젝션 검사는 구현되어 있으며, 나머지 입력 검사와 출력 검사는
+ * 구현체가 등록될 때까지 그대로 통과한다. 가드레일을 추가할 때 에이전트나 도메인 코드를
+ * 고치지 않아도 된다.
  *
  * <p>왜 한 곳으로 모으는가: 챗봇이 여러 개로 늘 때 가드레일을 각자 구현하면 서로 다른 안전
  * 수준이 생긴다. 예외 경로를 하나 열어 두면 그 경로만 무방비가 되고, 나중에 누가 거기에
@@ -81,8 +80,6 @@ public class AgentDispatcher {
     }
 
     private AgentResponse doDispatch(AgentRequest request) {
-        Agent agent = agentFor(request.kind());
-
         // 입력 원문은 남기지 않는다. 학생 입력과 시험 문항이 그대로 로그로 나가면
         // 정답 유출 정책을 로그 파일이 무너뜨린다. 길이만으로도 대부분의 추적은 된다.
         log.info("에이전트 호출 — agent={}, userId={}, role={}, inputLength={}, historySize={}",
@@ -101,6 +98,8 @@ public class AgentDispatcher {
             }
         }
 
+        // 권한 없는 사용자가 에이전트 등록 여부를 탐색하지 못하도록 입력 검사 뒤에 조회한다.
+        Agent agent = agentFor(request.kind());
         AgentResponse response = agent.handle(request);
 
         for (OutputGuard guard : outputGuards) {

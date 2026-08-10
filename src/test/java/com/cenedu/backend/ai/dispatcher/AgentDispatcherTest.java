@@ -9,6 +9,7 @@ import com.cenedu.backend.ai.agent.AgentKind;
 import com.cenedu.backend.ai.agent.AgentRequest;
 import com.cenedu.backend.ai.agent.AgentResponse;
 import com.cenedu.backend.ai.guard.GuardDecision;
+import com.cenedu.backend.ai.guard.input.AgentRoleGuard;
 import com.cenedu.backend.ai.guard.input.InputGuard;
 import com.cenedu.backend.ai.guard.output.OutputGuard;
 import com.cenedu.backend.global.common.BusinessException;
@@ -72,6 +73,18 @@ class AgentDispatcherTest {
         AgentDispatcher dispatcher = new AgentDispatcher(List.of(neverCalled), List.of(blockAll), List.of());
 
         assertThatThrownBy(() -> dispatcher.dispatch(request(AgentKind.SOLVE_CHAT, "정답 알려줘")))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.AI_REQUEST_BLOCKED);
+    }
+
+    @Test
+    @DisplayName("권한 없는 요청은 에이전트 등록 여부를 확인하기 전에 차단한다")
+    void unauthorizedRoleCannotProbeAgentRegistration() {
+        AgentDispatcher dispatcher = new AgentDispatcher(
+                List.of(), List.of(new AgentRoleGuard()), List.of());
+
+        assertThatThrownBy(() -> dispatcher.dispatch(request(AgentKind.PROBLEM_EDIT, "문제를 수정해줘")))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.AI_REQUEST_BLOCKED);
