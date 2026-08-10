@@ -28,9 +28,17 @@ public enum ErrorCode {
     // ===== member (이동규) =====
     MEMBER_LOGIN_ID_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 이메일 입니다."),
     MEMBER_TEACHER_NOT_FOUND(HttpStatus.NOT_FOUND, "교사 계정을 찾을 수 없습니다."),
-    MEMBER_TEACHER_REQUIRED(HttpStatus.FORBIDDEN, "교사 계정만 학생을 생성할 수 있습니다."),
+    MEMBER_TEACHER_REQUIRED(HttpStatus.FORBIDDEN, "교사 계정만 수행할 수 있습니다."),
     MEMBER_STUDENT_LOGIN_ID_GENERATION_FAILED(
             HttpStatus.INTERNAL_SERVER_ERROR, "학생 로그인 아이디를 생성하지 못했습니다."),
+    MEMBER_STUDENT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 계정을 찾을 수 없습니다."),
+    MEMBER_STUDENT_REQUIRED(HttpStatus.BAD_REQUEST, "학생 계정만 반에 배정할 수 있습니다."),
+    MEMBER_STUDENT_NOT_OWNED(HttpStatus.FORBIDDEN, "담당하는 학생만 반에 배정할 수 있습니다."),
+    MEMBER_SCHOOL_CLASS_NOT_FOUND(HttpStatus.NOT_FOUND, "반을 찾을 수 없습니다."),
+    MEMBER_SCHOOL_CLASS_NOT_OWNED(HttpStatus.FORBIDDEN, "담당하는 반에만 접근할 수 있습니다."),
+    MEMBER_CLASS_GRADE_MISMATCH(HttpStatus.BAD_REQUEST, "반과 학생의 학년이 일치하지 않습니다."),
+    MEMBER_CLASS_ALREADY_ENROLLED(HttpStatus.CONFLICT, "이미 해당 반에 배정된 학생입니다."),
+    MEMBER_CLASS_ENROLLMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "반 배정 정보를 찾을 수 없습니다."),
 
     // ===== worksheet (배세빈) =====
 

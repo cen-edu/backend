@@ -4,11 +4,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.cenedu.backend.domain.analysis.dto.AttemptResult;
-import com.cenedu.backend.domain.analysis.dto.LearningState;
-import com.cenedu.backend.domain.analysis.entity.AttemptPurpose;
-import com.cenedu.backend.domain.analysis.entity.LearningStatus;
-
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

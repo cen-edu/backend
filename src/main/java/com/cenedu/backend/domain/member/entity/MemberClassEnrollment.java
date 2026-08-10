@@ -11,7 +11,6 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -39,9 +38,14 @@ public class MemberClassEnrollment {
             foreignKey = @ForeignKey(name = "fk_member_class_enrollment_student"))
     private MemberAccount student;
 
-    @Builder
     private MemberClassEnrollment(MemberSchoolClass schoolClass, MemberAccount student) {
         this.schoolClass = schoolClass;
         this.student = student;
+    }
+
+    /** 검증이 완료된 반과 학생을 연결하는 배정을 생성한다. */
+    public static MemberClassEnrollment create(MemberSchoolClass schoolClass,
+                                               MemberAccount student) {
+        return new MemberClassEnrollment(schoolClass, student);
     }
 }

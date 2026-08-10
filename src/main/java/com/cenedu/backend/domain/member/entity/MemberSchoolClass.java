@@ -14,7 +14,6 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
@@ -61,7 +60,6 @@ public class MemberSchoolClass {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
-    @Builder
     private MemberSchoolClass(short academicYear, short grade, String name,
                               MemberAccount homeroomTeacher, int displayOrder) {
         this.academicYear = academicYear;
@@ -69,6 +67,12 @@ public class MemberSchoolClass {
         this.name = name;
         this.homeroomTeacher = homeroomTeacher;
         this.displayOrder = displayOrder;
+    }
+
+    /** 학년도와 학년, 담임 교사, 표시 순서를 지정해 반을 생성한다. */
+    public static MemberSchoolClass create(short academicYear, short grade, String name,
+                                           MemberAccount homeroomTeacher, int displayOrder) {
+        return new MemberSchoolClass(academicYear, grade, name, homeroomTeacher, displayOrder);
     }
 
     public void update(String name, int displayOrder) {

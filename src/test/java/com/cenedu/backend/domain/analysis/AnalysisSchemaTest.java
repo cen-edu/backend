@@ -5,16 +5,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
-import com.cenedu.backend.domain.analysis.entity.AnalysisAssessment;
-import com.cenedu.backend.domain.analysis.entity.AnalysisAttempt;
-import com.cenedu.backend.domain.analysis.entity.AnalysisReport;
-import com.cenedu.backend.domain.analysis.entity.AssessmentStatus;
-import com.cenedu.backend.domain.analysis.entity.AttemptPurpose;
-import com.cenedu.backend.domain.analysis.entity.ReportStatus;
-import com.cenedu.backend.domain.analysis.repository.AnalysisAssessmentRepository;
-import com.cenedu.backend.domain.analysis.repository.AnalysisAttemptRepository;
-import com.cenedu.backend.domain.analysis.repository.AnalysisReportRepository;
-
 import com.cenedu.backend.support.PostgresTestcontainer;
 
 import org.junit.jupiter.api.DisplayName;
