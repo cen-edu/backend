@@ -11,7 +11,6 @@ import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -43,13 +42,18 @@ public class MemberStudentProfile {
             foreignKey = @ForeignKey(name = "fk_member_student_profile_owner_teacher"))
     private MemberAccount ownerTeacher;
 
-    @Builder
     private MemberStudentProfile(MemberAccount user, short registrationYear, short grade,
                                  MemberAccount ownerTeacher) {
         this.user = user;
         this.registrationYear = registrationYear;
         this.grade = grade;
         this.ownerTeacher = ownerTeacher;
+    }
+
+    /** 학생 계정의 등록 정보와 소유 교사를 지정해 프로필을 생성한다. */
+    public static MemberStudentProfile create(MemberAccount student, short registrationYear,
+                                              short grade, MemberAccount ownerTeacher) {
+        return new MemberStudentProfile(student, registrationYear, grade, ownerTeacher);
     }
 
     public void changeGrade(short grade) {

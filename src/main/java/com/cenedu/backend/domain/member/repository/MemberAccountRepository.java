@@ -14,4 +14,7 @@ public interface MemberAccountRepository extends JpaRepository<MemberAccount, Lo
 
     /** 로그인 아이디로 삭제되지 않은 활성 계정을 조회한다. */
     Optional<MemberAccount> findByLoginIdAndDeletedAtIsNull(String loginId);
+
+    /** 회원 ID로 삭제되지 않은 활성 계정을 조회한다. */
+    Optional<MemberAccount> findByIdAndDeletedAtIsNull(Long id);
 }

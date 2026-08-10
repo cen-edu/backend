@@ -71,6 +71,11 @@ public class MemberAccount {
         return new MemberAccount(UserRole.TEACHER, loginId, passwordHash, name);
     }
 
+    /** 학생 계정을 생성한다. */
+    public static MemberAccount createStudent(String loginId, String passwordHash, String name) {
+        return new MemberAccount(UserRole.STUDENT, loginId, passwordHash, name);
+    }
+
     public void changePassword(String passwordHash) {
         this.passwordHash = passwordHash;
     }

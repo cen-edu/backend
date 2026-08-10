@@ -40,10 +40,10 @@ public class AuthService {
         return SignupResponse.from(account);
     }
 
-    /** 이메일과 비밀번호를 검증하고 JWT 액세스 토큰을 발급한다. */
+    /** 교사 이메일 또는 학생 로그인 아이디와 비밀번호를 검증하고 JWT를 발급한다. */
     public LoginResponse login(LoginRequest request) {
-        String email = normalizeEmail(request.email());
-        MemberAccountCredentials account = memberAccountService.findActiveAccountByLoginId(email)
+        String loginId = normalizeLoginId(request.loginId());
+        MemberAccountCredentials account = memberAccountService.findActiveAccountByLoginId(loginId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.AUTH_INVALID_CREDENTIALS));
 
         if (!passwordEncoder.matches(request.password(), account.passwordHash())) {
@@ -64,5 +64,10 @@ public class AuthService {
     /** 이메일 비교와 저장에 사용할 소문자 정규형을 반환한다. */
     private String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /** 교사 이메일과 서버 발급 학생 아이디의 비교용 정규형을 반환한다. */
+    private String normalizeLoginId(String loginId) {
+        return loginId.trim().toLowerCase(Locale.ROOT);
     }
 }
