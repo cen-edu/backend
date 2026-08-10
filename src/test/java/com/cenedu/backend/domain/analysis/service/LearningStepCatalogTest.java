@@ -1,9 +1,5 @@
 package com.cenedu.backend.domain.analysis.service;
 
-import com.cenedu.backend.domain.analysis.dto.LearningReportItem;
-import com.cenedu.backend.domain.analysis.dto.LearningState;
-import com.cenedu.backend.domain.analysis.entity.LearningStatus;
-
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

@@ -3,10 +3,6 @@ package com.cenedu.backend.domain.analysis.controller;
 import java.time.Instant;
 import java.time.LocalDate;
 
-import com.cenedu.backend.domain.analysis.entity.AnalysisAssessment;
-import com.cenedu.backend.domain.analysis.entity.AnalysisAttempt;
-import com.cenedu.backend.domain.analysis.repository.AnalysisAssessmentRepository;
-import com.cenedu.backend.domain.analysis.repository.AnalysisAttemptRepository;
 import com.cenedu.backend.support.PostgresTestcontainer;
 
 import org.junit.jupiter.api.BeforeEach;

@@ -30,7 +30,7 @@
 com.cenedu.backend
 ├── global/                     배세빈 (공통 영역)
 │   ├── config/                 Web, Jpa, Swagger, Cors 설정
-│   ├── security/               JwtProvider, Filter, SecurityConfig, @LoginUser
+│   ├── security/               JwtProvider, Filter, SecurityConfig, AuthenticatedUser
 │   ├── common/                 ApiResponse, ErrorCode, GlobalExceptionHandler, BaseTimeEntity, enums
 │   └── util/
 ├── ai/
@@ -44,8 +44,8 @@ com.cenedu.backend
 │   ├── client/                 배세빈   OpenAIClient 래퍼, 재시도, 토큰 사용량 로깅
 │   └── embedding/              모수환   임베딩 클라이언트
 ├── domain/
-│   ├── auth/                   배세빈   로그인, 토큰 재발급, 비밀번호 변경
-│   ├── member/                 배세빈   교사·학생·반(class), 명단 등록
+│   ├── auth/                   이동규   로그인, 토큰 재발급, 비밀번호 변경
+│   ├── member/                 이동규   교사·학생·반(class), 명단 등록
 │   ├── curriculum/             이하영   학년>과목>학기>대>중>소 단원 트리, 개념
 │   ├── problem/                이하영   문제 은행, 문제 생성·수정 에이전트
 │   ├── worksheet/              배세빈   학습지(일반/종합평가/맞춤), 배정
@@ -65,7 +65,7 @@ com.cenedu.backend
 
 | 프론트 화면 | 엔드포인트 접두어 | 담당 |
 |---|---|---|
-| `/` 로그인 | `/api/auth` | 배세빈 |
+| `/` 로그인 | `/api/auth` | 이동규 |
 | `/students`, `/students/classes` | `/api/teacher/students`, `/classes` | 배세빈 |
 | `/problems` 문제 만들기 | `/api/teacher/problems` | 이하영 |
 | `/problems/comprehensive` 종합평가 | `/api/teacher/assessments` | 이하영 |
@@ -84,7 +84,7 @@ com.cenedu.backend
 
 ## 3. 교차 도메인 규칙
 
-초기에 못 박아야 나중에 안 터지는 4가지입니다.
+초기에 못 박아야 나중에 안 터지는 5가지입니다.
 
 **1. 다른 도메인의 엔티티를 직접 참조하지 않는다.**
 FK는 두되 JPA 연관관계 대신 ID로 들고, 필요한 데이터는 상대 도메인의 Service public 메서드로 조회합니다.
@@ -129,6 +129,27 @@ private Long studentId;
 
 이 범위는 ArchUnit 테스트로 CI에서 강제합니다. 위 세 서피스를 담당하는 도메인이 `ai.client..`를 직접 참조하면 빌드가 실패합니다.
 
+**5. 인증 사용자는 컨트롤러에서 `@AuthenticationPrincipal AuthenticatedUser`로 받는다.**
+
+JWT의 `Authorization` 헤더 처리와 토큰 검증은 `global/security`의 책임입니다. 도메인 컨트롤러나 서비스에서 JWT를 직접 파싱하지 않습니다.
+
+```java
+import com.cenedu.backend.global.security.AuthenticatedUser;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+
+@GetMapping
+public ApiResponse<MyResponse> getMyData(
+        @AuthenticationPrincipal AuthenticatedUser user
+) {
+    return ApiResponse.success(myService.getMyData(user.memberId()));
+}
+```
+
+- 현재 로그인한 회원 ID는 `user.memberId()`, 역할은 `user.role()`로 조회합니다.
+- 컨트롤러는 principal에서 필요한 값만 꺼내 서비스에 전달합니다. 도메인 서비스가 `AuthenticatedUser`나 JWT에 의존하게 만들지 않습니다.
+- 현재 로그인한 회원 ID를 요청 body나 query parameter로 대신 받지 않습니다. 다른 회원을 지정하는 업무용 ID와 로그인 주체의 ID를 구분합니다.
+- `Authorization` 헤더를 직접 읽거나 `JwtProvider`를 컨트롤러·도메인 서비스에서 호출하지 않습니다.
+
 ---
 
 ## 4. 도메인 패키지 내부 구조
@@ -142,7 +163,17 @@ domain/problem/
 ├── repository/
 ├── entity/
 └── dto/
+    ├── request/                 HTTP 요청 DTO (`*Request`)
+    └── response/                HTTP 응답·서비스 반환 DTO (`*Response`)
 ```
+
+요청·응답 DTO는 패키지와 클래스 이름 모두로 용도를 구분합니다. HTTP 응답과 서비스 처리 결과, 도메인 간 공개 데이터는 `dto/response`에 두고 기본적으로 `*Response`로 이름 짓습니다. 비밀번호 해시처럼 API로 반환하면 안 되는 특수 목적 데이터는 `*Credentials`처럼 용도가 드러나는 이름을 사용하고, API 응답으로 반환하지 않습니다. JPA 엔티티를 DTO로 반환하지 않습니다.
+
+같은 도메인의 JPA 엔티티를 DTO로 변환할 때는 DTO 내부에 `from(Entity entity)` 형태의 정적 팩토리 메서드를 둡니다. 서비스에 변환용 private 메서드를 반복해서 만들지 않습니다. 다른 도메인의 엔티티를 DTO에서 참조하는 것은 3절의 소유 경계 규칙을 어기므로 금지합니다.
+
+엔티티를 생성할 때 역할·상태·필수값과 같은 생성 규칙이 있다면 서비스에서 빌더로 값을 직접 조합하지 않고, 엔티티의 의도가 드러나는 정적 팩토리 메서드를 사용합니다(예: `MemberAccount.createTeacher(...)`). 정적 팩토리가 역할과 불변조건을 설정하고, 서비스는 생성에 필요한 값만 전달합니다.
+
+리포지토리와 서비스의 모든 메서드 위에는 해당 메서드가 하는 일을 설명하는 한 줄 주석을 작성합니다. 주석은 구현 방식보다 업무 기능과 반환 의미를 설명합니다.
 
 디렉터리는 해당 클래스를 처음 만들 때 생성합니다. 미리 빈 폴더를 만들지 않습니다.
 
