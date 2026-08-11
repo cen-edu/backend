@@ -1,0 +1,18 @@
+[project]
+name = "m1-question-pipeline"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = ["Pillow>=10.0", "tqdm>=4.66"]
+
+[project.scripts]
+m1-curriculum-build-load = "m1_curriculum_mapper.load_pipeline:main"
+m1-question-pipeline = "m1_curriculum_mapper.pipeline:main"
+m1-question-report = "m1_curriculum_mapper.report:main"
+m1-step-fill = "m1_curriculum_mapper.step_fill_runner:main"
+m1-finalize = "m1_curriculum_mapper.finalization:main"
+m1-build-delivery = "m1_curriculum_mapper.delivery:main"
+m1-question-build = "m1_curriculum_mapper.build:main"
+
+[project.optional-dependencies]
+report = ["plotly>=6.0"]
+step-fill = ["openai>=1.0"]

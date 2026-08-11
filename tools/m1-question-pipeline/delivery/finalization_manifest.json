@@ -1,0 +1,74 @@
+{
+  "finalizationVersion": "m1-finalization-v1",
+  "generatedAt": "2026-08-11T06:20:36.813838+00:00",
+  "counts": {
+    "accepted": 6273,
+    "rejected": 0,
+    "byDataset": {
+      "110": 2705,
+      "111": 1301,
+      "30": 2267
+    }
+  },
+  "tables": {
+    "questions": 6273,
+    "content_blocks": 11366,
+    "assets": 3263,
+    "question_curriculum_mappings": 6273,
+    "learning_guides": 6273,
+    "answer_units": 11375,
+    "accepted_answers": 17648,
+    "problem_stages": 7301,
+    "problem_stage_parts": 26930
+  },
+  "exports": {
+    "questionCount": 6272,
+    "curriculumUnitCount": 18,
+    "countsByType": {
+      "ESSAY": 993,
+      "MULTIPLE_CHOICE": 1502,
+      "SHORT_INPUT": 764,
+      "STEP_FILL": 3013
+    },
+    "countsByDataset": {
+      "30": 2266,
+      "110": 2705,
+      "111": 1301
+    },
+    "dbTableCounts": {
+      "question": 6272,
+      "question_choice": 7543,
+      "question_step": 7301,
+      "question_answer_unit": 11374,
+      "question_rubric_item": 2979,
+      "question_asset": 3262
+    },
+    "outputs": {
+      "canonicalQuestions": "canonical/questions.jsonl",
+      "finalDatashape": {
+        "30": "final_datashape/30.jsonl",
+        "110": "final_datashape/110.jsonl",
+        "111": "final_datashape/111.jsonl"
+      },
+      "dbStagingDirectory": "db_staging"
+    },
+    "validationRejected": [
+      {
+        "sourceRef": "30:S3_중등_1_000176",
+        "recordId": "source:30:S3_중등_1_000176",
+        "issues": [
+          {
+            "code": "ANSWER_VALUE_MISSING",
+            "message": "answer unit에는 비교 가능한 정답이 필요합니다.",
+            "path": "answerSpec.units[0].accepted"
+          }
+        ]
+      }
+    ]
+  },
+  "outputs": {
+    "accepted": "final_questions.jsonl",
+    "rejected": "final_questions_rejected.jsonl",
+    "loadDirectory": "load"
+  }
+}

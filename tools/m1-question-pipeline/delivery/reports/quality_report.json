@@ -1,0 +1,114 @@
+{
+  "generatedAt": "2026-08-11T06:20:36.902265+00:00",
+  "status": "READY_WITH_GENERATION_CANDIDATES",
+  "inputFileCounts": {
+    "28": 24180,
+    "30": 2754,
+    "110": 28435,
+    "111": 57095
+  },
+  "accepted": 6272,
+  "rejected": 488,
+  "pendingGeneration": 2488,
+  "repair": {
+    "cacheHits": 2566,
+    "deterministicStepFill": 447
+  },
+  "countsByType": {
+    "ESSAY": 993,
+    "MULTIPLE_CHOICE": 1502,
+    "SHORT_INPUT": 764,
+    "STEP_FILL": 3013
+  },
+  "countsByDataset": {
+    "30": 2266,
+    "110": 2705,
+    "111": 1301
+  },
+  "countsBySubUnit": {
+    "EBS-M1-MATH-221321": 728,
+    "EBS-M1-MATH-221322": 639,
+    "EBS-M1-MATH-221311": 505,
+    "EBS-M1-MATH-221312": 167,
+    "EBS-M1-MATH-221111": 326,
+    "EBS-M1-MATH-221112": 450,
+    "EBS-M1-MATH-221121": 519,
+    "EBS-M1-MATH-221122": 134,
+    "EBS-M1-MATH-221123": 158,
+    "EBS-M1-MATH-221221": 186,
+    "EBS-M1-MATH-221222": 275,
+    "EBS-M1-MATH-221211": 755,
+    "EBS-M1-MATH-221422": 282,
+    "EBS-M1-MATH-221212": 594,
+    "EBS-M1-MATH-221412": 132,
+    "EBS-M1-MATH-221413": 311,
+    "EBS-M1-MATH-221421": 63,
+    "EBS-M1-MATH-221411": 49
+  },
+  "duplicateDecisions": {
+    "excludedExact": 0,
+    "review": 0
+  },
+  "generationCandidates": 2488,
+  "apiCalls": 0,
+  "curriculumUnitCount": 18,
+  "pipeline": {
+    "pipelineVersion": "m1-question-pipeline-v1",
+    "generatedAt": "2026-08-11T05:59:10.821703+00:00",
+    "counts": {
+      "normalized": 19250,
+      "curriculumMapped": 19250,
+      "learningGuideEnriched": 19250,
+      "needsReview": 0
+    },
+    "datasets": {
+      "110": 4669,
+      "111": 11827,
+      "30": 2754
+    },
+    "stages": {
+      "LEARNING_GUIDE_ENRICHED": 19250
+    },
+    "mapping": {
+      "mapping_version": "3.0.0",
+      "generated_at": "2026-08-11T05:58:52.481980+00:00",
+      "curriculum_unit_count": 18,
+      "topic_mapping_count": 676,
+      "question_mapping_count": 19250,
+      "dataset_counts": {
+        "110": 4669,
+        "111": 11827,
+        "30": 2754
+      },
+      "status_counts": {
+        "DIRECT": 18709,
+        "SUPPORT": 541
+      },
+      "curriculum_counts": {
+        "EBS-M1-MATH-221321": 2409,
+        "EBS-M1-MATH-221322": 2479,
+        "EBS-M1-MATH-221311": 1995,
+        "EBS-M1-MATH-221312": 647,
+        "EBS-M1-MATH-221111": 860,
+        "EBS-M1-MATH-221112": 1218,
+        "EBS-M1-MATH-221121": 707,
+        "EBS-M1-MATH-221122": 1220,
+        "EBS-M1-MATH-221123": 680,
+        "EBS-M1-MATH-221221": 786,
+        "EBS-M1-MATH-221222": 855,
+        "EBS-M1-MATH-221211": 1725,
+        "EBS-M1-MATH-221422": 450,
+        "EBS-M1-MATH-221212": 2397,
+        "EBS-M1-MATH-221412": 253,
+        "EBS-M1-MATH-221413": 448,
+        "EBS-M1-MATH-221421": 91,
+        "EBS-M1-MATH-221411": 30
+      },
+      "join_key": [
+        "source_topic_key"
+      ]
+    },
+    "joinKey": "sourceTopicKey",
+    "finalOutput": "03_learning_guided_questions.jsonl"
+  }
+}
