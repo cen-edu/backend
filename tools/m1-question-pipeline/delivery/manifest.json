@@ -1,0 +1,31 @@
+{
+  "questionCount": 5594,
+  "curriculumUnitCount": 18,
+  "countsByType": {
+    "ESSAY": 303,
+    "MULTIPLE_CHOICE": 1502,
+    "SHORT_INPUT": 878,
+    "STEP_FILL": 2911
+  },
+  "countsByDataset": {
+    "30": 2380,
+    "110": 2705,
+    "111": 509
+  },
+  "dbTableCounts": {
+    "question": 5594,
+    "question_choice": 7543,
+    "question_step": 7065,
+    "question_answer_unit": 10540,
+    "question_asset": 2883
+  },
+  "outputs": {
+    "canonicalQuestions": "canonical/questions.jsonl",
+    "finalDatashape": {
+      "30": "final_datashape/30.jsonl",
+      "110": "final_datashape/110.jsonl",
+      "111": "final_datashape/111.jsonl"
+    },
+    "dbStagingDirectory": "db_staging"
+  }
+}\n
