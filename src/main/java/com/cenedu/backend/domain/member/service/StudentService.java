@@ -3,7 +3,9 @@ package com.cenedu.backend.domain.member.service;
 import java.security.SecureRandom;
 
 import com.cenedu.backend.domain.member.dto.request.StudentCreateRequest;
+import com.cenedu.backend.domain.member.dto.request.StudentListRequest;
 import com.cenedu.backend.domain.member.dto.response.StudentCreateResponse;
+import com.cenedu.backend.domain.member.dto.response.StudentListResponse;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 
@@ -26,6 +28,7 @@ public class StudentService {
 
     private final StudentAccountCreator studentAccountCreator;
     private final MemberAccountService memberAccountService;
+    private final StudentListQueryService studentListQueryService;
     private final PasswordEncoder passwordEncoder;
 
     /** 인증된 교사를 소유자로 지정하고 로그인 아이디를 초기 비밀번호로 설정한다. */
@@ -33,17 +36,38 @@ public class StudentService {
         String teacherLoginId = memberAccountService.getRequiredTeacherLoginId(teacherId);
         String teacherLoginIdPrefix = teacherLoginId.substring(0, teacherLoginId.indexOf('@'));
 
-        // 아이디 생성할 때 중복되면 최대 3회까지 재시도
+        return createStudentWithGeneratedLoginId(teacherId, teacherLoginIdPrefix, request);
+    }
+
+    /** 로그인 아이디 UNIQUE 제약조건 충돌인지 확인한다. */
+    private boolean causedByLoginIdConflict(DataIntegrityViolationException exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            if (cause instanceof ConstraintViolationException constraintViolation) {
+                return LOGIN_ID_UNIQUE_CONSTRAINT.equalsIgnoreCase(
+                        constraintViolation.getConstraintName());
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
+
+    /** 중복되지 않는 로그인 아이디를 생성해 학생 계정 생성을 시도한다. */
+    private StudentCreateResponse createStudentWithGeneratedLoginId(
+        long teacherId,
+        String teacherLoginIdPrefix,
+        StudentCreateRequest request
+    ) {
         for (int attempt = 0; attempt <= MAX_LOGIN_ID_GENERATION_RETRIES; attempt++) {
             String loginId = generateStudentLoginId(teacherLoginIdPrefix);
             try {
                 return studentAccountCreator.createStudent(
-                        teacherId,
-                        loginId,
-                        passwordEncoder.encode(loginId),
-                        request.name().trim(),
-                        (short) request.registrationYear(),
-                        (short) request.grade()
+                    teacherId,
+                    loginId,
+                    passwordEncoder.encode(loginId),
+                    request.name().trim(),
+                    (short) request.registrationYear(),
+                    (short) request.grade()
                 );
             } catch (DataIntegrityViolationException exception) {
                 if (!causedByLoginIdConflict(exception)) {
@@ -59,18 +83,5 @@ public class StudentService {
     private String generateStudentLoginId(String teacherLoginIdPrefix) {
         int randomNumber = SECURE_RANDOM.nextInt(STUDENT_LOGIN_ID_NUMBER_BOUND);
         return teacherLoginIdPrefix + STUDENT_LOGIN_ID_SEPARATOR + "%08d".formatted(randomNumber);
-    }
-
-    /** 로그인 아이디 UNIQUE 제약조건 충돌인지 확인한다. */
-    private boolean causedByLoginIdConflict(DataIntegrityViolationException exception) {
-        Throwable cause = exception;
-        while (cause != null) {
-            if (cause instanceof ConstraintViolationException constraintViolation) {
-                return LOGIN_ID_UNIQUE_CONSTRAINT.equalsIgnoreCase(
-                        constraintViolation.getConstraintName());
-            }
-            cause = cause.getCause();
-        }
-        return false;
     }
 }
