@@ -8,6 +8,7 @@ import com.cenedu.backend.domain.member.entity.MemberAccount;
 import com.cenedu.backend.domain.member.repository.MemberAccountRepository;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
+import com.cenedu.backend.global.common.enums.UserRole;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,6 +32,16 @@ public class MemberAccountService {
     public Optional<MemberAccountCredentials> findActiveAccountByLoginId(String loginId) {
         return memberAccountRepository.findByLoginIdAndDeletedAtIsNull(loginId)
                 .map(MemberAccountCredentials::from);
+    }
+
+    /** 활성 교사 계정을 조회하고 학생 아이디 생성에 사용할 로그인 아이디를 반환한다. */
+    public String getRequiredTeacherLoginId(long teacherId) {
+        MemberAccount teacher = memberAccountRepository.findByIdAndDeletedAtIsNull(teacherId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_TEACHER_NOT_FOUND));
+        if (teacher.getRole() != UserRole.TEACHER) {
+            throw new BusinessException(ErrorCode.MEMBER_TEACHER_REQUIRED);
+        }
+        return teacher.getLoginId();
     }
 
     /** 교사 계정을 생성하고 외부 공개용 계정 정보를 반환한다. */
