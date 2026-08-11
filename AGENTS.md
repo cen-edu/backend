@@ -66,7 +66,7 @@ com.cenedu.backend
 | 프론트 화면 | 엔드포인트 접두어 | 담당 |
 |---|---|---|
 | `/` 로그인 | `/api/auth` | 이동규 |
-| `/students`, `/students/classes` | `/api/teacher/students`, `/classes` | 배세빈 |
+| `/students`, `/students/classes` | `/api/teacher/students`, `/api/teacher/classes` | 배세빈 |
 | `/problems` 문제 만들기 | `/api/teacher/problems` | 이하영 |
 | `/problems/comprehensive` 종합평가 | `/api/teacher/assessments` | 이하영 |
 | `/problems/library` 문제 보관함 | `/api/teacher/worksheets` | 배세빈 |

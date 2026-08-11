@@ -1,6 +1,8 @@
 package com.cenedu.backend.domain.auth.service;
 
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.cenedu.backend.domain.auth.dto.request.LoginRequest;
 import com.cenedu.backend.domain.auth.dto.request.SignupRequest;
@@ -23,6 +25,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AuthService {
+
+    private static final Pattern STUDENT_LOGIN_ID_PATTERN =
+            Pattern.compile("^(.+)_s(\\d{8})$", Pattern.CASE_INSENSITIVE);
 
     private final MemberAccountService memberAccountService;
     private final PasswordEncoder passwordEncoder;
@@ -68,6 +73,13 @@ public class AuthService {
 
     /** 교사 이메일과 서버 발급 학생 아이디의 비교용 정규형을 반환한다. */
     private String normalizeLoginId(String loginId) {
-        return loginId.trim().toLowerCase(Locale.ROOT);
+        String trimmedLoginId = loginId.trim();
+        Matcher studentLoginIdMatcher = STUDENT_LOGIN_ID_PATTERN.matcher(trimmedLoginId);
+        if (studentLoginIdMatcher.matches()) {
+            return studentLoginIdMatcher.group(1).toLowerCase(Locale.ROOT)
+                    + "_S"
+                    + studentLoginIdMatcher.group(2);
+        }
+        return trimmedLoginId.toLowerCase(Locale.ROOT);
     }
 }

@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** 교사의 반 생성과 학생 배정 관리 API. */
 @RestController
-@RequestMapping("/classes")
+@RequestMapping("/api/teacher/classes")
 @RequiredArgsConstructor
 public class SchoolClassController {
 
