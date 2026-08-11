@@ -13,6 +13,7 @@ import com.cenedu.backend.domain.member.entity.MemberClassEnrollment;
 import com.cenedu.backend.domain.member.entity.MemberStudentProfile;
 import com.cenedu.backend.domain.member.repository.MemberClassEnrollmentRepository;
 import com.cenedu.backend.domain.member.repository.MemberStudentProfileRepository;
+import com.cenedu.backend.domain.member.repository.MemberStudentProfileSpecifications;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -32,12 +33,13 @@ public class StudentListQueryService {
 
     /** 교사 소유 학생과 각 학생의 활성 반 정보를 페이지 단위로 반환한다. */
     public StudentListResponse getStudents(long teacherId, StudentListRequest request) {
-        Page<MemberStudentProfile> studentPage = studentProfileRepository.findOwnedStudents(
-                teacherId,
-                toShort(request.registrationYear()),
-                toShort(request.grade()),
-                request.classId(),
-                normalizeKeyword(request.keyword()),
+        Page<MemberStudentProfile> studentPage = studentProfileRepository.findAll(
+                MemberStudentProfileSpecifications.ownedStudents(
+                        teacherId,
+                        toShort(request.registrationYear()),
+                        toShort(request.grade()),
+                        request.classId(),
+                        normalizeKeyword(request.keyword())),
                 PageRequest.of(
                         request.resolvedPage(),
                         request.resolvedSize(),
