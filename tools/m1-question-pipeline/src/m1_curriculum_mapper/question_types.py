@@ -112,7 +112,7 @@ def _parse_strict_choice_list(source: str, *, allow_prompt_prefix: bool = False)
         if not text or _is_enumeration_only(text):
             return []
         label = marker.group("label")
-        choices.append({"optionId": _option_id(label), "label": label, "text": text, "displayOrder": len(choices) + 1})
+        choices.append({"optionId": _option_id(label), "label": label, "text": text, "displayOrder": len(choices)})
     return choices
 
 
@@ -128,7 +128,7 @@ def _is_enumeration_only(text: str) -> bool:
 def _display_order(choices: list[dict]) -> list[dict]:
     if all(choice["optionId"].isdigit() for choice in choices):
         choices = sorted(choices, key=lambda choice: int(choice["optionId"]))
-    return [{**choice, "displayOrder": index} for index, choice in enumerate(choices, 1)]
+    return [{**choice, "displayOrder": index} for index, choice in enumerate(choices)]
 
 
 def _select_choice(choices: list[dict], answer: str) -> tuple[dict, str] | None:

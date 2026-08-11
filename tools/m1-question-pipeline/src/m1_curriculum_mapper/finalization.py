@@ -11,7 +11,9 @@ from typing import Any, Iterable
 
 from .asset_packaging import SourceMediaIndex, package_record_assets
 from .catalog import curriculum_units
+from .content_normalization import is_objective_source, normalize_content_structure
 from .exporter import export_dataset, validate_canonical_question
+from .quality_transform import transform_quality_records
 from .raw_sources import iter_raw_json
 from .step_fill import normalize_blank_answer
 
@@ -49,8 +51,18 @@ def _normalize_answer(answer: Any, answer_type_hint: str | None = None) -> dict:
     return result
 
 
+def infer_compare_method(question_type: str, unit: dict) -> str:
+    if question_type == "MULTIPLE_CHOICE" or unit.get("unitType") == "CHOICE":
+        return "CHOICE"
+    if question_type == "ESSAY" or unit.get("unitType") == "RUBRIC":
+        return "RUBRIC"
+    return {"NUMERIC": "VALUE", "VALUE": "VALUE", "SYMBOLIC_EQUIVALENCE": "SUBST",
+            "SET": "SET", "TEXT_SET": "SET", "EXACT": "EXACT"}.get(
+                str(unit.get("answerType") or "").upper(), "EXACT")
+
+
 def finalize_record(record: dict) -> dict:
-    output = copy.deepcopy(record)
+    output = normalize_content_structure(record)
     source_ref = str(output.get("sourceRef") or "")
     output["recordId"] = output.get("recordId") or (
         f"generated:step-fill:{source_ref.partition(':')[2]}"
@@ -72,6 +84,7 @@ def finalize_record(record: dict) -> dict:
             normalized_unit["accepted"] = [_normalize_answer(item, answer_type_hint) for item in unit.get("accepted") or []]
             if not normalized_unit.get("answerType") and normalized_unit["accepted"]:
                 normalized_unit["answerType"] = normalized_unit["accepted"][0]["answerType"]
+            normalized_unit["compareMethod"] = infer_compare_method(output["questionTypeCode"], normalized_unit)
             units.append(normalized_unit)
         answer_spec["units"] = units
     output["presentation"] = output.get("presentation") or ("WITH_FIGURE" if output.get("assets") else "TEXT_ONLY")
@@ -90,6 +103,8 @@ def merge_step_fill_results(base_rows: list[dict], accepted_rows: list[dict], re
     merged = []
     for base in base_rows:
         source_ref = base.get("sourceRef")
+        if is_objective_source(base):
+            continue
         if base.get("questionTypeCode") == "ESSAY":
             merged.append(copy.deepcopy(base))
             continue
@@ -140,38 +155,38 @@ def _relational_rows(records: list[dict]) -> dict[str, list[dict]]:
         metadata = record.get("sourceMetadata") or {}
         tables["questions"].append({
             "record_id": record_id, "source_ref": record["sourceRef"], "source_type": record.get("sourceType"),
-            "source_dataset_code": record.get("sourceDatasetCode"), "question_type_code": record.get("questionTypeCode"),
+            "source_dataset_code": record.get("sourceDatasetCode"), "question_type": record.get("questionTypeCode"),
             "prompt_text": record.get("promptText"), "difficulty": record.get("difficulty"), "semester": record.get("semester"),
             "source_topic_key": metadata.get("sourceTopicKey"), "source_metadata": metadata,
             "choice_options": record.get("choiceOptions"), "generation_metadata": record.get("generationMetadata"),
         })
-        for order, block in enumerate(record.get("contentBlocks") or [], 1):
+        for order, block in enumerate(record.get("contentBlocks") or []):
             tables["content_blocks"].append({"record_id": record_id, "block_id": block.get("blockId"), "display_order": order, **block})
-        for order, asset in enumerate(record.get("assets") or [], 1):
+        for order, asset in enumerate(record.get("assets") or []):
             tables["assets"].append({"record_id": record_id, "display_order": order, **asset})
-        for order, mapping in enumerate(record.get("curriculumMappings") or [], 1):
+        for order, mapping in enumerate(record.get("curriculumMappings") or []):
             tables["question_curriculum_mappings"].append({"record_id": record_id, "mapping_order": order, **mapping})
         guide = record.get("learningGuide")
         if isinstance(guide, dict):
             tables["learning_guides"].append({"record_id": record_id, **guide})
         answer_spec = record.get("answerSpec") or {}
-        for order, answer in enumerate(answer_spec.get("finalAnswer") or [], 1):
+        for order, answer in enumerate(answer_spec.get("finalAnswer") or []):
             tables["accepted_answers"].append({"record_id": record_id, "unit_id": None, "answer_order": order,
                                                 "answer_type": answer.get("answerType"), "raw": answer.get("raw"),
                                                 "normalized": answer.get("normalized"), "latex": answer.get("latex")})
-        for unit_order, unit in enumerate(answer_spec.get("units") or [], 1):
+        for unit_order, unit in enumerate(answer_spec.get("units") or []):
             unit_id = unit.get("unitId")
-            tables["answer_units"].append({"record_id": record_id, "unit_id": unit_id, "unit_order": unit_order,
+            tables["answer_units"].append({"record_id": record_id, "unit_key": unit_id, "unit_order": unit_order,
                                             **{key: value for key, value in unit.items() if key != "accepted"}})
-            for answer_order, answer in enumerate(unit.get("accepted") or [], 1):
+            for answer_order, answer in enumerate(unit.get("accepted") or []):
                 tables["accepted_answers"].append({"record_id": record_id, "unit_id": unit_id,
                                                     "answer_order": answer_order, "answer_type": unit.get("answerType") or answer.get("answerType"),
                                                     "raw": answer.get("raw"), "normalized": answer.get("normalized"), "latex": answer.get("latex")})
-        for stage_order, stage in enumerate((record.get("problemData") or {}).get("stages") or [], 1):
+        for stage_order, stage in enumerate((record.get("problemData") or {}).get("stages") or []):
             stage_id = stage.get("stageId")
             tables["problem_stages"].append({"record_id": record_id, "stage_id": stage_id, "stage_order": stage_order,
                                               **{key: value for key, value in stage.items() if key != "contentParts"}})
-            for part_order, part in enumerate(stage.get("contentParts") or [], 1):
+            for part_order, part in enumerate(stage.get("contentParts") or []):
                 tables["problem_stage_parts"].append({"record_id": record_id, "stage_id": stage_id,
                                                        "part_order": part_order, **part})
     return tables
@@ -216,36 +231,37 @@ def _package_all_assets(rows: list[dict], roots: dict[str, Path], output_dir: Pa
 
 def run_finalization(guided_path: Path, accepted_path: Path, rejected_path: Path, output_dir: Path, *,
                      source30: Path | None = None, source110: Path | None = None,
-                     source111: Path | None = None) -> dict:
+                     source111: Path | None = None, essay_limit: int = 20,
+                     seed: int = 20260810) -> dict:
     output_dir = Path(output_dir)
     merged, step_rejects = merge_step_fill_results(_read_jsonl(guided_path), _read_jsonl(accepted_path), _read_jsonl(rejected_path))
     roots = {dataset: Path(root) for dataset, root in (("30", source30), ("110", source110), ("111", source111)) if root}
     asset_issues = {}
     if roots:
         merged, asset_issues = _package_all_assets(merged, roots, output_dir)
+    finalized = [finalize_record(row) for row in merged]
+    quality_rows, quality_rejects, quality_stats = transform_quality_records(
+        finalized, essay_limit=essay_limit, seed=seed,
+    )
     accepted, validation_rejects = [], []
-    for row in merged:
+    for row in quality_rows:
         final = finalize_record(row)
-        issues = [*asset_issues.get(final.get("sourceRef", ""), []), *validate_final_record(final)]
+        row_asset_issues = asset_issues.get(final.get("sourceRef", ""), []) if final.get("assets") else []
+        issues = [*row_asset_issues, *validate_final_record(final), *validate_canonical_question(final)]
         if issues:
-            validation_rejects.append({"sourceRef": final.get("sourceRef"), "status": "REJECTED", "issues": issues})
+            validation_rejects.append({"sourceRef": final.get("sourceRef"), "recordId": final.get("recordId"),
+                                       "status": "REJECTED", "issues": issues})
         else:
             accepted.append(final)
-    all_rejects = sorted([*step_rejects, *validation_rejects], key=lambda row: row.get("sourceRef", ""))
+    all_rejects = sorted([*step_rejects, *quality_rejects, *validation_rejects],
+                         key=lambda row: (row.get("sourceRef", ""), row.get("recordId", "")))
     _write_jsonl(output_dir / "final_questions.jsonl", accepted)
     _write_jsonl(output_dir / "final_questions_rejected.jsonl", all_rejects)
     tables = _relational_rows(accepted)
     for name, rows in tables.items():
         _write_jsonl(output_dir / "load" / f"{name}.jsonl", rows)
-    canonical_rows, canonical_rejects = [], []
-    for row in accepted:
-        issues = validate_canonical_question(row)
-        if issues:
-            canonical_rejects.append({"sourceRef": row.get("sourceRef"), "recordId": row.get("recordId"), "issues": issues})
-        else:
-            canonical_rows.append(row)
     export_manifest = export_dataset(
-        canonical_rows,
+        accepted,
         [unit.to_dict() for unit in curriculum_units()],
         output_dir,
     )
@@ -254,7 +270,8 @@ def run_finalization(guided_path: Path, accepted_path: Path, rejected_path: Path
         "counts": {"accepted": len(accepted), "rejected": len(all_rejects),
                    "byDataset": dict(Counter(row["sourceRef"].partition(":")[0] for row in accepted))},
         "tables": {name: len(rows) for name, rows in tables.items()},
-        "exports": {**export_manifest, "validationRejected": canonical_rejects},
+        "qualityTransform": quality_stats,
+        "exports": {**export_manifest, "validationRejected": []},
         "outputs": {"accepted": "final_questions.jsonl", "rejected": "final_questions_rejected.jsonl", "loadDirectory": "load"},
     }
     (output_dir / "finalization_manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -269,10 +286,13 @@ def main() -> None:
     parser.add_argument("--source-30", type=Path)
     parser.add_argument("--source-110", type=Path)
     parser.add_argument("--source-111", type=Path)
+    parser.add_argument("--essay-limit", type=int, default=20)
+    parser.add_argument("--seed", type=int, default=20260810)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     print(json.dumps(run_finalization(args.guided, args.step_fill_accepted, args.step_fill_rejected, args.output,
-                                      source30=args.source_30, source110=args.source_110, source111=args.source_111),
+                                      source30=args.source_30, source110=args.source_110, source111=args.source_111,
+                                      essay_limit=args.essay_limit, seed=args.seed),
                      ensure_ascii=False, indent=2))
 
 

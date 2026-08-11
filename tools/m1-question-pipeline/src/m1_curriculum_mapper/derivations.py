@@ -8,6 +8,9 @@ from collections import defaultdict
 from difflib import SequenceMatcher
 from typing import Any
 
+from .content_normalization import is_objective_source, naturalize_essay_prompt, normalize_content_structure
+from .quality_transform import essay_quality_issues
+
 
 ESSAY_PROMPT_SUFFIX = "사용한 개념과 풀이 과정을 순서대로 서술하시오."
 _CHOICE_LABEL = re.compile(r"(?:^|\n)\s*(?:[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉠㉡㉢㉣㉤㉥㉦㉧㉨㉩㉪㉫㉬㉭㉮㉯]|(?:\(?\d+\)?|[A-Za-zㄱ-ㅎ])[.)])\s*")
@@ -109,7 +112,7 @@ def select_probability_step_fill(rows111: list[dict], rows110: list[dict]) -> tu
 
     selected, duplicates = [], []
     for row in sorted(rows111, key=lambda item: _text(item.get("sourceRef"))):
-        if not is_probability_mapping(row):
+        if not is_probability_mapping(row) or is_objective_source(row):
             continue
         fingerprint = content_fingerprint(row)
         matches = by_fingerprint.get(fingerprint, [])
@@ -132,15 +135,9 @@ def select_probability_step_fill(rows111: list[dict], rows110: list[dict]) -> tu
     return selected, duplicates
 
 
-def _normalized_difficulty(value: Any) -> str:
-    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", _text(value)).casefold())
-
-
 def _group_key(record: dict) -> tuple[str, str, str]:
-    metadata = record.get("sourceMetadata") if isinstance(record.get("sourceMetadata"), dict) else {}
     mapping = (record.get("curriculumMappings") or [{}])[0]
-    unit_id = _text(metadata.get("curriculumUnitId")) or _text(mapping.get("curriculumUnitId"))
-    return (_text(record.get("semester") or metadata.get("semester")), unit_id, _normalized_difficulty(record.get("difficulty")))
+    return tuple(_text(mapping.get(key)) for key in ("majorUnitName", "middleUnitName", "smallUnitName"))
 
 
 def _sample_key(record: dict, seed: int) -> tuple[str, str]:
@@ -150,11 +147,13 @@ def _sample_key(record: dict, seed: int) -> tuple[str, str]:
 
 
 def sample_essay_candidates(rows111: list[dict], *, limit: int = 20, seed: int = 20260810) -> list[dict]:
-    """Choose a stable, capped sample from each semester/subunit/difficulty group."""
+    """Choose a stable, quality-filtered sample per curriculum hierarchy path."""
     if limit <= 0:
         return []
     groups: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for row in rows111:
+        if is_objective_source(row) or essay_quality_issues(row):
+            continue
         groups[_group_key(row)].append(row)
     selected = []
     for group in sorted(groups):
@@ -183,15 +182,14 @@ def _essay_answer_spec(model_answer: str) -> dict:
 
 def _default_rubric_items() -> list[dict]:
     return [
-        {"rubricId": "R1", "criterionCode": "CONCEPT_AND_CONDITION", "criterion": "필요한 개념과 조건을 식별한다.", "displayOrder": 1},
-        {"rubricId": "R2", "criterionCode": "MATHEMATICAL_PROCESS", "criterion": "타당한 수학적 과정을 제시한다.", "displayOrder": 2},
-        {"rubricId": "R3", "criterionCode": "FINAL_CONCLUSION", "criterion": "최종 결론을 명확히 제시한다.", "displayOrder": 3},
+        {"rubricId": "R1", "criterionCode": "CONCEPT_AND_CONDITION", "criterion": "필요한 개념과 조건을 식별한다.", "displayOrder": 0},
+        {"rubricId": "R2", "criterionCode": "MATHEMATICAL_PROCESS", "criterion": "타당한 수학적 과정을 제시한다.", "displayOrder": 1},
+        {"rubricId": "R3", "criterionCode": "FINAL_CONCLUSION", "criterion": "최종 결론을 명확히 제시한다.", "displayOrder": 2},
     ]
 
 
 def _append_essay_instruction(prompt: str) -> str:
-    prompt = _text(prompt)
-    return prompt if prompt.endswith(ESSAY_PROMPT_SUFFIX) else f"{prompt}\n\n{ESSAY_PROMPT_SUFFIX}".strip()
+    return naturalize_essay_prompt(prompt)
 
 
 def _sync_text_content_block(record: dict) -> None:
@@ -199,11 +197,12 @@ def _sync_text_content_block(record: dict) -> None:
     for index, block in enumerate(blocks):
         if isinstance(block, dict) and block.get("blockKind") == "TEXT":
             blocks[index] = {**block, "text": record["promptText"]}
-            record["contentBlocks"] = blocks
-            return
-    if blocks:
+            break
+    else:
         blocks.insert(0, {"blockId": "T1", "blockKind": "TEXT", "text": record["promptText"]})
-        record["contentBlocks"] = blocks
+    record["contentBlocks"] = blocks
+    normalized = normalize_content_structure(record)
+    record.update(normalized)
 
 
 def materialize_essay(record: dict) -> tuple[dict | None, list[dict]]:
@@ -215,7 +214,8 @@ def materialize_essay(record: dict) -> tuple[dict | None, list[dict]]:
     output = copy.deepcopy(record)
     source_ref = _text(output.get("sourceRef"))
     output["recordId"] = f"{_text(output.get('recordId')) or f'source:{source_ref}'}:essay"
-    output["sourceType"] = "DERIVED"
+    # ERD source_type has IMPORTED / GENERATED / RUNTIME only.
+    output["sourceType"] = "RUNTIME"
     output["questionTypeCode"] = "ESSAY"
     output["promptText"] = _append_essay_instruction(_text(output.get("promptText")))
     _sync_text_content_block(output)

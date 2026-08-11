@@ -5,7 +5,6 @@ from pathlib import Path
 @dataclass(frozen=True)
 class InputLayout:
     data_root: Path
-    source28: Path
     source30: Path
     source110: Path
     source111: Path

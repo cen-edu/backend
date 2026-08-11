@@ -87,8 +87,9 @@ def package_record_assets(record: dict, raw: dict, dataset: str, source_image: P
         crop_box = (max(0, round(left)), max(0, round(top)), min(image.width, round(right)), min(image.height, round(bottom)))
         if crop_box[2] <= crop_box[0] or crop_box[3] <= crop_box[1]:
             continue
-        asset_id = f"Q-IMG-{index}"
         suffix = f"TB{index}" if region["assetRole"] == "TABLE" else f"F{index}"
+        # ERD joins content_blocks.assetRef to question_asset.asset_key.
+        asset_id = suffix
         file_name = f"{stem}_{suffix}.png"
         storage_key = f"questions/{dataset}/{file_name}"
         target = Path(output_root) / storage_key
@@ -96,13 +97,14 @@ def package_record_assets(record: dict, raw: dict, dataset: str, source_image: P
         cropped = image.crop(crop_box)
         cropped.save(target, format="PNG")
         assets.append({
-            "altText": region["altText"], "assetRole": region["assetRole"], "blockId": asset_id,
+            "altText": region["altText"], "assetRole": region["assetRole"], "assetId": asset_id,
+            "assetKey": asset_id, "blockId": f"Q-IMG-{index}",
             "contentType": "image/png", "heightPx": cropped.height, "leakChecked": True,
             "ownerRef": None, "ownerType": "QUESTION", "seq": index,
             "sourceBbox": [left, top, right, bottom], "sourceDataset": dataset,
             "sourceImage": source_name, "storageKey": storage_key, "widthPx": cropped.width,
         })
-        figure_blocks.append({"assetRef": asset_id, "blockId": asset_id,
+        figure_blocks.append({"assetRef": asset_id, "blockId": f"Q-IMG-{index}",
                               "blockKind": "FIGURE", "text": region["altText"]})
     existing = [block for block in output.get("contentBlocks") or [] if block.get("blockKind") != "FIGURE_TEXT"]
     output["contentBlocks"] = [*existing, *figure_blocks]

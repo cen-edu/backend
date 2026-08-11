@@ -16,7 +16,6 @@ from .exporter import compare_reference_coverage
 from .finalization import run_finalization
 from .pipeline import run_pipeline
 from .preflight import discover_input_layout, validate_input_layout
-from .question_types import materialize_30_question
 from .step_fill_async import execute_generation
 from .step_fill_repair import CACHE_OVERLAY_FIELDS, repair_step_fill_record, resolve_step_fill_cache
 
@@ -48,17 +47,6 @@ def _overlay(base: dict, cached: dict) -> dict:
         if field in cached:
             output[field] = copy.deepcopy(cached[field])
     return output
-
-
-def _recover_prompt_choices(row: dict) -> dict | None:
-    """Accept a valid choice list embedded in the question text when no 보기 block exists."""
-    if row.get("questionTypeCode"):
-        return row
-    candidate = copy.deepcopy(row)
-    evidence = candidate.setdefault("sourceMetadata", {}).setdefault("sourceEvidence", {})
-    evidence["choiceBlocks"] = []
-    materialized, _ = materialize_30_question(candidate)
-    return materialized
 
 
 def _resolve_111_step_cache(rows: list[dict], cached_rows: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
@@ -121,7 +109,7 @@ def _dedupe_rows(rows: list[dict]) -> list[dict]:
 def run_build(data_root: Path, output_dir: Path, *, allow_api_generation: bool = False,
               essay_limit: int = 20, seed: int = 20260810,
               reference_final_datashape: Path | None = None) -> dict:
-    """Build canonical/final_datashape/DB staging outputs from the four raw sources only."""
+    """Build canonical/final_datashape/DB staging outputs from raw 30, 110, and 111 sources."""
     started = time.monotonic()
     data_root, output_dir = Path(data_root), Path(output_dir)
     LOGGER.info("빌드 시작 data_root=%s output=%s api_generation=%s", data_root, output_dir, allow_api_generation)
@@ -135,10 +123,10 @@ def run_build(data_root: Path, output_dir: Path, *, allow_api_generation: bool =
     intermediate = output_dir / "intermediate"
     reports = output_dir / "reports"
     generation_dir = output_dir / "generation"
-    LOGGER.info("[1/8] 원천 입력 검증 완료; 28=%d 30=%d 110=%d 111=%d 파일", *[_source_count(getattr(layout, f"source{dataset}")) for dataset in ("28", "30", "110", "111")])
+    LOGGER.info("[1/8] 원천 입력 검증 완료; 30=%d 110=%d 111=%d 파일", *[_source_count(getattr(layout, f"source{dataset}")) for dataset in ("30", "110", "111")])
     stage_started = time.monotonic()
     LOGGER.info("[2/8] 30·110·111 정규화, 18개 소단원 분류, LearningGuide 처리 시작")
-    pipeline_manifest = run_pipeline(layout.source30, layout.source110, layout.source111, intermediate / "01_pipeline", source28=layout.source28)
+    pipeline_manifest = run_pipeline(layout.source30, layout.source110, layout.source111, intermediate / "01_pipeline")
     guided = _read_jsonl(intermediate / "01_pipeline" / "03_learning_guided_questions.jsonl")
     mapped = _read_jsonl(intermediate / "01_pipeline" / "02_curriculum_mapped_questions.jsonl")
     guided_refs = {str(row.get("sourceRef") or "") for row in guided}
@@ -147,15 +135,10 @@ def run_build(data_root: Path, output_dir: Path, *, allow_api_generation: bool =
                    "정확히 하나의 소단원에 분류되지 않아 최종 문항에서 제외했습니다.", path="curriculumMappings")
         for row in mapped if str(row.get("sourceRef") or "") not in guided_refs
     ]
-    rows30, type_rejects = [], []
-    for row in _rows_by_dataset(guided, "30"):
-        materialized = row if row.get("questionTypeCode") else _recover_prompt_choices(row)
-        if materialized is not None:
-            rows30.append(materialized)
-        else:
-            issues = row.get("normalizationIssues") or []
-            type_rejects.append({"sourceRef": row.get("sourceRef"), "status": "REJECTED", "issues": issues or [
-                {"code": "QUESTION_TYPE_UNUSABLE", "message": "단일 채점 가능한 30번 문항으로 만들 수 없습니다.", "path": "questionType"}]})
+    # Keep unresolved 30 rows until the common quality transform. Composite
+    # short-answer sources can be safely split there before every sink.
+    rows30 = _rows_by_dataset(guided, "30")
+    type_rejects = []
     rows110 = _rows_by_dataset(guided, "110")
     rows111 = _rows_by_dataset(guided, "111")
     _write_jsonl(intermediate / "02_normalized_and_mapped.jsonl", guided)
@@ -216,7 +199,14 @@ def run_build(data_root: Path, output_dir: Path, *, allow_api_generation: bool =
         ]
 
     LOGGER.info("[6/8] ESSAY 후보 샘플링 시작 limit=%d seed=%d", essay_limit, seed)
-    essay_candidates = sample_essay_candidates(rows111, limit=essay_limit, seed=seed)
+    step_fill_refs = {
+        str(row.get("sourceRef")) for row in accepted111 if row.get("sourceRef")
+    }
+    essay_source_rows = [
+        row for row in rows111
+        if str(row.get("sourceRef")) not in step_fill_refs
+    ]
+    essay_candidates = sample_essay_candidates(essay_source_rows, limit=essay_limit, seed=seed)
     essays, essay_rejects = resolve_essay_cache(essay_candidates, _read_jsonl(layout.essay_accepted))
     _write_jsonl(intermediate / "07_essay_candidates.jsonl", essay_candidates)
     _write_jsonl(intermediate / "08_essay_accepted.jsonl", essays)
@@ -232,7 +222,8 @@ def run_build(data_root: Path, output_dir: Path, *, allow_api_generation: bool =
     _write_jsonl(production_path, production)
     LOGGER.info("[7/8] canonical/final_datashape/db_staging export 시작 production=%d", len(production))
     final_manifest = run_finalization(production_path, accepted_path, rejected_path, output_dir,
-                                      source30=layout.source30, source110=layout.source110, source111=layout.source111)
+                                      source30=layout.source30, source110=layout.source110, source111=layout.source111,
+                                      essay_limit=essay_limit, seed=seed)
 
     final_rejects = _read_jsonl(output_dir / "final_questions_rejected.jsonl")
     canonical_rejects = final_manifest["exports"].get("validationRejected") or []
@@ -247,13 +238,16 @@ def run_build(data_root: Path, output_dir: Path, *, allow_api_generation: bool =
     report = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "status": "READY_WITH_GENERATION_CANDIDATES" if pending_generation else "COMPLETE",
-        "inputFileCounts": {dataset: _source_count(getattr(layout, f"source{dataset}")) for dataset in ("28", "30", "110", "111")},
+        "inputFileCounts": {dataset: _source_count(getattr(layout, f"source{dataset}")) for dataset in ("30", "110", "111")},
         "accepted": final_manifest["exports"]["questionCount"], "rejected": rejected_count,
         "pendingGeneration": len(pending_generation),
         "repair": {"cacheHits": generation["cacheHits"], "deterministicStepFill": generation["deterministicAccepted"]},
         "countsByType": counts_by_type,
         "countsByDataset": final_manifest["exports"]["countsByDataset"],
-        "countsBySubUnit": dict(Counter(row["curriculumMappings"][0]["curriculumUnitId"] for row in production if row.get("curriculumMappings"))),
+        "countsBySubUnit": dict(Counter(
+            row["curriculumMappings"][0]["curriculumUnitId"]
+            for row in _read_jsonl(output_dir / "canonical/questions.jsonl") if row.get("curriculumMappings")
+        )),
         "duplicateDecisions": {"excludedExact": len(duplicate_rows), "review": sum(bool(row.get("stepFillSimilarityCandidates")) for row in probability_rows)},
         "generationCandidates": generation["generationCandidates"], "apiCalls": generation["apiCalls"],
         "curriculumUnitCount": final_manifest["exports"]["curriculumUnitCount"], "pipeline": pipeline_manifest,
@@ -298,7 +292,7 @@ def run_build(data_root: Path, output_dir: Path, *, allow_api_generation: bool =
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="원천 28·30·110·111 데이터만으로 M1 문항 적재 산출물을 생성합니다.")
+    parser = argparse.ArgumentParser(description="원천 30·110·111 데이터로 M1 문항 적재 산출물을 생성합니다.")
     parser.add_argument("--data-root", type=Path, default=Path("data"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--allow-api-generation", action="store_true")

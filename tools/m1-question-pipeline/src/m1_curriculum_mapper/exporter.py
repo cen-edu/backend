@@ -23,7 +23,6 @@ DB_TABLES = (
     "question_choice",
     "question_step",
     "question_answer_unit",
-    "question_rubric_item",
     "question_asset",
 )
 
@@ -47,6 +46,16 @@ def _accepted_value(unit: dict) -> tuple[str, str]:
     raw = str(first.get("raw") or "")
     normalized = str(first.get("normalized") or raw)
     return raw, normalized
+
+
+def _compare_method(question_type: str, unit: dict) -> str:
+    if question_type == "MULTIPLE_CHOICE" or unit.get("unitType") == "CHOICE":
+        return "CHOICE"
+    if question_type == "ESSAY" or unit.get("unitType") == "RUBRIC":
+        return "RUBRIC"
+    return {"NUMERIC": "VALUE", "VALUE": "VALUE", "SYMBOLIC_EQUIVALENCE": "SUBST",
+            "SET": "SET", "TEXT_SET": "SET", "EXACT": "EXACT"}.get(
+                str(unit.get("answerType") or "").upper(), "EXACT")
 
 
 def _validate_canonical_question(record: dict, known_unit_ids: set[str]) -> list[dict]:
@@ -163,14 +172,21 @@ def _question_row(record: dict) -> dict:
         "question_id": record["recordId"],
         "source_ref": record.get("sourceRef"),
         "source_type": record.get("sourceType"),
-        "question_type_code": record.get("questionTypeCode"),
+        "source_dataset_code": record.get("sourceDatasetCode"),
+        "question_type": record.get("questionTypeCode"),
         "sub_unit_id": mapping.get("curriculumUnitId"),
-        "prompt_text": record.get("promptText"),
-        "semester": record.get("semester"),
+        "topic_code": None,
         "difficulty": record.get("difficulty"),
+        "semester": record.get("semester"),
         "presentation": record.get("presentation"),
-        "source_metadata": copy.deepcopy(record.get("sourceMetadata")),
-        "generation_metadata": copy.deepcopy(record.get("generationMetadata")),
+        "content_blocks": copy.deepcopy(record.get("contentBlocks") or []),
+        "prompt_text": record.get("promptText"),
+        "explanation": (record.get("answerSpec") or {}).get("solutionText"),
+        "learning_guide": copy.deepcopy(record.get("learningGuide")),
+        "hint_text": None,
+        "verification_status": None,
+        "verification_attempts": 0,
+        "deleted_at": None,
     }
 
 
@@ -182,66 +198,51 @@ def _db_rows(records: list[dict]) -> dict[str, list[dict]]:
         tables["question"].append(_question_row(record))
 
         choices = (record.get("choiceOptions") or {}).get("options") or []
-        for order, choice in enumerate(choices, 1):
+        for order, choice in enumerate(choices):
             clean = _snake_row(choice, excluded={"isCorrect", "is_correct", "correct"})
             tables["question_choice"].append({
                 "question_id": question_id,
-                "choice_id": choice.get("optionId") or choice.get("choiceId") or str(order),
-                "label": choice.get("label"),
-                "text": choice.get("text"),
-                "display_order": choice.get("displayOrder") or order,
-                **{key: value for key, value in clean.items() if key not in {"option_id", "choice_id", "label", "text", "display_order"}},
+                "display_order": order,
+                "content": choice.get("text") or choice.get("content") or "",
             })
 
         step_ids = _unit_step_ids(record)
         stages = (record.get("problemData") or {}).get("stages") or [] if question_type == "STEP_FILL" else []
-        for order, stage in enumerate(stages, 1):
+        for order, stage in enumerate(stages):
             tables["question_step"].append({
                 "question_id": question_id,
                 "step_id": stage.get("stageId"),
-                "display_order": stage.get("order") or order,
+                "display_order": order,
                 "title": stage.get("title"),
                 "segments": copy.deepcopy(stage.get("contentParts") or []),
             })
 
         units = (record.get("answerSpec") or {}).get("units") or []
-        for order, unit in enumerate(units, 1):
+        for order, unit in enumerate(units):
             raw, normalized = _accepted_value(unit)
             unit_id = str(unit.get("unitId") or "")
             tables["question_answer_unit"].append({
                 "question_id": question_id,
-                "unit_id": unit_id,
+                "unit_key": unit_id,
                 "step_id": step_ids.get(unit_id) if question_type == "STEP_FILL" else None,
-                "display_order": unit.get("displayOrder") or order,
-                "unit_type": unit.get("unitType"),
-                "answer_type": unit.get("answerType"),
-                # diagnostic_type is a STEP_FILL-only diagnostic dimension.
-                # Keep the column present for every row so DB staging has a
-                # stable shape; non-STEP_FILL rows intentionally use NULL.
+                "display_order": order,
+                "label": unit.get("label"),
                 "diagnostic_type": unit.get("diagnosticType") if question_type == "STEP_FILL" else None,
-                "compare_method": unit.get("compareMethod"),
+                "compare_method": unit.get("compareMethod") or _compare_method(question_type, unit),
                 "answer_raw": raw,
                 "answer_normalized": normalized,
-                "display_prefix": unit.get("displayPrefix") if question_type == "SHORT_INPUT" else None,
-                "display_suffix": unit.get("displaySuffix") if question_type == "SHORT_INPUT" else None,
             })
 
-        for order, rubric in enumerate(record.get("rubricItems") or [], 1):
-            tables["question_rubric_item"].append({
-                "question_id": question_id,
-                "rubric_id": rubric.get("rubricId") or str(order),
-                "criterion_code": rubric.get("criterionCode"),
-                "criterion": rubric.get("criterion") or rubric.get("description"),
-                "display_order": rubric.get("displayOrder") or order,
-            })
-
-        for order, asset in enumerate(record.get("assets") or [], 1):
-            row = _snake_row(asset)
+        for order, asset in enumerate(record.get("assets") or []):
             tables["question_asset"].append({
                 "question_id": question_id,
-                "asset_id": asset.get("assetId") or asset.get("blockId") or str(order),
-                "display_order": asset.get("displayOrder") or order,
-                **{key: value for key, value in row.items() if key not in {"asset_id", "display_order"}},
+                "asset_key": asset.get("assetKey") or asset.get("assetId") or str(order),
+                "role": asset.get("assetRole") or "FIGURE",
+                "display_order": order,
+                "storage_key": asset.get("storageKey"),
+                "width_px": asset.get("widthPx"),
+                "height_px": asset.get("heightPx"),
+                "alt_text": asset.get("altText"),
             })
     return tables
 
@@ -314,6 +315,31 @@ def export_dataset(
 ) -> dict:
     """Write canonical, source-compatible and ERD staging views for validated records."""
     records = copy.deepcopy(records)
+    # 30번 원천은 하나의 sourceRef 아래 여러 소문제가 `recordId=:part:N`으로
+    # 분리된다. DB의 source_ref UNIQUE 제약을 만족하면서 소문제를 독립 문항으로
+    # 적재할 수 있도록 해당 part 식별자를 source_ref에도 반영한다.
+    for record in records:
+        source_ref = str(record.get("sourceRef") or "")
+        record_id = str(record.get("recordId") or "")
+        if source_ref.partition(":")[0] == "30" and ":part:" in record_id:
+            record["sourceRef"] = record_id.removeprefix("source:")
+
+    # 111번은 동일 원천 문항을 STEP_FILL과 ESSAY로 동시에 만들 수 있다.
+    # 동일 문항의 중복 출제를 막기 위해 STEP_FILL을 우선하고 ESSAY를 제외한다.
+    step_fill_refs = {
+        str(record.get("sourceRef"))
+        for record in records
+        if str(record.get("sourceRef") or "").partition(":")[0] == "111"
+        and record.get("questionTypeCode") == "STEP_FILL"
+    }
+    records = [
+        record for record in records
+        if not (
+            str(record.get("sourceRef") or "").partition(":")[0] == "111"
+            and record.get("questionTypeCode") == "ESSAY"
+            and str(record.get("sourceRef")) in step_fill_refs
+        )
+    ]
     curriculum_rows = copy.deepcopy(curriculum_rows)
     known_unit_ids = {
         str(row.get("curriculum_unit_id") or row.get("curriculumUnitId") or "")

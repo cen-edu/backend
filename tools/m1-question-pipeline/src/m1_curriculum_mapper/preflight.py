@@ -6,7 +6,6 @@ from .models import InputLayout
 
 
 REQUIRED_DATASET_DIRS = {
-    "28": "28.교과단계별 교과 데이터",
     "30": "30.수학교과풀이과정데이터",
     "110": "110.수학 과목 자동풀이 데이터",
     "111": "111.수학 과목 문제 생성 데이터",
@@ -28,7 +27,6 @@ def discover_input_layout(data_root: Path) -> InputLayout:
     }
     return InputLayout(
         data_root=data_root,
-        source28=data_root / REQUIRED_DATASET_DIRS["28"],
         source30=data_root / REQUIRED_DATASET_DIRS["30"],
         source110=data_root / REQUIRED_DATASET_DIRS["110"],
         source111=data_root / REQUIRED_DATASET_DIRS["111"],
@@ -41,7 +39,6 @@ def discover_input_layout(data_root: Path) -> InputLayout:
 def validate_input_layout(layout: InputLayout) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     for source_id, source_path in (
-        ("28", layout.source28),
         ("30", layout.source30),
         ("110", layout.source110),
         ("111", layout.source111),

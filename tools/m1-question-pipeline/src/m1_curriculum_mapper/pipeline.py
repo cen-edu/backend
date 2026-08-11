@@ -13,7 +13,6 @@ from .full_source import iter_all_30, iter_all_110_111
 from .full_classifier import classify_record
 from .load_pipeline import write_load_package
 from .raw_sources import is_m1_110_111, is_m1_math_30, iter_raw_json
-from .source28 import build_source28_index
 
 
 PIPELINE_VERSION = "m1-question-pipeline-v1"
@@ -57,7 +56,7 @@ def _has_one_primary_mapping(record: dict) -> bool:
     return len(mappings) == 1 and mappings[0].get("isPrimary") is True and bool(mappings[0].get("curriculumUnitId"))
 
 
-def run_pipeline(source30: Path, source110: Path, source111: Path, output_dir: Path, *, source28: Path | None = None) -> dict:
+def run_pipeline(source30: Path, source110: Path, source111: Path, output_dir: Path) -> dict:
     output_dir = Path(output_dir)
     reference_dir = output_dir / "reference"
     mapping_sources = []
@@ -76,8 +75,7 @@ def run_pipeline(source30: Path, source110: Path, source111: Path, output_dir: P
         classification, audit = classify_record(record)
         mapped.append(apply_curriculum_mapping(record, topic_index, classification=classification, audit=audit))
     _write_jsonl(output_dir / "02_curriculum_mapped_questions.jsonl", mapped)
-    source28_index = build_source28_index(source28) if source28 else {}
-    enriched = [attach_learning_guide(record, source28_index) for record in mapped if _has_one_primary_mapping(record)]
+    enriched = [attach_learning_guide(record) for record in mapped if _has_one_primary_mapping(record)]
     _write_jsonl(output_dir / "03_learning_guided_questions.jsonl", enriched)
     stages = Counter(row["pipelineStage"] for row in enriched)
     manifest = {
@@ -98,10 +96,9 @@ def main() -> None:
     parser.add_argument("--source-30", type=Path, required=True)
     parser.add_argument("--source-110", type=Path, required=True)
     parser.add_argument("--source-111", type=Path, required=True)
-    parser.add_argument("--source-28", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    print(json.dumps(run_pipeline(args.source_30, args.source_110, args.source_111, args.output, source28=args.source_28), ensure_ascii=False, indent=2))
+    print(json.dumps(run_pipeline(args.source_30, args.source_110, args.source_111, args.output), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
