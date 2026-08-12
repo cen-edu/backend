@@ -17,15 +17,16 @@ public interface MemberClassEnrollmentRepository
     /** 한 반에 같은 학생이 이미 배정되어 있는지 확인한다. */
     boolean existsBySchoolClassIdAndStudentId(Long classId, Long studentId);
 
-    /** 반에 배정된 학생을 이름과 계정 ID 순으로 조회한다. */
-    List<MemberClassEnrollment> findAllBySchoolClassIdOrderByStudentNameAscStudentIdAsc(
+    /** 반에 배정된 활성 학생을 이름과 계정 ID 순으로 조회한다. */
+    List<MemberClassEnrollment>
+    findAllBySchoolClassIdAndStudentDeletedAtIsNullOrderByStudentNameAscStudentIdAsc(
             Long classId);
 
     /** 반과 학생 ID로 배정 정보를 조회한다. */
     Optional<MemberClassEnrollment> findBySchoolClassIdAndStudentId(Long classId, Long studentId);
 
-    /** 반에 배정된 학생 수를 반환한다. */
-    long countBySchoolClassId(Long classId);
+    /** 반에 배정된 활성 학생 수를 반환한다. */
+    long countBySchoolClassIdAndStudentDeletedAtIsNull(Long classId);
 
     /** 교사가 소유한 활성 반에 속한 지정 학생들의 배정 정보를 조회한다. */
     @EntityGraph(attributePaths = {"student", "schoolClass"})

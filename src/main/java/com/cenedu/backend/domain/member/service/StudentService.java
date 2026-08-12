@@ -6,14 +6,20 @@ import com.cenedu.backend.domain.member.dto.request.StudentCreateRequest;
 import com.cenedu.backend.domain.member.dto.request.StudentListRequest;
 import com.cenedu.backend.domain.member.dto.response.StudentCreateResponse;
 import com.cenedu.backend.domain.member.dto.response.StudentListResponse;
+import com.cenedu.backend.domain.member.entity.MemberAccount;
+import com.cenedu.backend.domain.member.entity.MemberStudentProfile;
+import com.cenedu.backend.domain.member.repository.MemberAccountRepository;
+import com.cenedu.backend.domain.member.repository.MemberStudentProfileRepository;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
+import com.cenedu.backend.global.common.enums.UserRole;
 
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /** 교사가 소유하는 학생 계정과 학생 프로필을 관리한다. */
 @Service
@@ -29,14 +35,29 @@ public class StudentService {
     private final StudentAccountCreator studentAccountCreator;
     private final MemberAccountService memberAccountService;
     private final StudentListQueryService studentListQueryService;
+    private final MemberAccountRepository memberAccountRepository;
+    private final MemberStudentProfileRepository studentProfileRepository;
     private final PasswordEncoder passwordEncoder;
 
-    /** 인증된 교사를 소유자로 지정하고 로그인 아이디를 초기 비밀번호로 설정한다. */
+    /** 학생 생성 - 인증된 교사를 소유자로 지정하고 로그인 아이디를 초기 비밀번호로 설정한다. */
     public StudentCreateResponse createStudent(long teacherId, StudentCreateRequest request) {
         String teacherLoginId = memberAccountService.getRequiredTeacherLoginId(teacherId);
         String teacherLoginIdPrefix = teacherLoginId.substring(0, teacherLoginId.indexOf('@'));
 
         return createStudentWithGeneratedLoginId(teacherId, teacherLoginIdPrefix, request);
+    }
+
+    /** 학생 삭제 - 요청 교사가 소유한 학생 계정을 소프트 삭제한다. */
+    @Transactional
+    public void deleteStudent(long teacherId, long studentId) {
+        getOwnedStudent(teacherId, studentId).delete();
+    }
+
+    /** 학생 비밀번호 초기화 - 학생 로그인 아이디를 초기 비밀번호로 다시 설정한다. */
+    @Transactional
+    public void resetStudentPassword(long teacherId, long studentId) {
+        MemberAccount student = getOwnedStudent(teacherId, studentId);
+        student.changePassword(passwordEncoder.encode(student.getLoginId()));
     }
 
     /** 로그인 아이디 UNIQUE 제약조건 충돌인지 확인한다. */
@@ -83,5 +104,23 @@ public class StudentService {
     private String generateStudentLoginId(String teacherLoginIdPrefix) {
         int randomNumber = SECURE_RANDOM.nextInt(STUDENT_LOGIN_ID_NUMBER_BOUND);
         return teacherLoginIdPrefix + STUDENT_LOGIN_ID_SEPARATOR + "%08d".formatted(randomNumber);
+    }
+
+    /** 활성 학생 계정을 조회하고 요청 교사의 소유인지 검증한다. */
+    private MemberAccount getOwnedStudent(long teacherId, long studentId) {
+        memberAccountService.getRequiredTeacherLoginId(teacherId);
+
+        MemberAccount student = memberAccountRepository.findByIdAndDeletedAtIsNull(studentId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_FOUND));
+        if (student.getRole() != UserRole.STUDENT) {
+            throw new BusinessException(ErrorCode.MEMBER_STUDENT_REQUIRED);
+        }
+
+        MemberStudentProfile profile = studentProfileRepository.findByUserId(studentId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_FOUND));
+        if (!profile.getOwnerTeacher().getId().equals(teacherId)) {
+            throw new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_OWNED);
+        }
+        return student;
     }
 }

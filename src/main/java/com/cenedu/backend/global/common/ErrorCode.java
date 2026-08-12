@@ -24,6 +24,8 @@ public enum ErrorCode {
 
     // ===== auth (이동규) =====
     AUTH_INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "로그인 아이디 또는 비밀번호가 올바르지 않습니다."),
+    AUTH_CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 올바르지 않습니다."),
+    AUTH_PASSWORD_CONFIRMATION_MISMATCH(HttpStatus.BAD_REQUEST, "새 비밀번호 확인이 일치하지 않습니다."),
 
     // ===== member (이동규) =====
     MEMBER_LOGIN_ID_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 사용 중인 이메일 입니다."),
@@ -39,6 +41,8 @@ public enum ErrorCode {
     MEMBER_CLASS_GRADE_MISMATCH(HttpStatus.BAD_REQUEST, "반과 학생의 학년이 일치하지 않습니다."),
     MEMBER_CLASS_ALREADY_ENROLLED(HttpStatus.CONFLICT, "이미 해당 반에 배정된 학생입니다."),
     MEMBER_CLASS_ENROLLMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "반 배정 정보를 찾을 수 없습니다."),
+    MEMBER_SCHOOL_CLASS_ORDER_INVALID(
+            HttpStatus.BAD_REQUEST, "현재 교사가 소유한 전체 활성 반의 순서를 전달해야 합니다."),
 
     // ===== worksheet (배세빈) =====
 
