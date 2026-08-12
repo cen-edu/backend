@@ -52,7 +52,7 @@ public class CurriculumUnit {
     @Column(name = "grade", nullable = false)
     private short grade;
 
-    /** 대단원에만 값이 있다. 하위 단원은 null 이며 상위를 따른다. */
+    /** 계층 조회와 학기 필터링을 위해 모든 계층에 동일한 학기를 저장한다. */
     @Column(name = "semester")
     private Short semester;
 

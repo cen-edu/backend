@@ -9,6 +9,7 @@ from .learning_guide import build_learning_guide
 from .catalog import curriculum_units
 from .full_classifier import classify_record
 from .question_types import materialize_30_question
+from .difficulty import normalize_difficulty
 
 
 DATASET_CODES = {"30": "SOLUTION_PROCESS", "110": "AUTO_SOLVING", "111": "QUESTION_GENERATION"}
@@ -63,7 +64,7 @@ def normalize_110_111_record(raw: dict, dataset_id: str, source_file: str) -> di
         "sourceDatasetCode": DATASET_CODES[dataset_id], "pipelineStage": "NORMALIZED",
         "promptText": prompt, "contentBlocks": blocks, "assets": [], "answerSpec": None,
         "choiceOptions": None, "problemData": {}, "curriculumMappings": [], "learningGuide": None,
-        "difficulty": info.get("question_difficulty"), "semester": str(info.get("question_term") or ""),
+        "difficulty": normalize_difficulty(info.get("question_difficulty")), "semester": str(info.get("question_term") or ""),
         "sourceMetadata": source_metadata,
     }
 
@@ -90,7 +91,8 @@ def normalize_30_record(raw: dict, source_file: str) -> dict:
         "pipelineStage": "NORMALIZED", "promptText": prompt,
         "contentBlocks": [{"blockId": f"T{i}", "blockKind": "TEXT", "text": text} for i, text in enumerate(questions, 1)],
         "assets": [], "answerSpec": answer_spec, "choiceOptions": None, "problemData": {},
-        "curriculumMappings": [], "learningGuide": None, "difficulty": source.get("level_of_difficulty"),
+        "curriculumMappings": [], "learningGuide": None,
+        "difficulty": normalize_difficulty(source.get("level_of_difficulty")),
         "semester": term.group(0) if term else "",
         "sourceMetadata": {
             "datasetCode": DATASET_CODES["30"], "grade": "M1", "semester": term.group(0) if term else "",

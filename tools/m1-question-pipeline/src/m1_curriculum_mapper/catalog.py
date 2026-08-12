@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 class CurriculumUnit:
     curriculum_unit_id: str
     grade: str
+    semester: str
     subject: str
     major_unit_code: str
     major_unit_name: str
@@ -42,10 +43,12 @@ _ROWS = (
 
 
 def curriculum_units() -> list[CurriculumUnit]:
-    return [CurriculumUnit(f"EBS-M1-MATH-{small_code}", "M1", "수학", major_code, major_name,
-                           middle_code, middle_name, small_code, small_name, index)
+    return [CurriculumUnit(f"EBS-M1-MATH-{small_code}", "M1", semester, "수학",
+                           major_code, major_name, middle_code, middle_name,
+                           small_code, small_name, index)
             for index, (major_code, major_name, middle_code, middle_name, small_code, small_name)
-            in enumerate(_ROWS, start=1)]
+            in enumerate(_ROWS, start=1)
+            for semester in ("1" if major_code in {"221100", "221200"} else "2",)]
 
 
 def by_small_name() -> dict[str, CurriculumUnit]:

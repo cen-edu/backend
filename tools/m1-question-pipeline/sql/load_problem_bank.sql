@@ -23,13 +23,51 @@ CREATE TEMP TABLE _step_map(step_key text PRIMARY KEY, step_id bigint NOT NULL);
 INSERT INTO _raw_steps(line)
 SELECT replace(line, chr(92)||'u0000', '')::jsonb FROM _raw_steps_text;
 
+-- 대단원은 소단원 원천 행에서 중복을 제거해 생성한다.
 INSERT INTO curriculum_unit (external_key, unit_level, name, grade, semester, display_order)
-SELECT line->>'curriculum_unit_id', 'SUB_UNIT', line->>'small_unit_name',
+SELECT 'EBS-M1-MATH-' || (line->>'major_unit_code'), 'MAJOR_UNIT',
+       line->>'major_unit_name',
        COALESCE(NULLIF(regexp_replace(line->>'grade', '[^0-9]', '', 'g'), '')::smallint, 1),
-       NULL, COALESCE((line->>'display_order')::integer, 0)
+       (line->>'semester')::smallint,
+       MIN(COALESCE((line->>'display_order')::integer, 0))
 FROM _raw_units
-WHERE line->>'curriculum_unit_id' IS NOT NULL
-ON CONFLICT (external_key) DO UPDATE SET name=EXCLUDED.name, display_order=EXCLUDED.display_order;
+WHERE line->>'major_unit_code' IS NOT NULL
+GROUP BY line->>'major_unit_code', line->>'major_unit_name', line->>'grade', line->>'semester'
+ON CONFLICT (external_key) DO UPDATE SET
+  name=EXCLUDED.name, grade=EXCLUDED.grade, semester=EXCLUDED.semester,
+  display_order=EXCLUDED.display_order;
+
+-- 중단원은 대단원을 parent_id로 참조한다.
+INSERT INTO curriculum_unit (external_key, unit_level, name, grade, semester, display_order, parent_id)
+SELECT 'EBS-M1-MATH-' || (raw.line->>'middle_unit_code'), 'MIDDLE_UNIT',
+       raw.line->>'middle_unit_name',
+       COALESCE(NULLIF(regexp_replace(raw.line->>'grade', '[^0-9]', '', 'g'), '')::smallint, 1),
+       (raw.line->>'semester')::smallint,
+       MIN(COALESCE((raw.line->>'display_order')::integer, 0)),
+       major.id
+FROM _raw_units raw
+JOIN curriculum_unit major
+  ON major.external_key='EBS-M1-MATH-' || (raw.line->>'major_unit_code')
+WHERE raw.line->>'middle_unit_code' IS NOT NULL
+GROUP BY raw.line->>'middle_unit_code', raw.line->>'middle_unit_name', raw.line->>'grade',
+         raw.line->>'semester', major.id
+ON CONFLICT (external_key) DO UPDATE SET
+  name=EXCLUDED.name, grade=EXCLUDED.grade, semester=EXCLUDED.semester,
+  display_order=EXCLUDED.display_order, parent_id=EXCLUDED.parent_id;
+
+-- 소단원은 중단원을 parent_id로 참조한다. 문제의 sub_unit_id는 이 키를 사용한다.
+INSERT INTO curriculum_unit (external_key, unit_level, name, grade, semester, display_order, parent_id)
+SELECT raw.line->>'curriculum_unit_id', 'SUB_UNIT', raw.line->>'small_unit_name',
+       COALESCE(NULLIF(regexp_replace(raw.line->>'grade', '[^0-9]', '', 'g'), '')::smallint, 1),
+       (raw.line->>'semester')::smallint, COALESCE((raw.line->>'display_order')::integer, 0),
+       middle.id
+FROM _raw_units raw
+JOIN curriculum_unit middle
+  ON middle.external_key='EBS-M1-MATH-' || (raw.line->>'middle_unit_code')
+WHERE raw.line->>'curriculum_unit_id' IS NOT NULL
+ON CONFLICT (external_key) DO UPDATE SET
+  name=EXCLUDED.name, grade=EXCLUDED.grade, semester=EXCLUDED.semester,
+  display_order=EXCLUDED.display_order, parent_id=EXCLUDED.parent_id;
 
 INSERT INTO problem_question (
   source_type, source_ref, source_dataset_code, sub_unit_id, topic_code,
@@ -39,7 +77,12 @@ INSERT INTO problem_question (
 )
 SELECT q.line->>'source_type', q.line->>'source_ref', q.line->>'source_dataset_code',
        u.id, NULLIF(q.line->>'topic_code',''),
-       CASE WHEN q.line->>'difficulty' ~ '^[0-9]+$' THEN (q.line->>'difficulty')::smallint ELSE 1 END, q.line->>'question_type',
+       CASE lower(trim(q.line->>'difficulty'))
+         WHEN '1' THEN 1 WHEN '하' THEN 1 WHEN 'low' THEN 1
+         WHEN '2' THEN 2 WHEN '중' THEN 2 WHEN 'mid' THEN 2
+         WHEN '3' THEN 3 WHEN '상' THEN 3 WHEN 'high' THEN 3
+         ELSE 1
+       END::smallint, q.line->>'question_type',
        q.line->>'presentation', q.line->'content_blocks', q.line->>'prompt_text',
        q.line->>'explanation', NULLIF(q.line->'learning_guide','null'::jsonb),
        q.line->>'hint_text', q.line->>'verification_status', 0, NULL
@@ -48,7 +91,7 @@ JOIN curriculum_unit u ON u.external_key=q.line->>'sub_unit_id'
 WHERE q.line->>'source_ref' IS NOT NULL
 ON CONFLICT (source_ref) DO UPDATE SET
   source_type=EXCLUDED.source_type, source_dataset_code=EXCLUDED.source_dataset_code,
-  sub_unit_id=EXCLUDED.sub_unit_id, question_type=EXCLUDED.question_type,
+  sub_unit_id=EXCLUDED.sub_unit_id, difficulty=EXCLUDED.difficulty, question_type=EXCLUDED.question_type,
   presentation=EXCLUDED.presentation, content_blocks=EXCLUDED.content_blocks,
   prompt_text=EXCLUDED.prompt_text, explanation=EXCLUDED.explanation,
   learning_guide=EXCLUDED.learning_guide, hint_text=EXCLUDED.hint_text;
@@ -116,6 +159,21 @@ SELECT 'problem_choice' AS table_name, count(*) AS row_count FROM problem_choice
 SELECT 'problem_asset' AS table_name, count(*) AS row_count FROM problem_asset;
 SELECT 'orphan_question_curriculum' AS check_name, count(*) AS row_count
 FROM problem_question q LEFT JOIN curriculum_unit u ON u.id=q.sub_unit_id WHERE u.id IS NULL;
+SELECT 'curriculum_unit_counts' AS check_name,
+       count(*) FILTER (WHERE unit_level='MAJOR_UNIT') AS major_count,
+       count(*) FILTER (WHERE unit_level='MIDDLE_UNIT') AS middle_count,
+       count(*) FILTER (WHERE unit_level='SUB_UNIT') AS sub_count
+FROM curriculum_unit;
+SELECT 'curriculum_unit_invalid_parent' AS check_name, count(*) AS row_count
+FROM curriculum_unit child
+WHERE (child.unit_level='MIDDLE_UNIT' AND NOT EXISTS (
+         SELECT 1 FROM curriculum_unit parent
+         WHERE parent.id=child.parent_id AND parent.unit_level='MAJOR_UNIT'))
+   OR (child.unit_level='SUB_UNIT' AND NOT EXISTS (
+         SELECT 1 FROM curriculum_unit parent
+         WHERE parent.id=child.parent_id AND parent.unit_level='MIDDLE_UNIT'));
+SELECT 'curriculum_unit_missing_semester' AS check_name, count(*) AS row_count
+FROM curriculum_unit WHERE semester IS NULL;
 SELECT 'non_step_diagnostic_type' AS check_name, count(*) AS row_count
 FROM problem_answer_unit a JOIN problem_question q ON q.id=a.question_id
 WHERE q.question_type <> 'STEP_FILL' AND a.diagnostic_type IS NOT NULL;
