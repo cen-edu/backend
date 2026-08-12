@@ -105,7 +105,9 @@ jq '{status, apiCalls, curriculumUnitCount, accepted, rejected, pendingGeneratio
 
 `data/`의 사전 생성 파일은 API 재생성을 막고 모든 팀원이 같은 STEP_FILL·ESSAY 결과를 사용하도록 하기 위한 입력 파일입니다.
 
-DB 적재에는 `delivery/db_staging/` 또는 적재 순서가 필요한 경우 `delivery/load/`의 JSONL을 사용합니다. 실제 사용할 형태의 데이터셋을 활용하여 검증하려면 `delivery/final_datashape/`, 파이프라인 정합성 검증에는 `delivery/canonical/`을 사용할 수 있습니다.
+`delivery/db_staging/`과 `delivery/load/`의 JSONL은 DB 적재용 산출물의 생성·검증에 사용합니다. 애플리케이션 DB의 실제 문제은행 초기 적재는 이 산출물을 포함해 생성한 Flyway migration `V20260812_1628__problem_seed_m1_question_bank.sql`이 담당합니다. 사용자가 `psql`로 별도 SQL을 실행하지 않습니다.
+
+Flyway versioned migration이 성공하면 `flyway_schema_history`에 기록되므로 같은 DB에서는 다시 적재하지 않습니다. 문제은행 데이터가 바뀌면 적용된 파일을 수정하지 않고 새 타임스탬프 버전 migration을 추가합니다. 실제 사용할 형태의 데이터셋 검증에는 `delivery/final_datashape/`, 파이프라인 정합성 검증에는 `delivery/canonical/`을 사용할 수 있습니다.
 
 ## source_ref와 30번 소문제 처리
 
