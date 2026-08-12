@@ -59,7 +59,8 @@ public class SchoolClassService {
                 .stream()
                 .map(schoolClass -> SchoolClassResponse.from(
                         schoolClass,
-                        enrollmentRepository.countBySchoolClassId(schoolClass.getId())))
+                        enrollmentRepository.countBySchoolClassIdAndStudentDeletedAtIsNull(
+                                schoolClass.getId())))
                 .toList();
     }
 
@@ -93,7 +94,9 @@ public class SchoolClassService {
     public List<ClassEnrollmentResponse> getEnrolledStudents(long teacherId, long classId) {
         getRequiredTeacher(teacherId);
         getOwnedClass(teacherId, classId);
-        return enrollmentRepository.findAllBySchoolClassIdOrderByStudentNameAscStudentIdAsc(classId)
+        return enrollmentRepository
+                .findAllBySchoolClassIdAndStudentDeletedAtIsNullOrderByStudentNameAscStudentIdAsc(
+                        classId)
                 .stream()
                 .map(enrollment -> ClassEnrollmentResponse.from(
                         enrollment,
