@@ -9,8 +9,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
-/** 교사가 학년도 단위 반을 생성하는 요청. */
-public record SchoolClassCreateRequest(
+/** 반 상세 모달에서 반 정보와 최종 선택 학생 목록을 저장하는 요청. */
+public record SchoolClassUpdateRequest(
         @Min(value = 2000, message = "학년도는 2000년 이상이어야 합니다.")
         @Max(value = 2100, message = "학년도는 2100년 이하여야 합니다.")
         int academicYear,
@@ -23,12 +23,8 @@ public record SchoolClassCreateRequest(
         @Size(max = 20, message = "반 이름은 20자 이하여야 합니다.")
         String name,
 
+        @NotNull(message = "선택 학생 목록은 필수입니다.")
         List<@NotNull(message = "학생 ID는 null일 수 없습니다.")
                 @Positive(message = "학생 ID는 양수여야 합니다.") Long> studentIds
 ) {
-
-    /** 학생 ID가 생략되면 학생을 배정하지 않는 빈 목록을 반환한다. */
-    public List<Long> resolvedStudentIds() {
-        return studentIds == null ? List.of() : List.copyOf(studentIds);
-    }
 }
