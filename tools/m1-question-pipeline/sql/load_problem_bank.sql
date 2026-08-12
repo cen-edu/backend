@@ -39,11 +39,11 @@ ON CONFLICT (external_key) DO UPDATE SET
 
 -- 중단원은 대단원을 parent_id로 참조한다.
 INSERT INTO curriculum_unit (external_key, unit_level, name, grade, semester, display_order, parent_id)
-SELECT 'EBS-M1-MATH-' || line->>'middle_unit_code', 'MIDDLE_UNIT',
-       line->>'middle_unit_name',
-       COALESCE(NULLIF(regexp_replace(line->>'grade', '[^0-9]', '', 'g'), '')::smallint, 1),
-       (line->>'semester')::smallint,
-       MIN(COALESCE((line->>'display_order')::integer, 0)),
+SELECT 'EBS-M1-MATH-' || (raw.line->>'middle_unit_code'), 'MIDDLE_UNIT',
+       raw.line->>'middle_unit_name',
+       COALESCE(NULLIF(regexp_replace(raw.line->>'grade', '[^0-9]', '', 'g'), '')::smallint, 1),
+       (raw.line->>'semester')::smallint,
+       MIN(COALESCE((raw.line->>'display_order')::integer, 0)),
        major.id
 FROM _raw_units raw
 JOIN curriculum_unit major
@@ -77,7 +77,12 @@ INSERT INTO problem_question (
 )
 SELECT q.line->>'source_type', q.line->>'source_ref', q.line->>'source_dataset_code',
        u.id, NULLIF(q.line->>'topic_code',''),
-       CASE WHEN q.line->>'difficulty' ~ '^[0-9]+$' THEN (q.line->>'difficulty')::smallint ELSE 1 END, q.line->>'question_type',
+       CASE lower(trim(q.line->>'difficulty'))
+         WHEN '1' THEN 1 WHEN '하' THEN 1 WHEN 'low' THEN 1
+         WHEN '2' THEN 2 WHEN '중' THEN 2 WHEN 'mid' THEN 2
+         WHEN '3' THEN 3 WHEN '상' THEN 3 WHEN 'high' THEN 3
+         ELSE 1
+       END::smallint, q.line->>'question_type',
        q.line->>'presentation', q.line->'content_blocks', q.line->>'prompt_text',
        q.line->>'explanation', NULLIF(q.line->'learning_guide','null'::jsonb),
        q.line->>'hint_text', q.line->>'verification_status', 0, NULL
@@ -86,7 +91,7 @@ JOIN curriculum_unit u ON u.external_key=q.line->>'sub_unit_id'
 WHERE q.line->>'source_ref' IS NOT NULL
 ON CONFLICT (source_ref) DO UPDATE SET
   source_type=EXCLUDED.source_type, source_dataset_code=EXCLUDED.source_dataset_code,
-  sub_unit_id=EXCLUDED.sub_unit_id, question_type=EXCLUDED.question_type,
+  sub_unit_id=EXCLUDED.sub_unit_id, difficulty=EXCLUDED.difficulty, question_type=EXCLUDED.question_type,
   presentation=EXCLUDED.presentation, content_blocks=EXCLUDED.content_blocks,
   prompt_text=EXCLUDED.prompt_text, explanation=EXCLUDED.explanation,
   learning_guide=EXCLUDED.learning_guide, hint_text=EXCLUDED.hint_text;
