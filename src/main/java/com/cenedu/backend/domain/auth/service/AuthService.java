@@ -6,6 +6,7 @@ import java.util.regex.Pattern;
 
 import com.cenedu.backend.domain.auth.dto.request.LoginRequest;
 import com.cenedu.backend.domain.auth.dto.request.SignupRequest;
+import com.cenedu.backend.domain.auth.dto.request.TeacherPasswordChangeRequest;
 import com.cenedu.backend.domain.auth.dto.response.LoginResponse;
 import com.cenedu.backend.domain.auth.dto.response.SignupResponse;
 import com.cenedu.backend.domain.member.dto.response.MemberAccountCredentials;
@@ -63,6 +64,24 @@ public class AuthService {
                 account.loginId(),
                 account.name(),
                 account.role()
+        );
+    }
+
+    /** 현재 비밀번호와 확인값을 검증하고 로그인한 교사의 비밀번호를 변경한다. */
+    @Transactional
+    public void changeTeacherPassword(long teacherId, TeacherPasswordChangeRequest request) {
+        MemberAccountCredentials account = memberAccountService
+                .getRequiredTeacherCredentials(teacherId);
+        if (!passwordEncoder.matches(request.currentPassword(), account.passwordHash())) {
+            throw new BusinessException(ErrorCode.AUTH_CURRENT_PASSWORD_MISMATCH);
+        }
+        if (!request.newPassword().equals(request.newPasswordConfirm())) {
+            throw new BusinessException(ErrorCode.AUTH_PASSWORD_CONFIRMATION_MISMATCH);
+        }
+
+        memberAccountService.changeTeacherPassword(
+                teacherId,
+                passwordEncoder.encode(request.newPassword())
         );
     }
 
