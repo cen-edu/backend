@@ -60,4 +60,16 @@ public class MemberAccountService {
             throw new BusinessException(ErrorCode.MEMBER_LOGIN_ID_ALREADY_EXISTS);
         }
     }
+
+    /** 교사 회원탈퇴 - 활성 교사 계정을 소프트 삭제한다. */
+    @Transactional
+    public void withdrawTeacher(long teacherId) {
+        MemberAccount teacher = memberAccountRepository.findByIdAndDeletedAtIsNull(teacherId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_TEACHER_NOT_FOUND));
+        if (teacher.getRole() != UserRole.TEACHER) {
+            throw new BusinessException(ErrorCode.MEMBER_TEACHER_REQUIRED);
+        }
+
+        teacher.delete();
+    }
 }
