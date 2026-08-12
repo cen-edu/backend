@@ -31,7 +31,7 @@ SQL은 `delivery/canonical/curriculum_units.jsonl`과 `delivery/db_staging/*.jso
 
 다음 테이블을 FK 순서에 맞춰 적재합니다.
 
-1. `curriculum_unit`
+1. `curriculum_unit` (대단원 4개, 중단원 8개, 소단원 18개를 parent_id로 연결)
 2. `problem_question`
 3. `problem_step`
 4. `problem_answer_unit`
