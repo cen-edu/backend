@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.cenedu.backend.domain.member.dto.request.ClassEnrollmentCreateRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassCreateRequest;
+import com.cenedu.backend.domain.member.dto.request.SchoolClassOrderUpdateRequest;
 import com.cenedu.backend.domain.member.dto.response.ClassEnrollmentResponse;
 import com.cenedu.backend.domain.member.dto.response.SchoolClassResponse;
 import com.cenedu.backend.domain.member.service.SchoolClassService;
@@ -17,6 +18,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,6 +47,15 @@ public class SchoolClassController {
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
         return ApiResponse.success(schoolClassService.getClasses(user.memberId()));
+    }
+
+    @PatchMapping("/order")
+    public ApiResponse<Void> updateClassOrder(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody SchoolClassOrderUpdateRequest request
+    ) {
+        schoolClassService.updateClassOrder(user.memberId(), request);
+        return ApiResponse.successEmpty();
     }
 
     @PostMapping("/{classId}/students")

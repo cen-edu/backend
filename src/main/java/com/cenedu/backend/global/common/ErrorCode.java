@@ -41,6 +41,8 @@ public enum ErrorCode {
     MEMBER_CLASS_GRADE_MISMATCH(HttpStatus.BAD_REQUEST, "반과 학생의 학년이 일치하지 않습니다."),
     MEMBER_CLASS_ALREADY_ENROLLED(HttpStatus.CONFLICT, "이미 해당 반에 배정된 학생입니다."),
     MEMBER_CLASS_ENROLLMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "반 배정 정보를 찾을 수 없습니다."),
+    MEMBER_SCHOOL_CLASS_ORDER_INVALID(
+            HttpStatus.BAD_REQUEST, "현재 교사가 소유한 전체 활성 반의 순서를 전달해야 합니다."),
 
     // ===== worksheet (배세빈) =====
 

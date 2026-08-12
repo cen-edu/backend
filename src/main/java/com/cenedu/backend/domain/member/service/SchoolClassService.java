@@ -1,9 +1,13 @@
 package com.cenedu.backend.domain.member.service;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 
 import com.cenedu.backend.domain.member.dto.request.ClassEnrollmentCreateRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassCreateRequest;
+import com.cenedu.backend.domain.member.dto.request.SchoolClassOrderUpdateRequest;
 import com.cenedu.backend.domain.member.dto.response.ClassEnrollmentResponse;
 import com.cenedu.backend.domain.member.dto.response.SchoolClassResponse;
 import com.cenedu.backend.domain.member.entity.MemberAccount;
@@ -62,6 +66,33 @@ public class SchoolClassService {
                         enrollmentRepository.countBySchoolClassIdAndStudentDeletedAtIsNull(
                                 schoolClass.getId())))
                 .toList();
+    }
+
+    /** 전달된 최종 ID 순서대로 교사 소유 활성 반의 표시 순서를 다시 매긴다. */
+    @Transactional
+    public void updateClassOrder(long teacherId, SchoolClassOrderUpdateRequest request) {
+        getRequiredTeacher(teacherId);
+        List<MemberSchoolClass> schoolClasses = schoolClassRepository
+                .findAllByHomeroomTeacherIdAndDeletedAtIsNullOrderByDisplayOrderAscIdAsc(teacherId);
+        List<Long> requestedClassIds = request.classIds();
+
+        if (requestedClassIds.size() != schoolClasses.size()
+                || new HashSet<>(requestedClassIds).size() != requestedClassIds.size()) {
+            throw new BusinessException(ErrorCode.MEMBER_SCHOOL_CLASS_ORDER_INVALID);
+        }
+
+        Map<Long, MemberSchoolClass> schoolClassesById = new HashMap<>();
+        schoolClasses.forEach(schoolClass ->
+                schoolClassesById.put(schoolClass.getId(), schoolClass));
+
+        for (int displayOrder = 0; displayOrder < requestedClassIds.size(); displayOrder++) {
+            MemberSchoolClass schoolClass = schoolClassesById.get(
+                    requestedClassIds.get(displayOrder));
+            if (schoolClass == null) {
+                throw new BusinessException(ErrorCode.MEMBER_SCHOOL_CLASS_ORDER_INVALID);
+            }
+            schoolClass.changeDisplayOrder(displayOrder);
+        }
     }
 
     /** 교사 소유 반에 담당 학생을 배정하고 생성된 배정 정보를 반환한다. */
