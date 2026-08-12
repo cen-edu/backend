@@ -50,6 +50,11 @@ public class MemberAccountService {
         return MemberAccountCredentials.from(getRequiredTeacher(teacherId));
     }
 
+    /** 활성 학생의 비밀번호 검증용 계정 정보를 반환한다. */
+    public MemberAccountCredentials getRequiredStudentCredentials(long studentId) {
+        return MemberAccountCredentials.from(getRequiredStudent(studentId));
+    }
+
     /** 교사 계정을 생성하고 외부 공개용 계정 정보를 반환한다. */
     @Transactional
     public MemberAccountResponse createTeacher(String loginId, String passwordHash, String name) {
@@ -79,6 +84,12 @@ public class MemberAccountService {
         getRequiredTeacher(teacherId).changePassword(passwordHash);
     }
 
+    /** 활성 학생의 비밀번호 해시를 변경한다. */
+    @Transactional
+    public void changeStudentPassword(long studentId, String passwordHash) {
+        getRequiredStudent(studentId).changePassword(passwordHash);
+    }
+
     /** 활성 교사 계정을 조회하고 역할을 검증한다. */
     private MemberAccount getRequiredTeacher(long teacherId) {
         MemberAccount teacher = memberAccountRepository.findByIdAndDeletedAtIsNull(teacherId)
@@ -87,5 +98,15 @@ public class MemberAccountService {
             throw new BusinessException(ErrorCode.MEMBER_TEACHER_REQUIRED);
         }
         return teacher;
+    }
+
+    /** 활성 학생 계정을 조회하고 역할을 검증한다. */
+    private MemberAccount getRequiredStudent(long studentId) {
+        MemberAccount student = memberAccountRepository.findByIdAndDeletedAtIsNull(studentId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_FOUND));
+        if (student.getRole() != UserRole.STUDENT) {
+            throw new BusinessException(ErrorCode.MEMBER_STUDENT_REQUIRED);
+        }
+        return student;
     }
 }

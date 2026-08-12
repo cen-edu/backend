@@ -5,8 +5,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.cenedu.backend.domain.auth.dto.request.LoginRequest;
+import com.cenedu.backend.domain.auth.dto.request.PasswordChangeRequest;
 import com.cenedu.backend.domain.auth.dto.request.SignupRequest;
-import com.cenedu.backend.domain.auth.dto.request.TeacherPasswordChangeRequest;
 import com.cenedu.backend.domain.auth.dto.response.LoginResponse;
 import com.cenedu.backend.domain.auth.dto.response.SignupResponse;
 import com.cenedu.backend.domain.member.dto.response.MemberAccountCredentials;
@@ -69,20 +69,41 @@ public class AuthService {
 
     /** 현재 비밀번호와 확인값을 검증하고 로그인한 교사의 비밀번호를 변경한다. */
     @Transactional
-    public void changeTeacherPassword(long teacherId, TeacherPasswordChangeRequest request) {
+    public void changeTeacherPassword(long teacherId, PasswordChangeRequest request) {
         MemberAccountCredentials account = memberAccountService
                 .getRequiredTeacherCredentials(teacherId);
+        validatePasswordChange(account, request);
+
+        memberAccountService.changeTeacherPassword(
+                teacherId,
+                passwordEncoder.encode(request.newPassword())
+        );
+    }
+
+    /** 현재 비밀번호와 확인값을 검증하고 로그인한 학생의 비밀번호를 변경한다. */
+    @Transactional
+    public void changeStudentPassword(long studentId, PasswordChangeRequest request) {
+        MemberAccountCredentials account = memberAccountService
+                .getRequiredStudentCredentials(studentId);
+        validatePasswordChange(account, request);
+
+        memberAccountService.changeStudentPassword(
+                studentId,
+                passwordEncoder.encode(request.newPassword())
+        );
+    }
+
+    /** 현재 비밀번호와 새 비밀번호 확인값이 올바른지 검증한다. */
+    private void validatePasswordChange(
+            MemberAccountCredentials account,
+            PasswordChangeRequest request
+    ) {
         if (!passwordEncoder.matches(request.currentPassword(), account.passwordHash())) {
             throw new BusinessException(ErrorCode.AUTH_CURRENT_PASSWORD_MISMATCH);
         }
         if (!request.newPassword().equals(request.newPasswordConfirm())) {
             throw new BusinessException(ErrorCode.AUTH_PASSWORD_CONFIRMATION_MISMATCH);
         }
-
-        memberAccountService.changeTeacherPassword(
-                teacherId,
-                passwordEncoder.encode(request.newPassword())
-        );
     }
 
     /** 이메일 비교와 저장에 사용할 소문자 정규형을 반환한다. */
