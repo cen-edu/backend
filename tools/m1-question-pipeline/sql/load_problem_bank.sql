@@ -39,7 +39,11 @@ INSERT INTO problem_question (
 )
 SELECT q.line->>'source_type', q.line->>'source_ref', q.line->>'source_dataset_code',
        u.id, NULLIF(q.line->>'topic_code',''),
-       CASE WHEN q.line->>'difficulty' ~ '^[0-9]+$' THEN (q.line->>'difficulty')::smallint ELSE 1 END, q.line->>'question_type',
+       CASE lower(trim(q.line->>'difficulty'))
+         WHEN '하' THEN 1 WHEN 'low' THEN 1 WHEN '1' THEN 1
+         WHEN '중' THEN 2 WHEN 'mid' THEN 2 WHEN 'medium' THEN 2 WHEN '2' THEN 2
+         WHEN '상' THEN 3 WHEN 'high' THEN 3 WHEN '3' THEN 3
+         ELSE 1 END, q.line->>'question_type',
        q.line->>'presentation', q.line->'content_blocks', q.line->>'prompt_text',
        q.line->>'explanation', NULLIF(q.line->'learning_guide','null'::jsonb),
        q.line->>'hint_text', q.line->>'verification_status', 0, NULL

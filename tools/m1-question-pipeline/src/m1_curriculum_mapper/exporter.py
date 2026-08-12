@@ -12,6 +12,12 @@ from .catalog import curriculum_units
 
 
 QUESTION_TYPES = {"MULTIPLE_CHOICE", "SHORT_INPUT", "STEP_FILL", "ESSAY"}
+
+
+def _normalize_difficulty(value):
+    text = str(value or "").strip().lower()
+    return {"하": 1, "low": 1, "1": 1, "중": 2, "mid": 2, "medium": 2, "2": 2,
+            "상": 3, "high": 3, "3": 3}.get(text, 1)
 SOURCE_DATASETS = ("30", "110", "111")
 SOURCE_TYPE_CONTRACT = {
     "30": {"MULTIPLE_CHOICE", "SHORT_INPUT"},
@@ -176,7 +182,7 @@ def _question_row(record: dict) -> dict:
         "question_type": record.get("questionTypeCode"),
         "sub_unit_id": mapping.get("curriculumUnitId"),
         "topic_code": None,
-        "difficulty": record.get("difficulty"),
+        "difficulty": _normalize_difficulty(record.get("difficulty")),
         "semester": record.get("semester"),
         "presentation": record.get("presentation"),
         "content_blocks": copy.deepcopy(record.get("contentBlocks") or []),
@@ -321,6 +327,7 @@ def export_dataset(
     for record in records:
         source_ref = str(record.get("sourceRef") or "")
         record_id = str(record.get("recordId") or "")
+        record["difficulty"] = _normalize_difficulty(record.get("difficulty"))
         if source_ref.partition(":")[0] == "30" and ":part:" in record_id:
             record["sourceRef"] = record_id.removeprefix("source:")
 
