@@ -17,6 +17,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -48,6 +49,15 @@ public class StudentController {
             @Valid @RequestBody StudentCreateRequest request
     ) {
         return ApiResponse.success(studentService.createStudent(user.memberId(), request));
+    }
+
+    @PatchMapping("/{studentId}/password/reset")
+    public ApiResponse<Void> resetStudentPassword(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long studentId
+    ) {
+        studentService.resetStudentPassword(user.memberId(), studentId);
+        return ApiResponse.successEmpty();
     }
 
     @DeleteMapping("/{studentId}")

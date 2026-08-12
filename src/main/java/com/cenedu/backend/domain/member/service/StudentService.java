@@ -50,21 +50,14 @@ public class StudentService {
     /** 학생 삭제 - 요청 교사가 소유한 학생 계정을 소프트 삭제한다. */
     @Transactional
     public void deleteStudent(long teacherId, long studentId) {
-        memberAccountService.getRequiredTeacherLoginId(teacherId);
+        getOwnedStudent(teacherId, studentId).delete();
+    }
 
-        MemberAccount student = memberAccountRepository.findByIdAndDeletedAtIsNull(studentId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_FOUND));
-        if (student.getRole() != UserRole.STUDENT) {
-            throw new BusinessException(ErrorCode.MEMBER_STUDENT_REQUIRED);
-        }
-
-        MemberStudentProfile profile = studentProfileRepository.findByUserId(studentId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_FOUND));
-        if (!profile.getOwnerTeacher().getId().equals(teacherId)) {
-            throw new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_OWNED);
-        }
-
-        student.delete();
+    /** 학생 비밀번호 초기화 - 학생 로그인 아이디를 초기 비밀번호로 다시 설정한다. */
+    @Transactional
+    public void resetStudentPassword(long teacherId, long studentId) {
+        MemberAccount student = getOwnedStudent(teacherId, studentId);
+        student.changePassword(passwordEncoder.encode(student.getLoginId()));
     }
 
     /** 로그인 아이디 UNIQUE 제약조건 충돌인지 확인한다. */
@@ -111,5 +104,23 @@ public class StudentService {
     private String generateStudentLoginId(String teacherLoginIdPrefix) {
         int randomNumber = SECURE_RANDOM.nextInt(STUDENT_LOGIN_ID_NUMBER_BOUND);
         return teacherLoginIdPrefix + STUDENT_LOGIN_ID_SEPARATOR + "%08d".formatted(randomNumber);
+    }
+
+    /** 활성 학생 계정을 조회하고 요청 교사의 소유인지 검증한다. */
+    private MemberAccount getOwnedStudent(long teacherId, long studentId) {
+        memberAccountService.getRequiredTeacherLoginId(teacherId);
+
+        MemberAccount student = memberAccountRepository.findByIdAndDeletedAtIsNull(studentId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_FOUND));
+        if (student.getRole() != UserRole.STUDENT) {
+            throw new BusinessException(ErrorCode.MEMBER_STUDENT_REQUIRED);
+        }
+
+        MemberStudentProfile profile = studentProfileRepository.findByUserId(studentId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_FOUND));
+        if (!profile.getOwnerTeacher().getId().equals(teacherId)) {
+            throw new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_OWNED);
+        }
+        return student;
     }
 }
