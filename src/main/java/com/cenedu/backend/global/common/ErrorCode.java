@@ -55,7 +55,7 @@ public enum ErrorCode {
     // ===== curriculum (이하영) =====
 
     // ===== problem (이하영) =====
-
+    QUESTION_INVENTORY_INSUFFICIENT(HttpStatus.BAD_REQUEST, "요청한 조건의 문항 수가 부족합니다."),
     // ===== analysis (모수환) =====
     ASSESSMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "평가를 찾을 수 없습니다."),
     STUDENT_ATTEMPT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 풀이를 찾을 수 없습니다."),
