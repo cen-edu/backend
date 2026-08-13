@@ -80,6 +80,7 @@ public class ConceptQueryService {
 
         return merged.values().stream()
                 .sorted(Comparator.comparingInt((ChatConcept concept) -> matchGrade(concept.getName(), usable))
+                        .thenComparingInt(concept -> exactKeywordIndex(concept.getName(), usable))
                         .thenComparingInt(concept -> concept.getName().length())
                         .thenComparing(ChatConcept::getId))
                 .limit(limit)
@@ -107,6 +108,27 @@ public class ConceptQueryService {
             }
         }
         return grade;
+    }
+
+    /**
+     * 서로 다른 개념이 각각 다른 키워드에 완전일치할 때, <b>앞선 키워드</b>에 맞은 쪽을 위로 올린다.
+     *
+     * <p>이게 없으면 이름이 짧은 쪽이 이겨서 엉뚱한 앵커가 잡힌다. 실측으로 걸린 사례 —
+     * {@code [소인수분해, 약수]} 는 {@code 약수}(2자)가, {@code [이항, 항]} 은 {@code 항}(1자)이
+     * 이겼다. 셋 다 실재하는 개념명이라 완전일치끼리 부딪힌 것이다.
+     *
+     * <p>등급을 넘나드는 순서 독립성은 그대로다 — 뒤쪽 키워드의 완전일치는 여전히 앞쪽 키워드의
+     * 부분일치를 이긴다. 순서는 <b>똑같이 좋은 후보들 사이</b>에서만 쓴다. 추출 프롬프트가
+     * "질문에 있는 말을 첫 번째로" 지시하므로, 앞선 키워드가 곧 학생이 실제로 쓴 말이다.
+     */
+    private static int exactKeywordIndex(String name, List<String> keywords) {
+        String lowerName = name.toLowerCase();
+        for (int i = 0; i < keywords.size(); i++) {
+            if (lowerName.equals(keywords.get(i).toLowerCase())) {
+                return i;
+            }
+        }
+        return keywords.size();
     }
 
     /** 앵커에서 선수 방향으로 확장한 개념을 hop 오름차순으로 돌려준다. hop 0 은 앵커 자신이다. */

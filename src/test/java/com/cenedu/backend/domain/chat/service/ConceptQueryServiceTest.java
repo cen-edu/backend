@@ -198,20 +198,32 @@ class ConceptQueryServiceTest {
                 .isEqualTo("인수");
     }
 
+    /**
+     * 뒤쪽 키워드의 완전일치가 앞쪽 키워드의 부분일치를 이긴다.
+     *
+     * <p>{@code 소인수} 는 {@code 소인수분해} 에 접두일치(등급 2)하고 {@code 지수} 는 완전일치(등급 0)다.
+     * 첫 히트에서 멈추던 시절에는 {@code 소인수} 가 결과를 내는 순간 {@code 지수} 를 시도조차 못 했다.
+     */
     @Test
-    @DisplayName("14. 완전일치가 키워드 순서를 이긴다")
-    void exactMatchBeatsKeywordOrder() {
-        assertThat(conceptQueryService.searchConcepts(List.of("거듭제곱", "지수"), 5).get(0).getName())
+    @DisplayName("14. 뒤쪽 키워드의 완전일치가 앞쪽 키워드의 부분일치를 이긴다")
+    void exactMatchBeatsEarlierPartialMatch() {
+        assertThat(conceptQueryService.searchConcepts(List.of("소인수", "지수"), 5).get(0).getName())
                 .isEqualTo("지수");
     }
 
+    /**
+     * 등급이 다르면 키워드 순서가 순위를 바꾸지 못한다.
+     *
+     * <p>같은 등급(완전일치끼리)에서는 순서가 타이브레이크로 쓰인다. 16-2 번이 그 경우다.
+     */
     @Test
-    @DisplayName("15. 키워드 순서를 바꿔도 1위가 같다")
-    void rankingIsIndependentOfKeywordOrder() {
-        List<ChatConcept> forward = conceptQueryService.searchConcepts(List.of("거듭제곱", "지수"), 5);
-        List<ChatConcept> reversed = conceptQueryService.searchConcepts(List.of("지수", "거듭제곱"), 5);
+    @DisplayName("15. 등급이 다르면 키워드 순서를 바꿔도 1위가 같다")
+    void rankingIsIndependentOfKeywordOrderAcrossGrades() {
+        List<ChatConcept> forward = conceptQueryService.searchConcepts(List.of("소인수", "지수"), 5);
+        List<ChatConcept> reversed = conceptQueryService.searchConcepts(List.of("지수", "소인수"), 5);
 
-        assertThat(ids(reversed)).isEqualTo(ids(forward));
+        assertThat(forward.get(0).getName()).isEqualTo("지수");
+        assertThat(reversed.get(0).getName()).isEqualTo("지수");
     }
 
     /**
@@ -227,6 +239,22 @@ class ConceptQueryServiceTest {
                 .isEqualTo("공약수와 최대공약수");
         assertThat(conceptQueryService.searchConcepts(List.of("표"), 5).get(0).getName())
                 .isEqualTo("도수분포표");
+    }
+
+    /**
+     * 서로 다른 키워드가 각각 다른 개념에 완전일치할 때 <b>앞선 키워드</b>가 이긴다.
+     *
+     * <p>이게 없으면 짧은 이름이 이겨서 엉뚱한 앵커가 잡힌다. 기준선 측정에서 실제로 걸렸다 —
+     * "소인수분해를 왜 하는 거예요?" 가 {@code 약수} 를, "이항이 뭐예요?" 가 {@code 항} 을 앵커로
+     * 삼았다. 등급을 넘나드는 순서 독립성(14·15번)은 그대로다.
+     */
+    @Test
+    @DisplayName("16-2. 완전일치가 여럿이면 앞선 키워드에 맞은 개념이 1위다")
+    void earlierKeywordWinsAmongExactMatches() {
+        assertThat(conceptQueryService.searchConcepts(List.of("소인수분해", "약수"), 5).get(0).getName())
+                .isEqualTo("소인수분해");
+        assertThat(conceptQueryService.searchConcepts(List.of("이항", "항"), 5).get(0).getName())
+                .isEqualTo("이항");
     }
 
     @Test
