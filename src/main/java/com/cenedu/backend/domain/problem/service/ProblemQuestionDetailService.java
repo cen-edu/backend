@@ -17,6 +17,7 @@ import com.cenedu.backend.domain.problem.dto.response.ProblemLearningGuideRespon
 import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionDetailResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemStepResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemStepSegmentResponse;
+import com.cenedu.backend.domain.problem.entity.ProblemAsset;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.repository.ProblemAnswerUnitRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemAssetRepository;
@@ -32,6 +33,8 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import org.springframework.beans.factory.ObjectProvider;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -43,6 +46,8 @@ public class ProblemQuestionDetailService {
     private final ProblemAssetRepository problemAssetRepository;
     private final CurriculumUnitQueryService curriculumUnitQueryService;
     private final ObjectMapper objectMapper;
+
+    private final ObjectProvider<ProblemAssetUrlService> problemAssetUrlServiceProvider;
 
     // 선택된 여러 문항의 상세 데이터를 일괄 조회하여 원래 문항 순서대로 반환한다.
     public List<ProblemQuestionDetailResponse> getDetails(
@@ -166,11 +171,23 @@ public class ProblemQuestionDetailService {
                 Collectors.mapping(
                     asset -> ProblemAssetResponse.from(
                         asset,
-                        null
+                        createAssetUrl(asset)
                     ),
                     Collectors.toList()
                 )
             ));
+    }
+
+    // S3 기능이 활성화된 경우 storage_key를 조회 URL로 변환한다.
+    private String createAssetUrl(ProblemAsset asset) {
+        ProblemAssetUrlService urlService =
+            problemAssetUrlServiceProvider.getIfAvailable();
+
+        if (urlService == null) {
+            return null;
+        }
+
+        return urlService.createUrl(asset.getStorageKey());
     }
 
     // 문항 본문의 JSON 배열을 화면 표시용 블록 목록으로 변환한다.
