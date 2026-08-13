@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.cenedu.backend.domain.chat.dto.response.ConceptCandidate;
 import com.cenedu.backend.domain.chat.dto.response.ConceptContext;
 import com.cenedu.backend.domain.chat.dto.response.ConceptView;
 import com.cenedu.backend.domain.chat.entity.ChatConcept;
@@ -62,8 +63,11 @@ public class ConceptQueryService {
      *
      * <p>키워드 수만큼 쿼리가 나가지만 455행이라 비용이 없다. 실측(테스트컨테이너)에서 한 호출이
      * 3~21ms 였고, 키워드 2개짜리가 1개짜리보다 특별히 느리지도 않았다.
+     *
+     * <p>엔티티가 아니라 {@link ConceptCandidate} 로 돌려준다. 검색은 앵커를 <b>고르는</b> 단계라
+     * 본문이 필요 없고, 엔티티를 내보내면 호출부가 후보 5건의 설명까지 프롬프트에 실을 수 있다.
      */
-    public List<ChatConcept> searchConcepts(List<String> keywords, int limit) {
+    public List<ConceptCandidate> searchConcepts(List<String> keywords, int limit) {
         if (keywords == null || keywords.isEmpty()) {
             return List.of();
         }
@@ -84,6 +88,7 @@ public class ConceptQueryService {
                         .thenComparingInt(concept -> concept.getName().length())
                         .thenComparing(ChatConcept::getId))
                 .limit(limit)
+                .map(ConceptCandidate::from)
                 .toList();
     }
 
@@ -178,7 +183,7 @@ public class ConceptQueryService {
     public ConceptContext buildContext(Long subUnitId, List<String> keywords,
                                        int depth, short elemHopMax) {
         List<String> subUnitConceptNames = findSubUnitConceptNames(subUnitId);
-        List<ChatConcept> searched = searchConcepts(keywords, DEFAULT_SEARCH_LIMIT);
+        List<ConceptCandidate> searched = searchConcepts(keywords, DEFAULT_SEARCH_LIMIT);
 
         if (searched.isEmpty()) {
             return subUnitConceptNames.isEmpty()
@@ -186,9 +191,11 @@ public class ConceptQueryService {
                     : ConceptContext.of(null, List.of(), subUnitConceptNames);
         }
 
-        ChatConcept anchor = searched.get(0);
-        List<ConceptView> concepts = expandPrereqs(anchor.getId(), depth, elemHopMax);
-        return ConceptContext.of(ConceptView.from(anchor, 0), concepts, subUnitConceptNames);
+        // 확장 결과의 첫 원소가 앵커 자신이다. 재귀 CTE 의 시작점이 hop 0 으로 들어오고
+        // hop 오름차순으로 정렬되기 때문이다. 앵커 본문을 따로 조회하지 않는 이유다.
+        List<ConceptView> concepts = expandPrereqs(searched.get(0).id(), depth, elemHopMax);
+        ConceptView anchor = concepts.isEmpty() ? null : concepts.get(0);
+        return ConceptContext.of(anchor, concepts, subUnitConceptNames);
     }
 
     /** 기본 깊이와 기본 초등 상한으로 근거를 만든다. */
