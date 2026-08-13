@@ -18,11 +18,23 @@ spring:
   flyway:
     enabled: true               # analysis baseline(V20260807_1000) 부터 활성
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
 
 server:
   port: ${SERVER_PORT:8080}
 
 app:
+  storage:
+    s3:
+      enabled: ${S3_ENABLED:false}
+      region: ${AWS_REGION:ap-northeast-2}
+      problem-bucket: ${AWS_S3_PROBLEM_BUCKET:}
+      answer-bucket: ${AWS_S3_ANSWER_BUCKET:}
+      access-key-id: ${AWS_ACCESS_KEY_ID:}
+      secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
   ai:
     guard:
       input:
@@ -50,4 +62,3 @@ logging:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
-

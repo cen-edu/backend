@@ -22,6 +22,19 @@ public enum ErrorCode {
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
 
+    // ===== storage (모수환) =====
+    IMAGE_FILE_REQUIRED(HttpStatus.BAD_REQUEST, "이미지 파일은 필수입니다."),
+    IMAGE_INVALID_FORMAT(HttpStatus.BAD_REQUEST, "PNG 또는 JPEG 이미지만 업로드할 수 있습니다."),
+    IMAGE_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "이미지는 5MB 이하만 업로드할 수 있습니다."),
+    IMAGE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "이 이미지에 접근할 권한이 없습니다."),
+    IMAGE_QUESTION_NOT_FOUND(HttpStatus.NOT_FOUND, "문항을 찾을 수 없습니다."),
+    IMAGE_ASSIGNMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생의 학습지 수행 기록을 찾을 수 없습니다."),
+    IMAGE_ANSWER_UNIT_NOT_FOUND(HttpStatus.NOT_FOUND, "답안 칸을 찾을 수 없습니다."),
+    IMAGE_ANSWER_UNIT_NOT_ASSIGNED(HttpStatus.BAD_REQUEST, "배정된 학습지에 포함되지 않은 답안 칸입니다."),
+    IMAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "저장된 이미지를 찾을 수 없습니다."),
+    IMAGE_STORAGE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "이미지 저장소 설정이 필요합니다."),
+    IMAGE_STORAGE_FAILED(HttpStatus.BAD_GATEWAY, "이미지 저장소 요청을 처리하지 못했습니다."),
+
     // ===== auth (이동규) =====
     AUTH_INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "로그인 아이디 또는 비밀번호가 올바르지 않습니다."),
     AUTH_CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "현재 비밀번호가 올바르지 않습니다."),
