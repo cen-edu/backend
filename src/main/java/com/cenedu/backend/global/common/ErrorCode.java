@@ -71,6 +71,13 @@ public enum ErrorCode {
     AI_AGENT_NOT_FOUND(HttpStatus.INTERNAL_SERVER_ERROR, "요청을 처리할 수 있는 에이전트가 없습니다."),
     AI_REQUEST_BLOCKED(HttpStatus.BAD_REQUEST, "이 요청은 처리할 수 없습니다."),
     AI_RESPONSE_BLOCKED(HttpStatus.INTERNAL_SERVER_ERROR, "답변을 생성하지 못했습니다. 다시 시도해 주세요."),
+
+    // ===== ai/client (배세빈) =====
+    // 두 코드를 나눈 이유: 호출 자체가 실패한 것과, 호출은 됐는데 텍스트가 비어 돌아온 것은
+    // 원인도 대응도 다르다. 후자는 max-completion-tokens 를 의심해야 한다.
+    // 사용자에게 나가는 문구는 같다. 원인은 로그와 예외 메시지에만 남긴다.
+    AI_CLIENT_CALL_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "답변을 생성하지 못했습니다. 다시 시도해 주세요."),
+    AI_CLIENT_EMPTY_RESPONSE(HttpStatus.INTERNAL_SERVER_ERROR, "답변을 생성하지 못했습니다. 다시 시도해 주세요."),
     ;
 
     private final HttpStatus status;
