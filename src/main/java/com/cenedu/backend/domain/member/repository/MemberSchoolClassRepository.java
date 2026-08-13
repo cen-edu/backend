@@ -5,7 +5,10 @@ import java.util.Optional;
 
 import com.cenedu.backend.domain.member.entity.MemberSchoolClass;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /** 학년도 단위 반 영속성 저장소. */
 public interface MemberSchoolClassRepository extends JpaRepository<MemberSchoolClass, Long> {
@@ -13,6 +16,25 @@ public interface MemberSchoolClassRepository extends JpaRepository<MemberSchoolC
     /** 교사가 소유한 삭제되지 않은 반을 표시 순서대로 조회한다. */
     List<MemberSchoolClass> findAllByHomeroomTeacherIdAndDeletedAtIsNullOrderByDisplayOrderAscIdAsc(
             Long teacherId);
+
+    /** 교사 소유 활성 반을 선택된 학년도, 학년, 반 이름 조건으로 조회한다. */
+    @EntityGraph(attributePaths = "homeroomTeacher")
+    @Query("""
+            SELECT schoolClass
+            FROM MemberSchoolClass schoolClass
+            WHERE schoolClass.homeroomTeacher.id = :teacherId
+              AND schoolClass.deletedAt IS NULL
+              AND (:academicYear IS NULL OR schoolClass.academicYear = :academicYear)
+              AND (:grade IS NULL OR schoolClass.grade = :grade)
+              AND (:keyword IS NULL
+                   OR LOCATE(LOWER(:keyword), LOWER(schoolClass.name)) > 0)
+            ORDER BY schoolClass.displayOrder ASC, schoolClass.id ASC
+            """)
+    List<MemberSchoolClass> findAllForClassList(
+            @Param("teacherId") Long teacherId,
+            @Param("academicYear") Short academicYear,
+            @Param("grade") Short grade,
+            @Param("keyword") String keyword);
 
     /** 반 ID로 삭제되지 않은 반을 조회한다. */
     Optional<MemberSchoolClass> findByIdAndDeletedAtIsNull(Long id);

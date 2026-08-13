@@ -75,9 +75,10 @@ public class MemberSchoolClass {
         return new MemberSchoolClass(academicYear, grade, name, homeroomTeacher, displayOrder);
     }
 
-    public void update(String name, int displayOrder) {
+    public void updateDetails(short academicYear, short grade, String name) {
+        this.academicYear = academicYear;
+        this.grade = grade;
         this.name = name;
-        this.displayOrder = displayOrder;
     }
 
     public void changeDisplayOrder(int displayOrder) {
