@@ -7,7 +7,7 @@ import java.util.Set;
 
 import com.cenedu.backend.domain.problem.dto.request.AssessmentGenerationItemRequest;
 import com.cenedu.backend.domain.problem.dto.request.AssessmentGenerationRequest;
-import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionResponse;
+import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionDetailResponse;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
@@ -29,14 +29,15 @@ public class AssessmentGenerationService {
         );
 
     private final ProblemQuestionSelector problemQuestionSelector;
+    private final ProblemQuestionDetailService problemQuestionDetailService;
 
     /**
-     * 종합평가 출제 조건에 맞는 문항을 중복 없이 선택한다.
+     * 종합평가 조건에 맞는 문항을 중복 없이 선택하고 상세 정보를 반환한다.
      */
-    public List<ProblemQuestionResponse> generate(
+    public List<ProblemQuestionDetailResponse> generate(
         AssessmentGenerationRequest request
     ) {
-        List<ProblemQuestionResponse> responses =
+        List<ProblemQuestion> allSelectedQuestions =
             new ArrayList<>();
 
         Set<Long> selectedQuestionIds =
@@ -56,14 +57,14 @@ public class AssessmentGenerationService {
 
             for (ProblemQuestion question : selectedQuestions) {
                 selectedQuestionIds.add(question.getId());
-
-                responses.add(
-                    ProblemQuestionResponse.from(question)
-                );
             }
+
+            allSelectedQuestions.addAll(selectedQuestions);
         }
 
-        return responses;
+        return problemQuestionDetailService.getDetails(
+            allSelectedQuestions
+        );
     }
 
     /**

@@ -7,7 +7,7 @@ import java.util.Set;
 
 import com.cenedu.backend.domain.problem.dto.request.ProblemGenerationItemRequest;
 import com.cenedu.backend.domain.problem.dto.request.ProblemGenerationRequest;
-import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionResponse;
+import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionDetailResponse;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import lombok.RequiredArgsConstructor;
@@ -20,14 +20,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProblemGenerationService {
 
     private final ProblemQuestionSelector problemQuestionSelector;
+    private final ProblemQuestionDetailService problemQuestionDetailService;
 
     /**
-     * 학습 문제 생성 조건에 맞는 STEP_FILL 문항을 중복 없이 선택한다.
+     * 학습 문제 생성 조건에 맞는 STEP_FILL 문항을 중복 없이 선택하고 상세 정보를 반환한다.
      */
-    public List<ProblemQuestionResponse> generate(
+    public List<ProblemQuestionDetailResponse> generate(
         ProblemGenerationRequest request
     ) {
-        List<ProblemQuestionResponse> responses =
+        List<ProblemQuestion> allSelectedQuestions =
             new ArrayList<>();
 
         Set<Long> selectedQuestionIds =
@@ -45,12 +46,13 @@ public class ProblemGenerationService {
 
             for (ProblemQuestion question : selectedQuestions) {
                 selectedQuestionIds.add(question.getId());
-                responses.add(
-                    ProblemQuestionResponse.from(question)
-                );
             }
+
+            allSelectedQuestions.addAll(selectedQuestions);
         }
 
-        return responses;
+        return problemQuestionDetailService.getDetails(
+            allSelectedQuestions
+        );
     }
 }

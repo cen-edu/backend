@@ -3,7 +3,7 @@ package com.cenedu.backend.domain.problem.controller;
 import java.util.List;
 
 import com.cenedu.backend.domain.problem.dto.request.ProblemGenerationRequest;
-import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionResponse;
+import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionDetailResponse;
 import com.cenedu.backend.domain.problem.service.ProblemGenerationService;
 import com.cenedu.backend.global.common.ApiResponse;
 import com.cenedu.backend.global.security.AuthenticatedUser;
@@ -26,7 +26,7 @@ public class ProblemGenerationController {
      * 학습 문제 생성 조건에 맞는 STEP_FILL 문항을 조회한다.
      */
     @PostMapping("/generate")
-    public ApiResponse<List<ProblemQuestionResponse>> generate(
+    public ApiResponse<List<ProblemQuestionDetailResponse>> generate(
         @Valid
         @RequestBody
         ProblemGenerationRequest request,
@@ -34,7 +34,7 @@ public class ProblemGenerationController {
         @AuthenticationPrincipal
         AuthenticatedUser user
     ) {
-        List<ProblemQuestionResponse> response =
+        List<ProblemQuestionDetailResponse> response =
             problemGenerationService.generate(request);
 
         return ApiResponse.success(response);

@@ -3,7 +3,7 @@ package com.cenedu.backend.domain.problem.controller;
 import java.util.List;
 
 import com.cenedu.backend.domain.problem.dto.request.AssessmentGenerationRequest;
-import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionResponse;
+import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionDetailResponse;
 import com.cenedu.backend.domain.problem.service.AssessmentGenerationService;
 import com.cenedu.backend.global.common.ApiResponse;
 import com.cenedu.backend.global.security.AuthenticatedUser;
@@ -26,7 +26,7 @@ public class AssessmentGenerationController {
      * 종합평가 생성 조건에 맞는 문항을 조회한다.
      */
     @PostMapping("/generate")
-    public ApiResponse<List<ProblemQuestionResponse>> generate(
+    public ApiResponse<List<ProblemQuestionDetailResponse>> generate(
         @Valid
         @RequestBody
         AssessmentGenerationRequest request,
@@ -34,7 +34,7 @@ public class AssessmentGenerationController {
         @AuthenticationPrincipal
         AuthenticatedUser user
     ) {
-        List<ProblemQuestionResponse> response =
+        List<ProblemQuestionDetailResponse> response =
             assessmentGenerationService.generate(request);
 
         return ApiResponse.success(response);
