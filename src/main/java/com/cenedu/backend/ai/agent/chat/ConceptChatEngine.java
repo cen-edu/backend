@@ -72,8 +72,14 @@ public class ConceptChatEngine {
         ConceptChatResult.KeywordParse parse;
         List<String> keywords;
 
+        Long subUnitId = subUnitId(request.payload());
+
+        // 소단원 개념 이름을 추출 프롬프트에 참고로 넣는다. 실제 개념명을 보여 주면 DB 에 없는
+        // 이름을 지어내는 일이 줄어든다. 그래서 이름 목록 조회가 키워드 추출보다 앞선다.
+        List<String> subUnitConceptNames = conceptQueryService.findSubUnitConceptNames(subUnitId);
+
         LlmResponse extraction = llmClient.complete(
-                ConceptChatPrompts.KEYWORD_EXTRACTION,
+                ConceptChatPrompts.keywordExtraction(subUnitConceptNames),
                 // 히스토리를 넣지 않는다. 직전 질문의 키워드가 섞이면 이번 질문의 추출이 흐려진다.
                 List.of(ChatMessage.user(request.userInput())),
                 KEYWORD_SEED);
@@ -81,8 +87,10 @@ public class ConceptChatEngine {
         keywords = parsed.keywords();
         parse = parsed.parse();
 
-        ConceptContext context = conceptQueryService.buildContext(
-                subUnitId(request.payload()), keywords);
+        // buildContext 가 이름 목록을 한 번 더 읽는다. 그 중복을 의도적으로 둔다 —
+        // 없애려면 "근거가 없으면 LLM 을 부르지 않는다" 판정을 여기로 복제해야 하는데,
+        // 그 불변식은 한 곳에만 있어야 한다. 조회 한 번은 3~5ms 다.
+        ConceptContext context = conceptQueryService.buildContext(subUnitId, keywords);
 
         // 질문·컨텍스트·답변 본문은 남기지 않는다. 학생 입력과 시험 문항이 로그로 나가면
         // 정답 유출 정책이 무너진다. 개수와 길이만으로도 대부분의 추적은 된다.
