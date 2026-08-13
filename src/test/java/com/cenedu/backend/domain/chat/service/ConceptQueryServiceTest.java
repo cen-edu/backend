@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 
+import com.cenedu.backend.domain.chat.dto.response.ConceptCandidate;
 import com.cenedu.backend.domain.chat.dto.response.ConceptContext;
 import com.cenedu.backend.domain.chat.dto.response.ConceptView;
 import com.cenedu.backend.domain.chat.entity.ChatConcept;
+import com.cenedu.backend.domain.chat.entity.enums.GradeBand;
 import com.cenedu.backend.domain.chat.repository.ChatConceptPrereqRepository;
 import com.cenedu.backend.domain.chat.repository.ChatConceptRepository;
 import com.cenedu.backend.support.PostgresTestcontainer;
@@ -161,10 +163,10 @@ class ConceptQueryServiceTest {
     @Test
     @DisplayName("7. 이름으로 개념을 찾는다")
     void searchByName() {
-        List<ChatConcept> found = conceptQueryService.searchConcepts(List.of("맞꼭지각"), 5);
+        List<ConceptCandidate> found = conceptQueryService.searchConcepts(List.of("맞꼭지각"), 5);
 
         assertThat(found).isNotEmpty();
-        assertThat(found).allMatch(concept -> concept.getName().contains("맞꼭지각"));
+        assertThat(found).allMatch(concept -> concept.name().contains("맞꼭지각"));
     }
 
     /**
@@ -174,12 +176,12 @@ class ConceptQueryServiceTest {
     @Test
     @DisplayName("8. 뒤 키워드도 전부 시도해 결과를 합친다")
     void mergesEveryKeyword() {
-        List<ChatConcept> firstOnly = conceptQueryService.searchConcepts(List.of("제곱"), 5);
-        List<ChatConcept> merged = conceptQueryService.searchConcepts(List.of("제곱", "지수"), 5);
+        List<ConceptCandidate> firstOnly = conceptQueryService.searchConcepts(List.of("제곱"), 5);
+        List<ConceptCandidate> merged = conceptQueryService.searchConcepts(List.of("제곱", "지수"), 5);
 
         assertThat(firstOnly).isNotEmpty()
-                .noneMatch(concept -> concept.getName().equals("지수"));
-        assertThat(merged).anyMatch(concept -> concept.getName().equals("지수"));
+                .noneMatch(concept -> concept.name().equals("지수"));
+        assertThat(merged).anyMatch(concept -> concept.name().equals("지수"));
     }
 
     @Test
@@ -192,9 +194,9 @@ class ConceptQueryServiceTest {
     @DisplayName("13. 이름이 정확히 일치하는 개념이 1위다 — 부분 일치가 앞을 채우지 않는다")
     void exactNameRanksFirst() {
         // 정렬 전에는 '다항식'·'단항식' 이 앞을 채워 '항' 이 상위 5건 밖으로 밀렸다.
-        assertThat(conceptQueryService.searchConcepts(List.of("항"), 5).get(0).getName())
+        assertThat(conceptQueryService.searchConcepts(List.of("항"), 5).get(0).name())
                 .isEqualTo("항");
-        assertThat(conceptQueryService.searchConcepts(List.of("인수"), 5).get(0).getName())
+        assertThat(conceptQueryService.searchConcepts(List.of("인수"), 5).get(0).name())
                 .isEqualTo("인수");
     }
 
@@ -207,7 +209,7 @@ class ConceptQueryServiceTest {
     @Test
     @DisplayName("14. 뒤쪽 키워드의 완전일치가 앞쪽 키워드의 부분일치를 이긴다")
     void exactMatchBeatsEarlierPartialMatch() {
-        assertThat(conceptQueryService.searchConcepts(List.of("소인수", "지수"), 5).get(0).getName())
+        assertThat(conceptQueryService.searchConcepts(List.of("소인수", "지수"), 5).get(0).name())
                 .isEqualTo("지수");
     }
 
@@ -219,11 +221,11 @@ class ConceptQueryServiceTest {
     @Test
     @DisplayName("15. 등급이 다르면 키워드 순서를 바꿔도 1위가 같다")
     void rankingIsIndependentOfKeywordOrderAcrossGrades() {
-        List<ChatConcept> forward = conceptQueryService.searchConcepts(List.of("소인수", "지수"), 5);
-        List<ChatConcept> reversed = conceptQueryService.searchConcepts(List.of("지수", "소인수"), 5);
+        List<ConceptCandidate> forward = conceptQueryService.searchConcepts(List.of("소인수", "지수"), 5);
+        List<ConceptCandidate> reversed = conceptQueryService.searchConcepts(List.of("지수", "소인수"), 5);
 
-        assertThat(forward.get(0).getName()).isEqualTo("지수");
-        assertThat(reversed.get(0).getName()).isEqualTo("지수");
+        assertThat(forward.get(0).name()).isEqualTo("지수");
+        assertThat(reversed.get(0).name()).isEqualTo("지수");
     }
 
     /**
@@ -235,9 +237,9 @@ class ConceptQueryServiceTest {
     @Test
     @DisplayName("16. 접미 일치가 접두 일치보다 앞선다")
     void suffixMatchOutranksPrefixMatch() {
-        assertThat(conceptQueryService.searchConcepts(List.of("최대공약수"), 5).get(0).getName())
+        assertThat(conceptQueryService.searchConcepts(List.of("최대공약수"), 5).get(0).name())
                 .isEqualTo("공약수와 최대공약수");
-        assertThat(conceptQueryService.searchConcepts(List.of("표"), 5).get(0).getName())
+        assertThat(conceptQueryService.searchConcepts(List.of("표"), 5).get(0).name())
                 .isEqualTo("도수분포표");
     }
 
@@ -251,9 +253,9 @@ class ConceptQueryServiceTest {
     @Test
     @DisplayName("16-2. 완전일치가 여럿이면 앞선 키워드에 맞은 개념이 1위다")
     void earlierKeywordWinsAmongExactMatches() {
-        assertThat(conceptQueryService.searchConcepts(List.of("소인수분해", "약수"), 5).get(0).getName())
+        assertThat(conceptQueryService.searchConcepts(List.of("소인수분해", "약수"), 5).get(0).name())
                 .isEqualTo("소인수분해");
-        assertThat(conceptQueryService.searchConcepts(List.of("이항", "항"), 5).get(0).getName())
+        assertThat(conceptQueryService.searchConcepts(List.of("이항", "항"), 5).get(0).name())
                 .isEqualTo("이항");
     }
 
@@ -280,8 +282,8 @@ class ConceptQueryServiceTest {
         assertThat(conceptQueryService.searchConcepts(List.of(), 5)).isEmpty();
     }
 
-    private static List<Long> ids(List<ChatConcept> concepts) {
-        return concepts.stream().map(ChatConcept::getId).toList();
+    private static List<Long> ids(List<ConceptCandidate> concepts) {
+        return concepts.stream().map(ConceptCandidate::id).toList();
     }
 
     @Test
@@ -323,5 +325,97 @@ class ConceptQueryServiceTest {
         assertThat(context.anchor().hop()).isZero();
         assertThat(context.concepts()).hasSize(4);
         assertThat(context.subUnitConceptNames()).isNotEmpty();
+    }
+
+    // ===== task_14 도구 전수 검증 =====
+
+    /**
+     * 455개 이름 각각으로 자기 자신을 찾을 수 있어야 한다. <b>21건은 못 찾는다.</b>
+     *
+     * <p>원인은 PostgreSQL 의 {@code LIKE} 기본 이스케이프 문자가 백슬래시라는 것이다.
+     * 개념명에 든 {@code \times}·{@code \frac} 같은 LaTeX 와 리터럴 {@code \n} 이 패턴에서는
+     * 이스케이프로 해석되어 {@code times}·{@code n} 이 되고, 저장된 값과 어긋난다.
+     * 키워드를 {@code ILIKE '%'||:keyword||'%'} 에 그대로 넣으면서 {@code \}·{@code %}·{@code _}
+     * 를 이스케이프하지 않는 탓이다.
+     *
+     * <p><b>고치지 않고 현실을 고정한다</b>(task_14 는 SQL 결함을 보고만 한다). 이 단언은 두 방향을
+     * 모두 잡는다 — 못 찾는 개념이 늘면 회귀이고, 21건이 0건이 되면 누군가 이스케이프를 넣은 것이라
+     * 그때 이 테스트가 그 변경을 드러낸다.
+     */
+    @Test
+    @DisplayName("20. 도구1 — 백슬래시가 든 21건을 뺀 434개는 자기 이름으로 검색된다")
+    void everyConceptIsFoundByItsOwnNameExceptBackslashNames() {
+        List<String> missed = chatConceptRepository.findAll().stream()
+                .filter(concept -> conceptQueryService.searchConcepts(List.of(concept.getName()), 5).stream()
+                        .noneMatch(found -> found.id().equals(concept.getId())))
+                .map(ChatConcept::getName)
+                .toList();
+
+        assertThat(missed).hasSize(21);
+        assertThat(missed).allMatch(name -> name.contains("\\"));
+        assertThat(chatConceptRepository.findAll().stream()
+                .filter(concept -> concept.getName().contains("\\"))
+                .count()).isEqualTo(21);
+    }
+
+    /**
+     * ILIKE 와일드카드가 이스케이프되지 않으면 {@code %} 하나로 455행이 통째로 나온다.
+     * 루프가 붙으면 LLM 이 임의 문자열을 넣으므로 정의된 동작인지 확인해 둔다.
+     */
+    @Test
+    @DisplayName("21. 도구1 — 빈 문자열·공백·와일드카드 입력의 동작이 정의되어 있다")
+    void handlesDegenerateKeywords() {
+        assertThat(conceptQueryService.searchConcepts(List.of(""), 5)).isEmpty();
+        assertThat(conceptQueryService.searchConcepts(List.of("   "), 5)).isEmpty();
+        assertThat(conceptQueryService.searchConcepts(List.of(), 5)).isEmpty();
+
+        // %·_ 는 이스케이프되지 않는다. 상한(limit)이 유일한 방어다.
+        assertThat(conceptQueryService.searchConcepts(List.of("%"), 5)).hasSize(5);
+        assertThat(conceptQueryService.searchConcepts(List.of("_"), 5)).hasSize(5);
+    }
+
+    /** 이름이 같은 개념이 학년대별로 나뉘어 있다. 반환에 gradeBand 가 있어야 호출부가 구분한다. */
+    @Test
+    @DisplayName("22. 도구1 — 동명 개념을 gradeBand 로 구분할 수 있다")
+    void distinguishesSameNameByGradeBand() {
+        List<ConceptCandidate> found = conceptQueryService.searchConcepts(List.of("공약수"), 5);
+
+        assertThat(found).extracting(ConceptCandidate::name).contains("공약수");
+        assertThat(found).extracting(ConceptCandidate::gradeBand).isNotEmpty();
+        // 중1 개념만 소단원에 매달린다. 초등 개념은 subUnitId 가 null 이다.
+        assertThat(found).allSatisfy(candidate ->
+                assertThat(candidate.subUnitId() == null)
+                        .isEqualTo(candidate.gradeBand() == GradeBand.ELEMENTARY));
+    }
+
+    /** 확장 결과에 본문이 실린다. 검색 후보에는 본문이 없다 — 두 도구의 역할이 갈리는 지점이다. */
+    @Test
+    @DisplayName("23. 도구2 — elem_hop 상한이 초등 개념 주입량을 바꾼다")
+    void elemHopCapChangesInjection() {
+        int cap0 = conceptQueryService.expandPrereqs(ANCHOR_OMIT_MULTIPLY, 10, (short) 0).size();
+        int cap1 = conceptQueryService.expandPrereqs(ANCHOR_OMIT_MULTIPLY, 10, (short) 1).size();
+        int cap2 = conceptQueryService.expandPrereqs(ANCHOR_OMIT_MULTIPLY, 10, (short) 2).size();
+
+        assertThat(cap0).isLessThanOrEqualTo(cap1);
+        assertThat(cap1).isLessThanOrEqualTo(cap2);
+        assertThat(cap1).isEqualTo(28);
+    }
+
+    /** 개념 0건인 소단원이 하나 있다. 그 경로가 살아 있어야 빈 컨텍스트 분기가 검증된다. */
+    @Test
+    @DisplayName("24. 도구3 — 18개 소단원 중 개념 0건인 곳은 그래프 소단원 하나뿐이다")
+    void onlyOneSubUnitHasNoConcept() {
+        List<Long> subUnitIds = entityManager.createQuery(
+                        "SELECT u.id FROM CurriculumUnit u WHERE u.unitLevel = 'SUB_UNIT'", Long.class)
+                .getResultList();
+
+        assertThat(subUnitIds).hasSize(18);
+
+        long emptyUnits = subUnitIds.stream()
+                .filter(id -> conceptQueryService.findSubUnitConceptNames(id).isEmpty())
+                .count();
+
+        assertThat(emptyUnits).isEqualTo(1);
+        assertThat(conceptQueryService.findSubUnitConceptNames(subUnitId(KEY_GRAPH_READING))).isEmpty();
     }
 }
