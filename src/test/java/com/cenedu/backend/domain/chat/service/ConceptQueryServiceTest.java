@@ -167,22 +167,93 @@ class ConceptQueryServiceTest {
         assertThat(found).allMatch(concept -> concept.getName().contains("맞꼭지각"));
     }
 
+    /**
+     * 이 테스트는 <b>기대값을 뒤집은 것</b>이다. 예전에는 "첫 키워드가 걸리면 뒤는 시도하지 않는다"
+     * 를 단언했는데, 그 규칙이 task_08 에서 답을 망쳐 폐기했다(task_09). 회귀가 아니라 계약 변경이다.
+     */
     @Test
-    @DisplayName("8. 첫 키워드가 결과를 내면 뒤 키워드는 시도하지 않는다")
-    void stopsAtFirstHittingKeyword() {
+    @DisplayName("8. 뒤 키워드도 전부 시도해 결과를 합친다")
+    void mergesEveryKeyword() {
         List<ChatConcept> firstOnly = conceptQueryService.searchConcepts(List.of("제곱"), 5);
-        List<ChatConcept> withFallback =
-                conceptQueryService.searchConcepts(List.of("제곱", "거듭제곱"), 5);
+        List<ChatConcept> merged = conceptQueryService.searchConcepts(List.of("제곱", "지수"), 5);
 
-        assertThat(firstOnly).isNotEmpty();
-        assertThat(withFallback.stream().map(ChatConcept::getId).toList())
-                .isEqualTo(firstOnly.stream().map(ChatConcept::getId).toList());
+        assertThat(firstOnly).isNotEmpty()
+                .noneMatch(concept -> concept.getName().equals("지수"));
+        assertThat(merged).anyMatch(concept -> concept.getName().equals("지수"));
     }
 
     @Test
     @DisplayName("9. 어떤 키워드도 걸리지 않으면 빈 리스트다")
     void returnsEmptyWhenNoKeywordHits() {
         assertThat(conceptQueryService.searchConcepts(List.of("존재하지않는개념xyz"), 5)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("13. 이름이 정확히 일치하는 개념이 1위다 — 부분 일치가 앞을 채우지 않는다")
+    void exactNameRanksFirst() {
+        // 정렬 전에는 '다항식'·'단항식' 이 앞을 채워 '항' 이 상위 5건 밖으로 밀렸다.
+        assertThat(conceptQueryService.searchConcepts(List.of("항"), 5).get(0).getName())
+                .isEqualTo("항");
+        assertThat(conceptQueryService.searchConcepts(List.of("인수"), 5).get(0).getName())
+                .isEqualTo("인수");
+    }
+
+    @Test
+    @DisplayName("14. 완전일치가 키워드 순서를 이긴다")
+    void exactMatchBeatsKeywordOrder() {
+        assertThat(conceptQueryService.searchConcepts(List.of("거듭제곱", "지수"), 5).get(0).getName())
+                .isEqualTo("지수");
+    }
+
+    @Test
+    @DisplayName("15. 키워드 순서를 바꿔도 1위가 같다")
+    void rankingIsIndependentOfKeywordOrder() {
+        List<ChatConcept> forward = conceptQueryService.searchConcepts(List.of("거듭제곱", "지수"), 5);
+        List<ChatConcept> reversed = conceptQueryService.searchConcepts(List.of("지수", "거듭제곱"), 5);
+
+        assertThat(ids(reversed)).isEqualTo(ids(forward));
+    }
+
+    /**
+     * 접미 일치를 접두 일치보다 위에 둔 규칙을 고정한다.
+     *
+     * <p>이 두 건이 근거다. 접두를 먼저 두면 {@code 최대공약수의 활용}·{@code 표와 그래프로 나타내기}
+     * 가 1위가 되어 task_05 대비 나빠진다(실측).
+     */
+    @Test
+    @DisplayName("16. 접미 일치가 접두 일치보다 앞선다")
+    void suffixMatchOutranksPrefixMatch() {
+        assertThat(conceptQueryService.searchConcepts(List.of("최대공약수"), 5).get(0).getName())
+                .isEqualTo("공약수와 최대공약수");
+        assertThat(conceptQueryService.searchConcepts(List.of("표"), 5).get(0).getName())
+                .isEqualTo("도수분포표");
+    }
+
+    @Test
+    @DisplayName("17. 두 키워드가 같은 개념을 잡아도 결과에 한 번만 담긴다")
+    void mergedResultHasNoDuplicate() {
+        List<Long> merged = ids(conceptQueryService.searchConcepts(List.of("소인수분해", "인수"), 5));
+
+        assertThat(merged).doesNotHaveDuplicates();
+    }
+
+    @Test
+    @DisplayName("18. 같은 호출을 두 번 해도 순서가 같다")
+    void rankingIsReproducible() {
+        List<String> keywords = List.of("각", "점");
+
+        assertThat(ids(conceptQueryService.searchConcepts(keywords, 5)))
+                .isEqualTo(ids(conceptQueryService.searchConcepts(keywords, 5)));
+    }
+
+    @Test
+    @DisplayName("19. 빈 키워드 목록이면 빈 리스트다")
+    void returnsEmptyForEmptyKeywords() {
+        assertThat(conceptQueryService.searchConcepts(List.of(), 5)).isEmpty();
+    }
+
+    private static List<Long> ids(List<ChatConcept> concepts) {
+        return concepts.stream().map(ChatConcept::getId).toList();
     }
 
     @Test
