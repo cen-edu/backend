@@ -8,6 +8,7 @@ import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 
 import com.openai.client.OpenAIClient;
+import com.openai.core.JsonValue;
 import com.openai.errors.OpenAIException;
 import com.openai.models.ReasoningEffort;
 import com.openai.models.chat.completions.ChatCompletion;
@@ -37,8 +38,8 @@ public class OpenAiLlmClient implements LlmClient {
     }
 
     @Override
-    public LlmResponse complete(String systemPrompt, List<ChatMessage> messages) {
-        ChatCompletionCreateParams params = buildParams(systemPrompt, messages);
+    public LlmResponse complete(String systemPrompt, List<ChatMessage> messages, Long seed) {
+        ChatCompletionCreateParams params = buildParams(systemPrompt, messages, seed);
 
         long startedAt = System.nanoTime();
         ChatCompletion completion;
@@ -84,11 +85,17 @@ public class OpenAiLlmClient implements LlmClient {
         return new LlmResponse(text, promptTokens, completionTokens, reasoningTokens);
     }
 
-    private ChatCompletionCreateParams buildParams(String systemPrompt, List<ChatMessage> messages) {
+    private ChatCompletionCreateParams buildParams(String systemPrompt, List<ChatMessage> messages, Long seed) {
         ChatCompletionCreateParams.Builder builder = ChatCompletionCreateParams.builder()
                 .model(properties.model())
                 .reasoningEffort(ReasoningEffort.of(properties.reasoningEffort()))
                 .maxCompletionTokens(properties.maxCompletionTokens());
+
+        if (seed != null) {
+            // SDK 의 seed() 는 @Deprecated 라 프로덕션 코드에 억제 애너테이션이 붙는다.
+            // 본문 프로퍼티로 직접 넣어 그 자국을 남기지 않는다. 보내는 JSON 은 같다.
+            builder.putAdditionalBodyProperty("seed", JsonValue.from(seed));
+        }
 
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             builder.addSystemMessage(systemPrompt);

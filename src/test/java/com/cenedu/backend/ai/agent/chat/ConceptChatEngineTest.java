@@ -182,6 +182,18 @@ class ConceptChatEngineTest {
         assertThat(llmClient.messages.get(1)).hasSize(3);
     }
 
+    @Test
+    @DisplayName("키워드 추출에는 고정 시드를 주고 답변 생성에는 주지 않는다")
+    void seedsOnlyKeywordExtraction() {
+        llmClient.enqueue("[\"맞꼭지각\"]", "답변");
+        givenContext(contextWithAnchor());
+
+        engine.answer(request("맞꼭지각이 뭐야?", Map.of()));
+
+        assertThat(llmClient.seeds.get(0)).isNotNull();
+        assertThat(llmClient.seeds.get(1)).isNull();
+    }
+
     private void givenContext(ConceptContext context) {
         when(conceptQueryService.buildContext(any(), anyList())).thenReturn(context);
     }
@@ -208,15 +220,17 @@ class ConceptChatEngineTest {
         private final Deque<String> texts = new ArrayDeque<>();
         private final List<String> systemPrompts = new ArrayList<>();
         private final List<List<ChatMessage>> messages = new ArrayList<>();
+        private final List<Long> seeds = new ArrayList<>();
 
         void enqueue(String... responses) {
             texts.addAll(List.of(responses));
         }
 
         @Override
-        public LlmResponse complete(String systemPrompt, List<ChatMessage> chatMessages) {
+        public LlmResponse complete(String systemPrompt, List<ChatMessage> chatMessages, Long seed) {
             systemPrompts.add(systemPrompt);
             messages.add(List.copyOf(chatMessages));
+            seeds.add(seed);
             String text = texts.poll();
             if (text == null) {
                 throw new IllegalStateException("예상하지 않은 LLM 호출입니다. 호출 횟수를 확인하세요.");

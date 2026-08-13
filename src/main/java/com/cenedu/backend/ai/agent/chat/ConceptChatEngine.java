@@ -48,6 +48,15 @@ public class ConceptChatEngine {
     private static final TypeReference<List<String>> KEYWORD_LIST = new TypeReference<>() {
     };
 
+    /**
+     * 키워드 추출에만 고정 시드를 준다. 이 호출은 자연어 답변이 아니라 <b>도구 호출</b>이라,
+     * 같은 질문에 같은 키워드가 나오는 편이 낫다. 답변 생성에는 주지 않는다.
+     *
+     * <p>측정에서 흔들림이 컸던 것이 계기다 — 같은 39턴을 두 번 돌렸더니 16턴의 키워드가 달랐고
+     * 그중 5턴은 도달 여부까지 뒤집혔다. 값 자체에 의미는 없고, 고정되어 있다는 것만 중요하다.
+     */
+    private static final long KEYWORD_SEED = 7L;
+
     private final LlmClient llmClient;
     private final ConceptQueryService conceptQueryService;
     private final ObjectMapper objectMapper;
@@ -66,7 +75,8 @@ public class ConceptChatEngine {
         LlmResponse extraction = llmClient.complete(
                 ConceptChatPrompts.KEYWORD_EXTRACTION,
                 // 히스토리를 넣지 않는다. 직전 질문의 키워드가 섞이면 이번 질문의 추출이 흐려진다.
-                List.of(ChatMessage.user(request.userInput())));
+                List.of(ChatMessage.user(request.userInput())),
+                KEYWORD_SEED);
         Parsed parsed = parseKeywords(extraction.text());
         keywords = parsed.keywords();
         parse = parsed.parse();
