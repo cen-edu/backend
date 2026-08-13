@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 
 import com.cenedu.backend.domain.member.dto.request.ClassStudentCandidateListRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassCreateRequest;
+import com.cenedu.backend.domain.member.dto.request.SchoolClassDeleteRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassListRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassOrderUpdateRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassUpdateRequest;
@@ -163,6 +164,27 @@ public class SchoolClassService {
         );
 
         return SchoolClassDetailResponse.from(schoolClass, studentProfiles);
+    }
+
+    /** 선택한 교사 소유 활성 반을 소프트 삭제하고 남은 반의 표시 순서를 정리한다. */
+    @Transactional
+    public void deleteClasses(long teacherId, SchoolClassDeleteRequest request) {
+        getRequiredTeacher(teacherId);
+        List<Long> classIds = request.classIds();
+        if (new HashSet<>(classIds).size() != classIds.size()) {
+            throw new BusinessException(ErrorCode.MEMBER_SCHOOL_CLASS_IDS_DUPLICATED);
+        }
+
+        List<MemberSchoolClass> schoolClasses = classIds.stream()
+                .map(classId -> getOwnedClass(teacherId, classId))
+                .toList();
+        schoolClasses.forEach(MemberSchoolClass::delete);
+
+        List<MemberSchoolClass> remainingClasses = schoolClassRepository
+                .findAllByHomeroomTeacherIdAndDeletedAtIsNullOrderByDisplayOrderAscIdAsc(teacherId);
+        for (int displayOrder = 0; displayOrder < remainingClasses.size(); displayOrder++) {
+            remainingClasses.get(displayOrder).changeDisplayOrder(displayOrder);
+        }
     }
 
     /** 전달된 최종 ID 순서대로 교사 소유 활성 반의 표시 순서를 다시 매긴다. */
