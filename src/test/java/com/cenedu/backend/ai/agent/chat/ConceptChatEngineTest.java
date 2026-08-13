@@ -245,6 +245,40 @@ class ConceptChatEngineTest {
         assertThat(answerPrompt).contains("이름만 있고 설명이 없다");
     }
 
+    /**
+     * 프롬프트 문자열 검사라 약한 테스트다. 노리는 것은 동작 검증이 아니라
+     * <b>기존 규칙이 실수로 지워지는 것</b>을 막는 것이다. 규칙 하나가 사라져도
+     * 답변은 그럴듯해서 눈으로는 안 잡힌다.
+     */
+    @Test
+    @DisplayName("답변 프롬프트가 범위 밖 가능성 안내와 단정 금지를 함께 담는다")
+    void answerPromptGuidesOutOfScopeWithoutAsserting() {
+        llmClient.enqueue("[\"맞꼭지각\"]", "답변");
+        givenContext(contextWithAnchor());
+
+        engine.answer(request("맞꼭지각이 뭐야?", Map.of()));
+
+        assertThat(llmClient.systemPrompts.get(1))
+                .contains("아직 배우지 않는 내용이거나")
+                .contains("단정하지 않는다")
+                .contains("학년을 못 박는 문장은 쓰지 않는다");
+    }
+
+    @Test
+    @DisplayName("답변 프롬프트의 기존 규칙이 그대로 남아 있다")
+    void answerPromptKeepsExistingRules() {
+        llmClient.enqueue("[\"맞꼭지각\"]", "답변");
+        givenContext(contextWithAnchor());
+
+        engine.answer(request("맞꼭지각이 뭐야?", Map.of()));
+
+        assertThat(llmClient.systemPrompts.get(1))
+                .contains("있는 내용만 근거로 쓴다")        // 자료 제한
+                .contains("답을 직접 알려주지 않는다")      // 정답 미노출
+                .contains("LaTeX 표기를 그대로 쓴다")       // 수식 보존
+                .contains("이름만 있고 설명이 없다");       // 단원 목록 규칙
+    }
+
     @Test
     @DisplayName("키워드 추출에는 고정 시드를 주고 답변 생성에는 주지 않는다")
     void seedsOnlyKeywordExtraction() {
