@@ -177,6 +177,28 @@ domain/problem/
 
 디렉터리는 해당 클래스를 처음 만들 때 생성합니다. 미리 빈 폴더를 만들지 않습니다.
 
+### nullable 검색 파라미터와 문자열 함수
+
+JPQL에서 nullable 검색 파라미터를 `LOWER`, `LOCATE` 같은 문자열 함수에 직접 넣으면서
+같은 쿼리 안에서 `:keyword IS NULL`로 선택 조건을 만들지 않습니다.
+
+```java
+// X — keyword가 null이면 Hibernate/PostgreSQL이 파라미터를 bytea로 추론해
+//     "function lower(bytea) does not exist" 오류가 발생할 수 있다.
+AND (:keyword IS NULL
+     OR LOCATE(LOWER(:keyword), LOWER(entity.name)) > 0)
+
+// O — 서비스에서 null 여부를 판단하고 리포지토리 쿼리를 분리한다.
+if (keyword == null) {
+    repository.findAllWithoutKeyword(...);
+} else {
+    repository.findAllByKeyword(..., keyword);
+}
+```
+
+공백 검색어는 서비스에서 `null`로 정규화한 뒤 분기합니다. 검색어가 있는 쿼리에는
+null이 아닌 `String`만 전달하여 PostgreSQL이 문자열 함수의 인자 타입을 확실히 알게 합니다.
+
 ---
 
 ## 5. 에이전트 개발
