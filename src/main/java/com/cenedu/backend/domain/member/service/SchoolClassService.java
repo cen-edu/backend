@@ -81,14 +81,27 @@ public class SchoolClassService {
             SchoolClassListRequest request
     ) {
         getRequiredTeacher(teacherId);
-        return schoolClassRepository
-                .findAllForClassList(
-                        teacherId,
-                        toShort(request.academicYear()),
-                        toShort(request.grade()),
-                        normalizeKeyword(request.keyword())
-                )
-                .stream()
+        Short academicYear = toShort(request.academicYear());
+        Short grade = toShort(request.grade());
+        String keyword = normalizeKeyword(request.keyword());
+        List<MemberSchoolClass> schoolClasses;
+
+        if (keyword == null) {
+            schoolClasses = schoolClassRepository.findAllForClassList(
+                    teacherId,
+                    academicYear,
+                    grade
+            );
+        } else {
+            schoolClasses = schoolClassRepository.findAllForClassListByKeyword(
+                    teacherId,
+                    academicYear,
+                    grade,
+                    keyword
+            );
+        }
+
+        return schoolClasses.stream()
                 .map(schoolClass -> SchoolClassResponse.from(
                         schoolClass,
                         enrollmentRepository.countBySchoolClassIdAndStudentDeletedAtIsNull(
