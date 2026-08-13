@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -113,7 +114,8 @@ class ConceptChatEngineTest {
         ConceptChatResult result = engine.answer(request("약분이랑 통분 알려주세요", Map.of()));
 
         assertThat(llmClient.systemPrompts).hasSize(1);
-        assertThat(llmClient.systemPrompts.get(0)).isEqualTo(ConceptChatPrompts.KEYWORD_EXTRACTION);
+        assertThat(llmClient.systemPrompts.get(0))
+                .isEqualTo(ConceptChatPrompts.keywordExtraction(List.of()));
         assertThat(result.text()).isEqualTo(ConceptChatPrompts.NO_EVIDENCE_ANSWER);
         assertThat(result.generation()).isNull();
     }
@@ -180,6 +182,67 @@ class ConceptChatEngineTest {
 
         assertThat(llmClient.messages.get(0)).hasSize(1);
         assertThat(llmClient.messages.get(1)).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("소단원이 있으면 추출 프롬프트에 그 단원의 개념 이름을 참고로 넣는다")
+    void injectsSubUnitConceptNamesIntoExtraction() {
+        llmClient.enqueue("[\"맞꼭지각\"]", "답변");
+        when(conceptQueryService.findSubUnitConceptNames(SUB_UNIT_ID))
+                .thenReturn(List.of("맞꼭지각", "교각"));
+        givenContext(contextWithAnchor());
+
+        engine.answer(request("맞꼭지각이 뭐야?", Map.of("subUnitId", SUB_UNIT_ID)));
+
+        assertThat(llmClient.systemPrompts.get(0))
+                .contains("맞꼭지각, 교각")
+                .contains("목록에 없는 이름을 뽑아도 된다");
+    }
+
+    @Test
+    @DisplayName("소단원이 없으면 참고 목록 없이 진행한다")
+    void extractionWorksWithoutSubUnit() {
+        llmClient.enqueue("[\"절댓값\"]", "답변");
+        when(conceptQueryService.findSubUnitConceptNames(null)).thenReturn(List.of());
+        givenContext(contextWithAnchor());
+
+        ConceptChatResult result = engine.answer(request("절댓값이 뭐예요?", Map.of()));
+
+        assertThat(llmClient.systemPrompts.get(0)).doesNotContain("참고 —");
+        assertThat(result.text()).isEqualTo("답변");
+    }
+
+    /**
+     * buildContext 가 안에서 이름 목록을 한 번 더 읽는 것은 의도한 중복이다(엔진 주석 참고).
+     * 여기서 고정하는 것은 <b>엔진이 자기 몫으로는 한 번만 부른다</b>는 것이다.
+     */
+    @Test
+    @DisplayName("엔진은 소단원 이름 목록을 한 번만 조회한다")
+    void looksUpSubUnitNamesOnce() {
+        llmClient.enqueue("[\"맞꼭지각\"]", "답변");
+        when(conceptQueryService.findSubUnitConceptNames(SUB_UNIT_ID)).thenReturn(List.of("맞꼭지각"));
+        givenContext(contextWithAnchor());
+
+        engine.answer(request("맞꼭지각이 뭐야?", Map.of("subUnitId", SUB_UNIT_ID)));
+
+        verify(conceptQueryService, times(1)).findSubUnitConceptNames(SUB_UNIT_ID);
+    }
+
+    @Test
+    @DisplayName("답변 프롬프트의 단원 개념 목록은 이름만 담는다")
+    void subUnitSectionCarriesNamesOnly() {
+        llmClient.enqueue("[\"맞꼭지각\"]", "답변");
+        givenContext(contextWithAnchor());
+
+        engine.answer(request("맞꼭지각이 뭐야?", Map.of("subUnitId", SUB_UNIT_ID)));
+
+        String answerPrompt = llmClient.systemPrompts.get(1);
+        // 규칙 6 에서도 같은 머리말을 언급하므로 마지막 등장(실제 데이터 구역)을 잘라 본다.
+        String subUnitSection = answerPrompt.substring(answerPrompt.lastIndexOf("[이 단원의 개념 목록]"));
+        assertThat(subUnitSection).contains("맞꼭지각, 교각");
+        // 앵커 설명은 앞 구역에만 있어야 한다.
+        assertThat(subUnitSection).doesNotContain("마주 보는 두 각");
+        assertThat(answerPrompt).contains("이름만 있고 설명이 없다");
     }
 
     @Test
