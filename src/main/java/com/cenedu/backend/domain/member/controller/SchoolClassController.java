@@ -4,6 +4,7 @@ import java.util.List;
 
 import com.cenedu.backend.domain.member.dto.request.ClassStudentCandidateListRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassCreateRequest;
+import com.cenedu.backend.domain.member.dto.request.SchoolClassDeleteRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassListRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassOrderUpdateRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassUpdateRequest;
@@ -19,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -80,6 +82,15 @@ public class SchoolClassController {
     ) {
         return ApiResponse.success(
                 schoolClassService.updateClass(user.memberId(), classId, request));
+    }
+
+    @DeleteMapping
+    public ApiResponse<Void> deleteClasses(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody SchoolClassDeleteRequest request
+    ) {
+        schoolClassService.deleteClasses(user.memberId(), request);
+        return ApiResponse.successEmpty();
     }
 
     @PatchMapping("/order")

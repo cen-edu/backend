@@ -43,6 +43,8 @@ public enum ErrorCode {
             HttpStatus.BAD_REQUEST, "현재 교사가 소유한 전체 활성 반의 순서를 전달해야 합니다."),
     MEMBER_CLASS_STUDENT_IDS_DUPLICATED(
             HttpStatus.BAD_REQUEST, "중복된 학생 ID를 반에 배정할 수 없습니다."),
+    MEMBER_SCHOOL_CLASS_IDS_DUPLICATED(
+            HttpStatus.BAD_REQUEST, "중복된 반 ID를 삭제할 수 없습니다."),
 
     // ===== worksheet (배세빈) =====
 
