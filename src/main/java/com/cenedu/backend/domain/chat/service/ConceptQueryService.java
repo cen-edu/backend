@@ -12,7 +12,7 @@ import com.cenedu.backend.domain.chat.repository.ChatConceptRepository;
 import com.cenedu.backend.domain.chat.repository.ChatConceptRepository.ConceptHop;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Limit;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,26 +51,62 @@ public class ConceptQueryService {
     private final ChatConceptRepository chatConceptRepository;
 
     /**
-     * 키워드를 순서대로 두드려 결과가 나오는 첫 키워드에서 멈춘다.
+     * 키워드를 <b>전부</b> 두드려 결과를 합치고, 중복을 없앤 뒤 다시 순위를 매겨 돌려준다.
      *
-     * <p>복수로 받는 이유는 {@code ILIKE} 부분 일치의 한계다 — "제곱"으로는 {@code 지수} 를
-     * 못 찾으므로 상위가 {@code ["제곱","거듭제곱","지수"]} 처럼 넘기고 여기서 순차 재시도한다.
+     * <p>예전에는 결과가 나오는 첫 키워드에서 멈췄다. 그 규칙이 task_08 에서 실제로 답을 망쳤다 —
+     * "지수가 뭐예요?" 에 상위가 {@code ["거듭제곱","지수"]} 를 넘겼는데, {@code 거듭제곱} 이
+     * 먼저 걸리는 바람에 정작 완전일치인 {@code 지수} 는 시도조차 되지 않았다.
+     *
+     * <p><b>키워드 순서를 순위에 반영하지 않는다.</b> 상위 프롬프트가 "구체적인 것부터" 를
+     * 지시하지만 모델이 그 순서를 자주 어긴다. 순서를 믿는 대신 완전일치가 이기게 둔다.
+     *
+     * <p>키워드 수만큼 쿼리가 나가지만 455행이라 비용이 없다. 실측(테스트컨테이너)에서 한 호출이
+     * 3~21ms 였고, 키워드 2개짜리가 1개짜리보다 특별히 느리지도 않았다.
      */
-    public List<ChatConcept> searchConcepts(List<String> keywords, int limitPerKeyword) {
+    public List<ChatConcept> searchConcepts(List<String> keywords, int limit) {
         if (keywords == null || keywords.isEmpty()) {
             return List.of();
         }
+
+        List<String> usable = keywords.stream()
+                .filter(keyword -> keyword != null && !keyword.isBlank())
+                .toList();
+
+        Map<Long, ChatConcept> merged = new LinkedHashMap<>();
+        for (String keyword : usable) {
+            chatConceptRepository.searchByNameRanked(keyword, limit)
+                    .forEach(concept -> merged.putIfAbsent(concept.getId(), concept));
+        }
+
+        return merged.values().stream()
+                .sorted(Comparator.comparingInt((ChatConcept concept) -> matchGrade(concept.getName(), usable))
+                        .thenComparingInt(concept -> concept.getName().length())
+                        .thenComparing(ChatConcept::getId))
+                .limit(limit)
+                .toList();
+    }
+
+    /**
+     * 병합 후 순위. 리포지토리 쿼리의 {@code ORDER BY} 와 같은 기준을 자바에서 다시 적용한다.
+     *
+     * <p>완전일치 → 접미일치 → 접두일치 → 나머지. 접미를 접두보다 위에 두는 근거는
+     * {@code ChatConceptRepository.searchByNameRanked} 주석에 있다.
+     */
+    private static int matchGrade(String name, List<String> keywords) {
+        String lowerName = name.toLowerCase();
+        int grade = 3;
         for (String keyword : keywords) {
-            if (keyword == null || keyword.isBlank()) {
-                continue;
+            String lowerKeyword = keyword.toLowerCase();
+            if (lowerName.equals(lowerKeyword)) {
+                return 0;
             }
-            List<ChatConcept> found = chatConceptRepository
-                    .findByNameContainingIgnoreCase(keyword, Limit.of(limitPerKeyword));
-            if (!found.isEmpty()) {
-                return found;
+            if (lowerName.endsWith(lowerKeyword)) {
+                grade = Math.min(grade, 1);
+            } else if (lowerName.startsWith(lowerKeyword)) {
+                grade = Math.min(grade, 2);
             }
         }
-        return List.of();
+        return grade;
     }
 
     /** 앵커에서 선수 방향으로 확장한 개념을 hop 오름차순으로 돌려준다. hop 0 은 앵커 자신이다. */
