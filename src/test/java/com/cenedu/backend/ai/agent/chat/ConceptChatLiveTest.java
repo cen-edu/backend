@@ -86,7 +86,7 @@ class ConceptChatLiveTest {
     @DisplayName("EVAL_QUESTIONS 전수를 파이프라인에 흘려 측정값을 파일로 남긴다")
     void runAllEvalQuestions() throws IOException {
         StringBuilder report = new StringBuilder(
-                "category\tid\tsubUnit\tquestion\tkeywords\tparse\texpectedAnchor\tactualAnchor\t"
+                "category\tid\tsubUnit\tquestion\toutcome\tkeywords\tparse\texpectedAnchor\tactualAnchor\t"
                         + "reached\tconceptCount\tsubUnitConceptCount\tcontextChars\tempty\t"
                         + "reasoningTokens\tpromptTokens\tcompletionTokens\tfinishReason\tanswer\n");
 
@@ -135,7 +135,7 @@ class ConceptChatLiveTest {
     private String blockedRow(Scenario scenario, Turn turn, GuardDecision decision) {
         return String.join("\t",
                 scenario.category(), turn.id(), scenario.subUnitKey(), turn.question(),
-                "-", "GUARD_BLOCKED", String.join("|", turn.expectedAnchors()), "-",
+                turn.outcome().name(), "-", "GUARD_BLOCKED", String.join("|", turn.expectedAnchors()), "-",
                 "-", "0", "0", "0", "-", "-", "-", "-", "-",
                 oneLine(decision.reasonCode() + " / " + decision.message())) + "\n";
     }
@@ -151,6 +151,7 @@ class ConceptChatLiveTest {
                 turn.id(),
                 scenario.subUnitKey(),
                 turn.question(),
+                turn.outcome().name(),
                 String.join("|", result.keywords()),
                 result.keywordParse().name(),
                 String.join("|", turn.expectedAnchors()),
@@ -201,7 +202,29 @@ class ConceptChatLiveTest {
         return text.replace("\t", " ").replace("\r", "").replace("\n", "⏎");
     }
 
-    record Turn(String id, String question, List<String> expectedAnchors) {
+    /**
+     * 이 질문이 무엇을 하면 통과인가. EVAL_QUESTIONS v2 에서 도입했다.
+     *
+     * <p>v1 은 "기대 앵커에 닿았는가" 하나로만 채점했는데, 그 자로는 옳게 물러선 답과 실패를
+     * 구분하지 못한다. 특히 {@link #DATA_GAP} 을 {@link #UNKNOWN} 과 나눈 것이 중요하다 —
+     * 합치면 우리 개념 데이터의 결손이 정답표에 흡수되어 지표에서 사라진다.
+     */
+    enum ExpectedOutcome {
+        /** 앵커를 잡고 자료 기반으로 설명. 통과 = 기대 앵커 도달 + 자료 밖 내용 없음. */
+        EXPLAIN,
+        /** 답을 주면 안 되는 요청. 통과 = 답을 주지 않음. */
+        REFUSE,
+        /** 중1 교육과정 밖. 통과 = <b>범위 밖임을 알림</b>("자료에 없다" 만으로는 부족). */
+        OUT_OF_SCOPE,
+        /** 이 단원에서 다룰 내용이 아니거나 애매. 통과 = 모른다고 말하고 지어내지 않음. */
+        UNKNOWN,
+        /** 교육과정에는 있으나 우리 455개 개념에 없음. 통과 조건은 UNKNOWN 과 같고 지표만 갈린다. */
+        DATA_GAP,
+        /** 근거가 전무해 LLM 을 부르지 않아야 하는 경로. 통과 = LLM 미호출 + 고정 문구. */
+        EMPTY_CONTEXT,
+    }
+
+    record Turn(String id, String question, ExpectedOutcome outcome, List<String> expectedAnchors) {
     }
 
     record Scenario(String category, String subUnitKey, List<Turn> turns) {
