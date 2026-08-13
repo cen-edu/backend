@@ -5,6 +5,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -52,6 +53,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
         log.warn("Type mismatch: {}", e.getMessage());
         return toResponse(ErrorCode.INVALID_TYPE_VALUE, e.getName() + " 값의 타입이 올바르지 않습니다.");
+    }
+
+    /** multipart 요청이 서버의 이미지 크기 제한을 넘은 경우. */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceeded(
+            MaxUploadSizeExceededException e) {
+        log.warn("Upload size limit exceeded: {}", e.getMessage());
+        return toResponse(ErrorCode.IMAGE_TOO_LARGE);
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)

@@ -30,6 +30,7 @@ ext {
     springdocVersion = '3.1.0'
     swaggerAnnotationsVersion = '2.2.52'
     openaiVersion = '4.50.0'
+    awsSdkVersion = '2.49.6'
     archunitVersion = '1.5.0'
 }
 
@@ -39,6 +40,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // AWS s3
+    implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
+    implementation 'software.amazon.awssdk:s3'
 
     // 스키마 마이그레이션.
     // spring-boot-flyway 가 있어야 자동 설정이 붙는다. Boot 4 는 자동 설정을 기술별 모듈로

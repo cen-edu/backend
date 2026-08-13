@@ -81,4 +81,11 @@ public class ProblemAsset {
         return new ProblemAsset(question, assetKey, role, displayOrder, storageKey, widthPx,
                 heightPx, altText);
     }
+
+    /** 같은 이미지 자리에 새 원본을 저장했을 때 저장 위치와 크기를 갱신한다. */
+    public void replaceImage(String storageKey, int widthPx, int heightPx) {
+        this.storageKey = storageKey;
+        this.widthPx = widthPx;
+        this.heightPx = heightPx;
+    }
 }
