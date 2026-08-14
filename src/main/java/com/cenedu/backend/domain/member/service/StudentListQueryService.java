@@ -58,6 +58,19 @@ public class StudentListQueryService {
         return StudentListResponse.from(studentPage, students);
     }
 
+    /** 학생 ID 목록으로 이름을 반환한다. 존재하지 않는 ID는 결과에서 빠진다. */
+    public Map<Long, String> getStudentNamesByIds(long teacherId, List<Long> studentIds) {
+        if (studentIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return studentProfileRepository.findAllByUserIdIn(studentIds).stream()
+                .filter(profile -> profile.getOwnerTeacher().getId() == teacherId)
+                .filter(profile -> profile.getUser().getDeletedAt() == null)
+                .collect(Collectors.toMap(MemberStudentProfile::getUserId,
+                        profile -> profile.getUser().getName()));
+    }
+
     /** 조회된 학생들의 활성 반 배정을 학생 ID 기준으로 묶어 반환한다. */
     private Map<Long, List<MemberClassEnrollment>> getEnrollmentsByStudentId(
             long teacherId,
