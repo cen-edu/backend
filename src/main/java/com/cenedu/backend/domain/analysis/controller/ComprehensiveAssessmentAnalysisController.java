@@ -3,6 +3,7 @@ package com.cenedu.backend.domain.analysis.controller;
 import com.cenedu.backend.domain.analysis.dto.response.ComprehensiveAssessmentInsightsResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ComprehensiveAssessmentItemAchievementResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ScoreTimeDistributionResponse;
+import com.cenedu.backend.domain.analysis.dto.response.StudentComprehensiveAssessmentPerformanceResponse;
 import com.cenedu.backend.domain.analysis.service.ComprehensiveAssessmentQueryService;
 import com.cenedu.backend.global.common.ApiResponse;
 import com.cenedu.backend.global.security.AuthenticatedUser;
@@ -13,13 +14,24 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 종합평가 학급 분석 화면의 지표·문항 성취·점수 시간 분포 API. */
+/** 종합평가 학급·학생 분석 화면의 성취와 점수·시간 API. */
 @RestController
 @RequestMapping("/api/teacher/analysis/assignments/{assignmentId}")
 @RequiredArgsConstructor
 public class ComprehensiveAssessmentAnalysisController {
 
     private final ComprehensiveAssessmentQueryService queryService;
+
+    @GetMapping("/students/{studentId}/comprehensive-assessment-performance")
+    public ApiResponse<StudentComprehensiveAssessmentPerformanceResponse>
+            getStudentPerformance(
+                    @AuthenticationPrincipal AuthenticatedUser user,
+                    @PathVariable long assignmentId,
+                    @PathVariable long studentId
+            ) {
+        return ApiResponse.success(queryService.getStudentPerformance(
+                user.memberId(), assignmentId, studentId));
+    }
 
     @GetMapping("/comprehensive-assessment-insights")
     public ApiResponse<ComprehensiveAssessmentInsightsResponse> getInsights(

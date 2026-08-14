@@ -87,6 +87,7 @@ public enum ErrorCode {
     ANALYSIS_ASSIGNMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "분석할 학습지 배정을 찾을 수 없습니다."),
     ANALYSIS_ASSIGNMENT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "담당하는 학습지의 분석만 조회할 수 있습니다."),
     ANALYSIS_ASSIGNMENT_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "종합평가 학습지만 조회할 수 있습니다."),
+    ANALYSIS_STUDENT_NOT_ASSIGNED(HttpStatus.NOT_FOUND, "해당 학습지를 배정받은 학생을 찾을 수 없습니다."),
 
     // ===== dashboard (모수환) =====
     DASHBOARD_CLASS_NOT_FOUND(HttpStatus.NOT_FOUND, "대시보드에서 조회할 반을 찾을 수 없습니다."),
