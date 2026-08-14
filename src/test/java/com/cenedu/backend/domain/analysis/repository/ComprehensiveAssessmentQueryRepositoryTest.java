@@ -9,6 +9,7 @@ import com.cenedu.backend.domain.analysis.repository.row.AssessmentGroupAggregat
 import com.cenedu.backend.domain.analysis.repository.row.AssessmentPriorityItemRow;
 import com.cenedu.backend.domain.analysis.repository.row.AssessmentStudentItemRow;
 import com.cenedu.backend.domain.analysis.repository.row.ScoreTimeStudentRow;
+import com.cenedu.backend.domain.analysis.repository.row.StudentAssessmentGroupComparisonRow;
 import com.cenedu.backend.domain.submission.entity.enums.GradingStatus;
 import com.cenedu.backend.support.PostgresTestcontainer;
 import org.junit.jupiter.api.BeforeEach;
@@ -190,6 +191,37 @@ class ComprehensiveAssessmentQueryRepositoryTest {
         assertThat(third.totalSolvingDurationMs()).isNull();
     }
 
+    @Test
+    @DisplayName("선택 학생과 학급의 유형·난이도별 완전정답률을 함께 집계한다")
+    void comparesStudentPerformanceWithClass() {
+        assertThat(repository.existsAssignmentStudent(assignmentId, firstStudentId)).isTrue();
+        assertThat(repository.existsAssignmentStudent(assignmentId, Long.MAX_VALUE)).isFalse();
+
+        List<StudentAssessmentGroupComparisonRow> rows =
+                repository.findStudentGroupComparisons(assignmentId, firstStudentId);
+
+        assertThat(rows).hasSize(6);
+        StudentAssessmentGroupComparisonRow multipleChoice = findStudentGroup(
+                rows,
+                StudentAssessmentGroupComparisonRow.GroupDimension.QUESTION_TYPE,
+                "MULTIPLE_CHOICE");
+        StudentAssessmentGroupComparisonRow shortAnswer = findStudentGroup(
+                rows,
+                StudentAssessmentGroupComparisonRow.GroupDimension.QUESTION_TYPE,
+                "SHORT_ANSWER");
+        StudentAssessmentGroupComparisonRow high = findStudentGroup(
+                rows,
+                StudentAssessmentGroupComparisonRow.GroupDimension.DIFFICULTY,
+                "HIGH");
+        assertThat(multipleChoice.studentAccuracyRate()).isEqualByComparingTo("100.0");
+        assertThat(multipleChoice.classAccuracyRate()).isEqualByComparingTo("50.0");
+        assertThat(shortAnswer.studentAccuracyRate()).isEqualByComparingTo("0.0");
+        assertThat(shortAnswer.classAccuracyRate()).isEqualByComparingTo("50.0");
+        assertThat(high.studentGradedResultCount()).isZero();
+        assertThat(high.studentAccuracyRate()).isNull();
+        assertThat(high.classAccuracyRate()).isNull();
+    }
+
     private AssessmentGroupAggregateRow findGroup(
             List<AssessmentGroupAggregateRow> rows,
             AssessmentGroupAggregateRow.GroupDimension dimension,
@@ -209,6 +241,17 @@ class ComprehensiveAssessmentQueryRepositoryTest {
         return rows.stream()
                 .filter(row -> row.studentId() == studentId
                         && row.worksheetItemId() == worksheetItemId)
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private StudentAssessmentGroupComparisonRow findStudentGroup(
+            List<StudentAssessmentGroupComparisonRow> rows,
+            StudentAssessmentGroupComparisonRow.GroupDimension dimension,
+            String code
+    ) {
+        return rows.stream()
+                .filter(row -> row.dimension() == dimension && row.groupCode().equals(code))
                 .findFirst()
                 .orElseThrow();
     }

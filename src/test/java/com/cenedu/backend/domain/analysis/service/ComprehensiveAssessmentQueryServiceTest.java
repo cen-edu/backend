@@ -11,6 +11,7 @@ import java.util.List;
 import com.cenedu.backend.domain.analysis.dto.response.ComprehensiveAssessmentInsightsResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ComprehensiveAssessmentItemAchievementResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ScoreTimeDistributionResponse;
+import com.cenedu.backend.domain.analysis.dto.response.StudentComprehensiveAssessmentPerformanceResponse;
 import com.cenedu.backend.domain.analysis.entity.enums.AnalysisStatus;
 import com.cenedu.backend.domain.analysis.entity.enums.AssessmentQuestionTypeGroup;
 import com.cenedu.backend.domain.analysis.entity.enums.DifficultyBand;
@@ -21,6 +22,7 @@ import com.cenedu.backend.domain.analysis.repository.row.AssessmentItemColumnRow
 import com.cenedu.backend.domain.analysis.repository.row.AssessmentPriorityItemRow;
 import com.cenedu.backend.domain.analysis.repository.row.AssessmentStudentItemRow;
 import com.cenedu.backend.domain.analysis.repository.row.ScoreTimeStudentRow;
+import com.cenedu.backend.domain.analysis.repository.row.StudentAssessmentGroupComparisonRow;
 import com.cenedu.backend.domain.submission.entity.enums.GradingStatus;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType;
 import com.cenedu.backend.global.common.BusinessException;
@@ -127,6 +129,47 @@ class ComprehensiveAssessmentQueryServiceTest {
                 .isEqualTo(AnalysisStatus.INSUFFICIENT_DATA);
     }
 
+    @Test
+    @DisplayName("종합평가 학생의 유형·난이도별 정답률을 학급과 비교한다")
+    void createsStudentPerformanceComparison() {
+        allowComprehensive();
+        when(repository.existsAssignmentStudent(101L, 11L)).thenReturn(true);
+        when(repository.findStudentGroupComparisons(101L, 11L)).thenReturn(List.of(
+                comparison(
+                        StudentAssessmentGroupComparisonRow.GroupDimension.QUESTION_TYPE,
+                        "MULTIPLE_CHOICE", 2, 2, "50.0", 6, "66.7"),
+                comparison(
+                        StudentAssessmentGroupComparisonRow.GroupDimension.DIFFICULTY,
+                        "HIGH", 1, 0, null, 0, null)));
+
+        StudentComprehensiveAssessmentPerformanceResponse response =
+                service.getStudentPerformance(7L, 101L, 11L);
+
+        assertThat(response.questionTypeGroups()).hasSize(3);
+        assertThat(response.questionTypeGroups().getFirst().questionTypeGroup())
+                .isEqualTo(AssessmentQuestionTypeGroup.MULTIPLE_CHOICE);
+        assertThat(response.questionTypeGroups().getFirst().studentAccuracyRate())
+                .isEqualByComparingTo("50.0");
+        assertThat(response.questionTypeGroups().getFirst().classAccuracyRate())
+                .isEqualByComparingTo("66.7");
+        assertThat(response.difficultyBands()).hasSize(3);
+        assertThat(response.difficultyBands().getFirst().difficultyBand())
+                .isEqualTo(DifficultyBand.HIGH);
+        assertThat(response.difficultyBands().getFirst().referenceOnly()).isTrue();
+    }
+
+    @Test
+    @DisplayName("종합평가를 배정받지 않은 학생의 성취 조회는 거부한다")
+    void rejectsStudentNotAssigned() {
+        allowComprehensive();
+        when(repository.existsAssignmentStudent(101L, 99L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.getStudentPerformance(7L, 101L, 99L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).getErrorCode())
+                .isEqualTo(ErrorCode.ANALYSIS_STUDENT_NOT_ASSIGNED);
+    }
+
     private void allowComprehensive() {
         when(classQueryService.getAuthorizedAssignment(7L, 101L))
                 .thenReturn(access(WorksheetType.COMPREHENSIVE_ASSESSMENT));
@@ -150,5 +193,24 @@ class ComprehensiveAssessmentQueryServiceTest {
                 itemCount,
                 gradedCount,
                 rate == null ? null : new BigDecimal(rate));
+    }
+
+    private StudentAssessmentGroupComparisonRow comparison(
+            StudentAssessmentGroupComparisonRow.GroupDimension dimension,
+            String code,
+            int itemCount,
+            int studentGradedCount,
+            String studentRate,
+            int classGradedCount,
+            String classRate
+    ) {
+        return new StudentAssessmentGroupComparisonRow(
+                dimension,
+                code,
+                itemCount,
+                studentGradedCount,
+                studentRate == null ? null : new BigDecimal(studentRate),
+                classGradedCount,
+                classRate == null ? null : new BigDecimal(classRate));
     }
 }

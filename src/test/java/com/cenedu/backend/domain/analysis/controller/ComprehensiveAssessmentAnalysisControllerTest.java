@@ -11,6 +11,7 @@ import java.util.List;
 import com.cenedu.backend.domain.analysis.dto.response.ComprehensiveAssessmentInsightsResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ComprehensiveAssessmentItemAchievementResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ScoreTimeDistributionResponse;
+import com.cenedu.backend.domain.analysis.dto.response.StudentComprehensiveAssessmentPerformanceResponse;
 import com.cenedu.backend.domain.analysis.service.ComprehensiveAssessmentQueryService;
 import com.cenedu.backend.global.common.enums.UserRole;
 import com.cenedu.backend.global.security.JwtProvider;
@@ -111,6 +112,23 @@ class ComprehensiveAssessmentAnalysisControllerTest {
                 .andExpect(jsonPath("$.data.studentDistribution").isArray())
                 .andExpect(jsonPath("$.data.medianScoreRate").value(70.0))
                 .andExpect(jsonPath("$.data.medianSolvingDurationMs").value(120000));
+    }
+
+    @Test
+    @DisplayName("교사 JWT로 종합평가 학생 성취를 조회한다")
+    void getsStudentPerformance() throws Exception {
+        String token = teacherToken();
+        when(queryService.getStudentPerformance(7L, 101L, 11L)).thenReturn(
+                new StudentComprehensiveAssessmentPerformanceResponse(
+                        List.of(), List.of()));
+
+        mockMvc.perform(get("/api/teacher/analysis/assignments/101/students/11/"
+                        + "comprehensive-assessment-performance")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.questionTypeGroups").isArray())
+                .andExpect(jsonPath("$.data.difficultyBands").isArray());
     }
 
     private String teacherToken() {
