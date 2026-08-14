@@ -2,6 +2,8 @@ package com.cenedu.backend.domain.worksheet.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.GeneratedValue;
@@ -15,13 +17,15 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** 출제 조건. 소단원 × 난이도별 문항 수로, 복제 후 재구성의 입력값이 된다. */
+import com.cenedu.backend.global.common.enums.QuestionType;
+
+/** 출제 조건. 소단원 × 유형 × 난이도별 문항 수로, 복제 후 재구성의 입력값이 된다. */
 @Entity
 @Getter
 @Table(name = "worksheet_gen_spec",
         uniqueConstraints = @UniqueConstraint(
                 name = "uk_worksheet_gen_spec",
-                columnNames = {"worksheet_id", "sub_unit_id", "difficulty"}))
+                columnNames = {"worksheet_id", "sub_unit_id", "question_type", "difficulty"}))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class WorksheetGenSpec {
 
@@ -38,23 +42,30 @@ public class WorksheetGenSpec {
     @Column(name = "sub_unit_id", nullable = false)
     private Long subUnitId;
 
+    /** 일반 학습은 STEP_FILL 고정. 종합평가는 같은 소단원·난이도에 유형이 갈린다. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "question_type", nullable = false, length = 20)
+    private QuestionType questionType;
+
     @Column(name = "difficulty", nullable = false)
     private short difficulty;
 
     @Column(name = "question_count", nullable = false)
     private short questionCount;
 
-    private WorksheetGenSpec(Worksheet worksheet, Long subUnitId, short difficulty,
-                             short questionCount) {
+    private WorksheetGenSpec(Worksheet worksheet, Long subUnitId, QuestionType questionType,
+                             short difficulty, short questionCount) {
         this.worksheet = worksheet;
         this.subUnitId = subUnitId;
+        this.questionType = questionType;
         this.difficulty = difficulty;
         this.questionCount = questionCount;
     }
 
     /** 학습지의 출제 조건 한 줄을 생성한다. */
-    public static WorksheetGenSpec create(Worksheet worksheet, Long subUnitId, short difficulty,
+    public static WorksheetGenSpec create(Worksheet worksheet, Long subUnitId,
+                                          QuestionType questionType, short difficulty,
                                           short questionCount) {
-        return new WorksheetGenSpec(worksheet, subUnitId, difficulty, questionCount);
+        return new WorksheetGenSpec(worksheet, subUnitId, questionType, difficulty, questionCount);
     }
 }

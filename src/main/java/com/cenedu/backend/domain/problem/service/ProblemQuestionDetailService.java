@@ -2,6 +2,7 @@ package com.cenedu.backend.domain.problem.service;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,9 +23,11 @@ import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.repository.ProblemAnswerUnitRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemAssetRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemChoiceRepository;
+import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemStepRepository;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
+import com.cenedu.backend.global.common.enums.QuestionType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +43,7 @@ import org.springframework.beans.factory.ObjectProvider;
 @Transactional(readOnly = true)
 public class ProblemQuestionDetailService {
 
+    private final ProblemQuestionRepository problemQuestionRepository;
     private final ProblemChoiceRepository problemChoiceRepository;
     private final ProblemStepRepository problemStepRepository;
     private final ProblemAnswerUnitRepository problemAnswerUnitRepository;
@@ -106,6 +110,41 @@ public class ProblemQuestionDetailService {
                 parseLearningGuide(question.getLearningGuide())
             ))
             .toList();
+    }
+
+    /** 문항 ID 목록으로 교사용 상세를 일괄 조회한다. */
+    public List<ProblemQuestionDetailResponse> getDetailsByIds(List<Long> questionIds) {
+        if (questionIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, ProblemQuestion> questionsById = problemQuestionRepository
+            .findAllById(questionIds)
+            .stream()
+            .collect(Collectors.toMap(ProblemQuestion::getId, question -> question));
+
+        List<ProblemQuestion> orderedQuestions = questionIds.stream()
+            .map(questionsById::get)
+            .filter(question -> question != null)
+            .toList();
+
+        return getDetails(orderedQuestions);
+    }
+
+    /** 문항 ID별 유형을 반환한다. 존재하지 않는 ID는 결과에서 빠진다. */
+    public Map<Long, QuestionType> getQuestionTypes(List<Long> questionIds) {
+        if (questionIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return problemQuestionRepository.findAllById(questionIds)
+            .stream()
+            .collect(Collectors.toMap(
+                ProblemQuestion::getId,
+                ProblemQuestion::getQuestionType,
+                (first, second) -> first,
+                LinkedHashMap::new
+            ));
     }
 
     // 객관식 보기를 문항 ID별 응답 목록으로 묶는다.

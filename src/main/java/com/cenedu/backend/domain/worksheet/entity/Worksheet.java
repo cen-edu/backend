@@ -96,4 +96,9 @@ public class Worksheet {
         return new Worksheet(title, type, origin, ownerTeacherId, grade, semester, totalScore,
                 sourceAssignment);
     }
+
+    /** 학습지를 소프트 삭제한다. */
+    public void delete() {
+        this.deletedAt = OffsetDateTime.now();
+    }
 }

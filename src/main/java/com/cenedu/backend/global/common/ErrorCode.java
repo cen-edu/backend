@@ -60,6 +60,15 @@ public enum ErrorCode {
             HttpStatus.BAD_REQUEST, "중복된 반 ID를 삭제할 수 없습니다."),
 
     // ===== worksheet (배세빈) =====
+    WORKSHEET_NOT_FOUND(HttpStatus.NOT_FOUND, "학습지를 찾을 수 없습니다."),
+    WORKSHEET_QUESTION_NOT_FOUND(HttpStatus.BAD_REQUEST, "존재하지 않는 문항이 포함되어 있습니다."),
+    WORKSHEET_QUESTION_DUPLICATED(HttpStatus.BAD_REQUEST, "같은 문항이 두 번 이상 포함되어 있습니다."),
+    WORKSHEET_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "일반 학습에는 빈칸형 문항만 포함할 수 있습니다."),
+    WORKSHEET_SPEC_MISMATCH(HttpStatus.BAD_REQUEST, "출제 조건의 문항 수 합계가 실제 문항 수와 다릅니다."),
+    WORKSHEET_ALREADY_ASSIGNED(HttpStatus.CONFLICT, "배포된 학습지는 삭제할 수 없습니다."),
+    WORKSHEET_DUPLICATE_ASSIGNMENT(HttpStatus.CONFLICT, "이미 같은 반에 배포된 학습지입니다."),
+    WORKSHEET_CLASS_NOT_OWNED(HttpStatus.NOT_FOUND, "담당하는 반을 찾을 수 없습니다."),
+    WORKSHEET_DUE_IN_PAST(HttpStatus.BAD_REQUEST, "제출 기한은 현재 시각 이후여야 합니다."),
 
     // ===== submission (배세빈) =====
 
