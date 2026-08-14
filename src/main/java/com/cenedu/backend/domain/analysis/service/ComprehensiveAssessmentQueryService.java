@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import com.cenedu.backend.domain.analysis.dto.response.ComprehensiveAssessmentInsightsResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ComprehensiveAssessmentItemAchievementResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ScoreTimeDistributionResponse;
+import com.cenedu.backend.domain.analysis.dto.response.StudentComprehensiveAssessmentPerformanceResponse;
 import com.cenedu.backend.domain.analysis.entity.enums.AssessmentQuestionTypeGroup;
 import com.cenedu.backend.domain.analysis.entity.enums.DifficultyBand;
 import com.cenedu.backend.domain.analysis.repository.ComprehensiveAssessmentQueryRepository;
@@ -17,6 +18,7 @@ import com.cenedu.backend.domain.analysis.repository.row.AnalysisAssignmentAcces
 import com.cenedu.backend.domain.analysis.repository.row.AssessmentGroupAggregateRow;
 import com.cenedu.backend.domain.analysis.repository.row.AssessmentStudentItemRow;
 import com.cenedu.backend.domain.analysis.repository.row.ScoreTimeStudentRow;
+import com.cenedu.backend.domain.analysis.repository.row.StudentAssessmentGroupComparisonRow;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
@@ -34,6 +36,43 @@ public class ComprehensiveAssessmentQueryService {
     private final ComprehensiveAssessmentQueryRepository repository;
     private final AnalysisStatusClassifier statusClassifier;
     private final AnalysisMedianCalculator medianCalculator;
+
+    /** 종합평가 학생의 문항 유형·난이도별 정답률을 학급과 비교해 반환한다. */
+    public StudentComprehensiveAssessmentPerformanceResponse getStudentPerformance(
+            long teacherId,
+            long assignmentId,
+            long studentId
+    ) {
+        requireComprehensiveAssessment(teacherId, assignmentId);
+        if (!repository.existsAssignmentStudent(assignmentId, studentId)) {
+            throw new BusinessException(ErrorCode.ANALYSIS_STUDENT_NOT_ASSIGNED);
+        }
+
+        List<StudentAssessmentGroupComparisonRow> aggregates = repository
+                .findStudentGroupComparisons(assignmentId, studentId);
+        Map<String, StudentAssessmentGroupComparisonRow> questionTypeRows =
+                comparisonRowsByCode(
+                        aggregates,
+                        StudentAssessmentGroupComparisonRow.GroupDimension.QUESTION_TYPE);
+        List<StudentComprehensiveAssessmentPerformanceResponse.QuestionTypeGroupComparison>
+                questionTypeGroups = Arrays.stream(AssessmentQuestionTypeGroup.values())
+                .map(group -> toStudentQuestionTypeComparison(
+                        group, questionTypeRows.get(group.name())))
+                .toList();
+
+        Map<String, StudentAssessmentGroupComparisonRow> difficultyRows =
+                comparisonRowsByCode(
+                        aggregates,
+                        StudentAssessmentGroupComparisonRow.GroupDimension.DIFFICULTY);
+        List<StudentComprehensiveAssessmentPerformanceResponse.DifficultyBandComparison>
+                difficultyBands = Arrays.stream(DifficultyBand.values())
+                .map(band -> toStudentDifficultyComparison(
+                        band, difficultyRows.get(band.name())))
+                .toList();
+
+        return new StudentComprehensiveAssessmentPerformanceResponse(
+                questionTypeGroups, difficultyBands);
+    }
 
     /** 종합평가의 문항 유형·난이도별 결과와 우선 확인 문항을 반환한다. */
     public ComprehensiveAssessmentInsightsResponse getInsights(
@@ -149,6 +188,48 @@ public class ComprehensiveAssessmentQueryService {
                 .collect(Collectors.toMap(
                         AssessmentGroupAggregateRow::groupCode,
                         Function.identity()));
+    }
+
+    private Map<String, StudentAssessmentGroupComparisonRow> comparisonRowsByCode(
+            List<StudentAssessmentGroupComparisonRow> rows,
+            StudentAssessmentGroupComparisonRow.GroupDimension dimension
+    ) {
+        return rows.stream()
+                .filter(row -> row.dimension() == dimension)
+                .collect(Collectors.toMap(
+                        StudentAssessmentGroupComparisonRow::groupCode,
+                        Function.identity()));
+    }
+
+    private StudentComprehensiveAssessmentPerformanceResponse.QuestionTypeGroupComparison
+            toStudentQuestionTypeComparison(
+                    AssessmentQuestionTypeGroup group,
+                    StudentAssessmentGroupComparisonRow row
+            ) {
+        return new StudentComprehensiveAssessmentPerformanceResponse
+                .QuestionTypeGroupComparison(
+                group,
+                row == null ? 0 : row.itemCount(),
+                row == null ? null : row.studentAccuracyRate(),
+                row == null ? null : row.classAccuracyRate(),
+                row == null
+                        || row.studentGradedResultCount() == 0
+                        || row.classGradedResultCount() == 0);
+    }
+
+    private StudentComprehensiveAssessmentPerformanceResponse.DifficultyBandComparison
+            toStudentDifficultyComparison(
+                    DifficultyBand band,
+                    StudentAssessmentGroupComparisonRow row
+            ) {
+        return new StudentComprehensiveAssessmentPerformanceResponse.DifficultyBandComparison(
+                band,
+                row == null ? 0 : row.itemCount(),
+                row == null ? null : row.studentAccuracyRate(),
+                row == null ? null : row.classAccuracyRate(),
+                row == null
+                        || row.studentGradedResultCount() == 0
+                        || row.classGradedResultCount() == 0);
     }
 
     private ComprehensiveAssessmentInsightsResponse.QuestionTypeGroupResult
