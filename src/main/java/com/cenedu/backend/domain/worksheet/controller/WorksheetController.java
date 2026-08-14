@@ -1,8 +1,13 @@
 package com.cenedu.backend.domain.worksheet.controller;
 
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetCreateRequest;
+import com.cenedu.backend.domain.worksheet.dto.request.WorksheetListRequest;
 import com.cenedu.backend.domain.worksheet.dto.response.WorksheetCreateResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.WorksheetDetailResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.WorksheetGenSpecPrefillResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.WorksheetListResponse;
 import com.cenedu.backend.domain.worksheet.service.WorksheetCommandService;
+import com.cenedu.backend.domain.worksheet.service.WorksheetQueryService;
 import com.cenedu.backend.global.common.ApiResponse;
 import com.cenedu.backend.global.security.AuthenticatedUser;
 
@@ -12,8 +17,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,6 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorksheetController {
 
     private final WorksheetCommandService worksheetCommandService;
+    private final WorksheetQueryService worksheetQueryService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -47,5 +57,40 @@ public class WorksheetController {
     ) {
         return ApiResponse.success(
                 worksheetCommandService.createWorksheet(user.memberId(), request));
+    }
+
+    @GetMapping
+    @Operation(summary = "문제 보관함 목록", description = "탭·학년·학기·검색어로 필터링한 학습지 목록을 최신순으로 반환한다.")
+    public ApiResponse<WorksheetListResponse> getWorksheets(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @ParameterObject @ModelAttribute WorksheetListRequest request
+    ) {
+        return ApiResponse.success(worksheetQueryService.getWorksheets(user.memberId(), request));
+    }
+
+    @GetMapping("/{worksheetId}")
+    @Operation(summary = "학습지 상세", description = "문항 본문·정답·해설과 출제 이력을 반환한다.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "내 학습지가 아니거나 삭제됨", content = @Content)
+    })
+    public ApiResponse<WorksheetDetailResponse> getWorksheetDetail(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long worksheetId
+    ) {
+        return ApiResponse.success(
+                worksheetQueryService.getWorksheetDetail(user.memberId(), worksheetId));
+    }
+
+    @GetMapping("/{worksheetId}/gen-spec")
+    @Operation(summary = "복제 프리필", description = "학습지 생성 화면에 채울 출제 조건을 반환한다.")
+    public ApiResponse<WorksheetGenSpecPrefillResponse> getGenSpecPrefill(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long worksheetId
+    ) {
+        return ApiResponse.success(
+                worksheetQueryService.getGenSpecPrefill(user.memberId(), worksheetId));
     }
 }
