@@ -82,6 +82,10 @@ public enum ErrorCode {
     REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "보고서를 찾을 수 없습니다."),
     REPORT_RENDERER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "보고서를 PDF로 만들 수 없습니다. 서버에 브라우저가 설치되어 있지 않습니다."),
     REPORT_RENDER_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "보고서를 만들지 못했습니다."),
+    ANALYSIS_CLASS_NOT_FOUND(HttpStatus.NOT_FOUND, "분석할 반을 찾을 수 없습니다."),
+    ANALYSIS_CLASS_ACCESS_DENIED(HttpStatus.FORBIDDEN, "담당하는 반의 분석만 조회할 수 있습니다."),
+    ANALYSIS_ASSIGNMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "분석할 학습지 배정을 찾을 수 없습니다."),
+    ANALYSIS_ASSIGNMENT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "담당하는 학습지의 분석만 조회할 수 있습니다."),
 
     // ===== dashboard (모수환) =====
 
