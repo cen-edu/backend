@@ -15,6 +15,12 @@ public interface WorksheetAssignmentRepository extends JpaRepository<WorksheetAs
     /** 학습지의 배포 이력을 배포일 순서대로 조회한다. */
     List<WorksheetAssignment> findAllByWorksheetIdOrderByAssignedAtAsc(Long worksheetId);
 
+    /** 학습지가 해당 반에 이미 배포됐는지 반환한다. */
+    boolean existsByWorksheetIdAndClassId(Long worksheetId, Long classId);
+
+    /** 학습지에 배포 행이 하나라도 있는지 반환한다. */
+    boolean existsByWorksheetId(Long worksheetId);
+
     /** 지정한 학습지들의 배포 수를 학습지 ID별로 센다. */
     @Query("""
             select new com.cenedu.backend.domain.worksheet.repository.row.WorksheetCountRow(

@@ -1,7 +1,9 @@
 package com.cenedu.backend.domain.worksheet.controller;
 
+import com.cenedu.backend.domain.worksheet.dto.request.WorksheetAssignmentCreateRequest;
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetCreateRequest;
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetListRequest;
+import com.cenedu.backend.domain.worksheet.dto.response.WorksheetAssignmentCreateResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.WorksheetCreateResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.WorksheetDetailResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.WorksheetGenSpecPrefillResponse;
@@ -20,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -92,5 +95,41 @@ public class WorksheetController {
     ) {
         return ApiResponse.success(
                 worksheetQueryService.getGenSpecPrefill(user.memberId(), worksheetId));
+    }
+
+    @PostMapping("/{worksheetId}/assignments")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "학습지 배포", description = "학습지를 반에 배포하고 반 학생 전원을 배정한다.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "201", description = "배포 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "학습지 또는 반이 없거나 내 것이 아님", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409", description = "이미 배포된 반", content = @Content)
+    })
+    public ApiResponse<WorksheetAssignmentCreateResponse> assignWorksheet(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long worksheetId,
+            @Valid @RequestBody WorksheetAssignmentCreateRequest request
+    ) {
+        return ApiResponse.success(worksheetCommandService.assignWorksheet(
+                user.memberId(), worksheetId, request));
+    }
+
+    @DeleteMapping("/{worksheetId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "학습지 삭제", description = "학습지를 소프트 삭제한다. 배포된 학습지는 삭제할 수 없다.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "204", description = "삭제 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409", description = "배포된 학습지", content = @Content)
+    })
+    public void deleteWorksheet(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long worksheetId
+    ) {
+        worksheetCommandService.deleteWorksheet(user.memberId(), worksheetId);
     }
 }

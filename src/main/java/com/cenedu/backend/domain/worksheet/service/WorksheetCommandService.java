@@ -2,6 +2,7 @@ package com.cenedu.backend.domain.worksheet.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -10,13 +11,18 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import com.cenedu.backend.domain.member.dto.response.SchoolClassDetailResponse;
+import com.cenedu.backend.domain.member.service.SchoolClassService;
 import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
+import com.cenedu.backend.domain.worksheet.dto.request.WorksheetAssignmentCreateRequest;
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetCreateRequest;
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetGenSpecRequest;
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetItemRequest;
+import com.cenedu.backend.domain.worksheet.dto.response.WorksheetAssignmentCreateResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.WorksheetCreateResponse;
 import com.cenedu.backend.domain.worksheet.entity.Worksheet;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignment;
+import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignmentStudent;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetGenSpec;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetItem;
 import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
@@ -24,6 +30,7 @@ import com.cenedu.backend.domain.worksheet.entity.enums.SupportMode;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetOrigin;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType;
 import com.cenedu.backend.domain.worksheet.repository.WorksheetAssignmentRepository;
+import com.cenedu.backend.domain.worksheet.repository.WorksheetAssignmentStudentRepository;
 import com.cenedu.backend.domain.worksheet.repository.WorksheetGenSpecRepository;
 import com.cenedu.backend.domain.worksheet.repository.WorksheetItemRepository;
 import com.cenedu.backend.domain.worksheet.repository.WorksheetRepository;
@@ -49,7 +56,9 @@ public class WorksheetCommandService {
     private final WorksheetGenSpecRepository worksheetGenSpecRepository;
     private final WorksheetItemRepository worksheetItemRepository;
     private final WorksheetAssignmentRepository worksheetAssignmentRepository;
+    private final WorksheetAssignmentStudentRepository worksheetAssignmentStudentRepository;
     private final ProblemQuestionDetailService problemQuestionDetailService;
+    private final SchoolClassService schoolClassService;
 
     /** 학습지 저장 - 검증을 마친 뒤 학습지·출제조건·문항을 한 트랜잭션으로 저장한다. */
     @Transactional
@@ -118,6 +127,71 @@ public class WorksheetCommandService {
         worksheetItemRepository.saveAll(worksheetItems);
 
         return WorksheetCreateResponse.from(worksheet, worksheetItems.size());
+    }
+
+    /** 학습지 배포 - 반 소유권·기한·중복을 검증한 뒤 배포와 학생별 배정을 함께 저장한다. */
+    @Transactional
+    public WorksheetAssignmentCreateResponse assignWorksheet(
+            long teacherId, long worksheetId, WorksheetAssignmentCreateRequest request
+    ) {
+        Worksheet worksheet = getOwnedWorksheet(teacherId, worksheetId);
+        SchoolClassDetailResponse classDetail = getOwnedClassDetail(teacherId, request.classId());
+
+        OffsetDateTime now = OffsetDateTime.now();
+        if (!request.dueAt().isAfter(now)) {
+            throw new BusinessException(ErrorCode.WORKSHEET_DUE_IN_PAST);
+        }
+        if (worksheetAssignmentRepository.existsByWorksheetIdAndClassId(
+                worksheetId, request.classId())) {
+            throw new BusinessException(ErrorCode.WORKSHEET_DUPLICATE_ASSIGNMENT);
+        }
+
+        WorksheetAssignment assignment = WorksheetAssignment.create(
+                worksheet, request.classId(), null, now, request.dueAt());
+        worksheetAssignmentRepository.save(assignment);
+
+        List<WorksheetAssignmentStudent> assignmentStudents = classDetail.students().stream()
+                .map(student -> WorksheetAssignmentStudent.create(assignment, student.id()))
+                .toList();
+        if (!assignmentStudents.isEmpty()) {
+            worksheetAssignmentStudentRepository.saveAll(assignmentStudents);
+        }
+
+        return WorksheetAssignmentCreateResponse.from(
+                assignment, classDetail.name(), assignmentStudents.size());
+    }
+
+    /** 학습지 삭제 - 배포된 학습지는 소프트 삭제를 막는다. */
+    @Transactional
+    public void deleteWorksheet(long teacherId, long worksheetId) {
+        Worksheet worksheet = getOwnedWorksheet(teacherId, worksheetId);
+        if (worksheetAssignmentRepository.existsByWorksheetId(worksheetId)) {
+            throw new BusinessException(ErrorCode.WORKSHEET_ALREADY_ASSIGNED);
+        }
+        worksheet.delete();
+    }
+
+    /** 소프트 삭제되지 않은 교사 소유 학습지를 조회한다. */
+    private Worksheet getOwnedWorksheet(long teacherId, long worksheetId) {
+        return worksheetRepository
+                .findByIdAndOwnerTeacherIdAndDeletedAtIsNull(worksheetId, teacherId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.WORKSHEET_NOT_FOUND));
+    }
+
+    /**
+     * 반 상세를 조회한다. 없는 반과 남의 반을 같은 404로 묶어 반 존재 여부를 노출하지 않는다.
+     * {@link SchoolClassService#getClassDetail}이 던지는 404·403을 여기서 변환한다.
+     */
+    private SchoolClassDetailResponse getOwnedClassDetail(long teacherId, long classId) {
+        try {
+            return schoolClassService.getClassDetail(teacherId, classId);
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.MEMBER_SCHOOL_CLASS_NOT_FOUND
+                    || e.getErrorCode() == ErrorCode.MEMBER_SCHOOL_CLASS_NOT_OWNED) {
+                throw new BusinessException(ErrorCode.WORKSHEET_CLASS_NOT_OWNED);
+            }
+            throw e;
+        }
     }
 
     /** origin=custom이면 sourceAssignmentId가 있어야 하고, 아니면 없어야 한다. */
