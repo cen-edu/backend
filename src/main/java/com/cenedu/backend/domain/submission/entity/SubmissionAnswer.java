@@ -21,7 +21,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/** 학생 답안. 채점 칸마다 한 행이며 제출 시점에 일괄 생성된다. */
+/** 학생 답안. 채점 칸마다 한 행이며 문항 이탈 시점마다 즉시 저장된다(제출 시점 일괄 생성 아님). */
 @Entity
 @Getter
 @Table(name = "submission_answer",
@@ -114,5 +114,20 @@ public class SubmissionAnswer {
                                           String answerImageRef, CompareMethod compareMethod) {
         return new SubmissionAnswer(assignmentStudentId, answerUnitId, inputMode, selectedChoiceId,
                 rawLatex, normalized, answerImageRef, compareMethod);
+    }
+
+    /**
+     * 같은 칸에 다시 저장할 때 값을 갈아 끼운다(멱등 upsert). {@code normalized}는 여기서 건드리지
+     * 않는다 — 정규화는 채점 작업 소관이라 저장 경로가 대충 채우면 안 된다. {@code auto_score}·
+     * {@code final_score}·{@code overridden_*}·{@code grading_status}도 마찬가지로 건드리지
+     * 않는다 — 저장 경로에서 채점 결과를 바꿀 수 있으면 안 된다.
+     */
+    public void updateAnswer(AnswerInputMode inputMode, Long selectedChoiceId, String rawLatex,
+                             String answerImageRef, CompareMethod compareMethod) {
+        this.inputMode = inputMode;
+        this.selectedChoiceId = selectedChoiceId;
+        this.rawLatex = rawLatex;
+        this.answerImageRef = answerImageRef;
+        this.compareMethod = compareMethod;
     }
 }
