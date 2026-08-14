@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import com.cenedu.backend.domain.problem.entity.enums.QuestionPresentation;
 import com.cenedu.backend.domain.problem.entity.enums.QuestionSourceType;
 import com.cenedu.backend.domain.problem.entity.enums.VerificationStatus;
+import com.cenedu.backend.global.common.enums.EvaluationArea;
 import com.cenedu.backend.global.common.enums.QuestionType;
 
 import jakarta.persistence.Column;
@@ -72,6 +73,11 @@ public class ProblemQuestion {
 
     @Column(name = "difficulty", nullable = false)
     private short difficulty;
+
+    /** AIHub 110·111 문항의 평가 영역. 해당 값이 없는 데이터셋은 null이다. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "evaluation_area", length = 20)
+    private EvaluationArea evaluationArea;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "question_type", nullable = false, length = 20)
