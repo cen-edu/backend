@@ -4,6 +4,7 @@ data/111.수학 과목 문제 생성 데이터/
 run-*/
 .env
 .env.*
-scripts/
+scripts/*
+!scripts/generate_reconciled_baseline.py
 **/__pycache__/
 *.egg-info/
