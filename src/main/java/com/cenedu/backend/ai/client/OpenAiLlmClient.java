@@ -122,10 +122,13 @@ public class OpenAiLlmClient implements LlmClient {
             return new Prompt(springMessages);
         }
 
-        // seed 만 담아 넘긴다. 나머지(model·reasoningEffort·maxCompletionTokens·apiKey·timeout)는
-        // OpenAiChatModel 이 자기 기본 옵션과 병합해 채운다. 여기서 다시 적으면
-        // OpenAiClientConfig 의 값과 두 벌이 되어 한쪽만 바뀌는 사고가 난다.
+        // 모델 파라미터를 여기서 다시 적는다. 런타임 옵션을 실어 보내면 기본 옵션 중
+        // model 만 복사되고 reasoningEffort · maxCompletionTokens 는 요청에서 사라진다
+        // (task_17 §5 실측). 안 적으면 seed 를 주는 호출만 상한도 추론 강도도 없이 나간다.
         return new Prompt(springMessages, OpenAiChatOptions.builder()
+                .model(properties.model())
+                .reasoningEffort(properties.reasoningEffort())
+                .maxCompletionTokens(Math.toIntExact(properties.maxCompletionTokens()))
                 // Spring AI 의 seed 는 Integer 다. LlmClient 가 Long 을 받는 것은 호출부
                 // 편의이고, 범위를 넘는 값은 조용히 잘리지 않고 여기서 예외로 드러나야 한다.
                 .seed(Math.toIntExact(seed))
