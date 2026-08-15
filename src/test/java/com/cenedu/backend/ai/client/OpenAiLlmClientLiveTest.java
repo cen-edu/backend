@@ -13,6 +13,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 
 /**
  * 실제 OpenAI 를 한 번 부른다. 모킹으로는 "LLM 이 불리고 텍스트가 돌아온다"를 확인할 수 없다.
@@ -39,8 +41,11 @@ class OpenAiLlmClientLiveTest {
                 3000,
                 Duration.ofSeconds(60),
                 2);
-        openAIClient = new OpenAiClientConfig().openAIClient(properties);
-        llmClient = new OpenAiLlmClient(openAIClient, properties);
+        OpenAiClientConfig config = new OpenAiClientConfig();
+        openAIClient = config.openAIClient(properties);
+        OpenAiChatOptions options = config.openAiChatOptions(properties);
+        OpenAiChatModel chatModel = config.openAiChatModel(openAIClient, options);
+        llmClient = new OpenAiLlmClient(chatModel, properties);
     }
 
     @AfterAll

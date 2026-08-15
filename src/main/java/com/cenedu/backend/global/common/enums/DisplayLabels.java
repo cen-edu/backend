@@ -34,9 +34,9 @@ public final class DisplayLabels {
     /**
      * 문항 평가 영역 코드 → 이해·계산·추론·문제해결.
      *
-     * <p>AIHub 110 원본의 {@code question_sector1} 에서 온다. 국가 평가 체계가 쓰는 행동 영역
-     * 이름을 그대로 표시한다. {@code concept} 은 저장 코드값이고 표기는 "이해"다. 앞서 "개념"으로
-     * 표시했는데, 개념은 소단원을 가리키는 말로도 읽혀서 축이 헷갈린다.
+     * <p>AIHub 110·111 원본의 {@code question_sector1} 에서 온다. 국가 평가 체계가 쓰는 행동 영역
+     * 이름을 그대로 표시한다. 현재 저장 코드 {@code UNDERSTANDING}의 표기는 "이해"다. 이전 코드
+     * {@code concept}과 한글 값도 보존된 보고서를 읽기 위해 함께 지원한다.
      *
      * <p>풀이 단계 축(INTERPRET·MODEL·EXECUTE·ANSWER)과는 다른 축이므로 섞지 않는다. 단계 축은
      * 문항이 아니라 풀이 구간마다 붙고, 한 문항 안에서 여러 단계가 나온다. 행동 영역에는 순서가
@@ -46,10 +46,10 @@ public final class DisplayLabels {
      */
     public static String area(String area) {
         return switch (area == null ? "" : area) {
-            case "concept", "개념", "이해" -> "이해";
-            case "calculation", "계산" -> "계산";
-            case "reasoning", "추론" -> "추론";
-            case "problemSolving", "문제해결" -> "문제해결";
+            case "UNDERSTANDING", "concept", "개념", "이해" -> "이해";
+            case "CALCULATION", "calculation", "계산" -> "계산";
+            case "REASONING", "reasoning", "추론" -> "추론";
+            case "PROBLEM_SOLVING", "problemSolving", "문제해결", "문제 해결" -> "문제해결";
             default -> "미분류";
         };
     }

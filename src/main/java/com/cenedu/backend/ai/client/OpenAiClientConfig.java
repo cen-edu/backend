@@ -4,6 +4,8 @@ import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,6 +43,38 @@ public class OpenAiClientConfig {
                 .apiKey(properties.apiKey())
                 .timeout(properties.timeout())
                 .maxRetries(properties.maxRetries())
+                .build();
+    }
+
+    /**
+     * 실제 호출은 이 옵션을 통해 {@link OpenAiChatModel} 이 수행한다. 위 {@link OpenAIClient} 빈과
+     * 값을 다시 적는 이유는 {@code OpenAiChatModel.Builder} 가 내부적으로 비동기 클라이언트를 별도로
+     * 만들기 때문이다 — 그쪽도 같은 설정을 보게 해 둔다.
+     *
+     * <p>{@code temperature} 는 지정하지 않는다. gpt-5-mini 는 1 이 아닌 값을 400 으로 거절하는데,
+     * 값이 null 이면 Spring AI 가 요청에 아예 싣지 않는다.
+     */
+    @Bean
+    public OpenAiChatOptions openAiChatOptions(OpenAiProperties properties) {
+        return OpenAiChatOptions.builder()
+                .model(properties.model())
+                .reasoningEffort(properties.reasoningEffort())
+                .maxCompletionTokens(Math.toIntExact(properties.maxCompletionTokens()))
+                .apiKey(properties.apiKey())
+                .timeout(properties.timeout())
+                .maxRetries(properties.maxRetries())
+                .build();
+    }
+
+    /**
+     * 위 {@link #openAIClient} 빈을 그대로 감싼다. 스타터({@code spring-ai-starter-model-openai})를
+     * 쓰지 않는다 — 자동 설정이 붙으면 API 키 없는 기동 여부가 자동 설정 사정에 좌우된다.
+     */
+    @Bean
+    public OpenAiChatModel openAiChatModel(OpenAIClient openAIClient, OpenAiChatOptions openAiChatOptions) {
+        return OpenAiChatModel.builder()
+                .openAiClient(openAIClient)
+                .options(openAiChatOptions)
                 .build();
     }
 }

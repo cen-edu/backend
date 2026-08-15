@@ -31,6 +31,7 @@ ext {
     swaggerAnnotationsVersion = '2.2.52'
     openaiVersion = '4.50.0'
     springAiVersion = '2.0.0'
+    awsSdkVersion = '2.49.6'
     archunitVersion = '1.5.0'
 }
 
@@ -40,6 +41,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // AWS s3
+    implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
+    implementation 'software.amazon.awssdk:s3'
 
     // 스키마 마이그레이션.
     // spring-boot-flyway 가 있어야 자동 설정이 붙는다. Boot 4 는 자동 설정을 기술별 모듈로
@@ -66,12 +71,10 @@ dependencies {
         exclude group: 'io.swagger.core.v3', module: 'swagger-annotations'
     }
 
-    // 도구 루프 (task_15). 고정 2단계 파이프라인은 위 openai-java 래퍼를 그대로 쓰고,
-    // 루프만 Spring AI 를 쓴다. 두 경로를 함께 두는 이유는 루프가 실험이기 때문이다 —
-    // 기준 미달이면 고정 파이프라인으로 되돌아가야 하므로 그쪽을 건드리지 않는다.
-    //
+    // 실제 LLM 호출은 이 모듈을 통해서만 한다. 스타터(spring-ai-starter-model-openai)를 쓰지
+    // 않는다 — 자동 설정이 붙으면 API 키가 없는 환경의 기동 여부가 자동 설정 사정에 따라
+    // 달라지는데, 이 프로젝트는 "키가 없어도 뜨고 호출 시점에 실패한다"를 이미 정해 뒀다.
     // 2.0.0 을 쓴다. 1.1.x 는 Spring Framework 6 / Jackson 2 라 Boot 4 와 맞지 않는다.
-    // 2.0.0 은 spring-context 7.0.8 · tools.jackson 3.1.4 로 이 프로젝트와 같은 축이다.
     implementation("org.springframework.ai:spring-ai-openai:${springAiVersion}") {
         // 위와 같은 이유. 이 모듈도 openai-java-core 를 끌고 오므로 같은 제외가 필요하다.
         exclude group: 'io.swagger.core.v3', module: 'swagger-annotations'

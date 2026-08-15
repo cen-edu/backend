@@ -64,6 +64,32 @@ class AiClientAccessTest {
     }
 
     @Test
+    @DisplayName("도메인은 사용자 프롬프트 에이전트를 직접 호출하지 않는다 — AgentDispatcher 를 거쳐야 한다")
+    void domainsMustNotCallUserPromptAgentsDirectly() {
+        ArchRule rule = ArchRuleDefinition.noClasses()
+                .that().resideInAPackage("..domain..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "..ai.problem.agent..",
+                        "..ai.chat.agent..")
+                .because("사용자 프롬프트 에이전트는 AgentDispatcher 를 통해서만 호출해야 가드레일을 건너뛰지 않는다")
+                .allowEmptyShould(true);
+
+        rule.check(classes);
+    }
+
+    @Test
+    @DisplayName("세 서피스 담당 도메인은 Spring AI 를 직접 참조하지 않는다")
+    void dispatcherBoundDomainsMustNotUseSpringAiDirectly() {
+        ArchRule rule = ArchRuleDefinition.noClasses()
+                .that().resideInAnyPackage(DISPATCHER_BOUND_DOMAINS)
+                .should().dependOnClassesThat().resideInAPackage("org.springframework.ai..")
+                .because("이 도메인들은 Spring AI 대신 AgentDispatcher 또는 시스템 호출 Adapter 를 사용해야 한다")
+                .allowEmptyShould(true);
+
+        rule.check(classes);
+    }
+
+    @Test
     @DisplayName("에이전트 구현체는 도메인 컨트롤러를 참조하지 않는다 — 에이전트는 호출 가능한 서비스다")
     void agentsMustNotDependOnControllers() {
         ArchRule rule = ArchRuleDefinition.noClasses()

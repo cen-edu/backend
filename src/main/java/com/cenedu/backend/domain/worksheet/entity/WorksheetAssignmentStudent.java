@@ -81,4 +81,18 @@ public class WorksheetAssignmentStudent {
                                                     Long studentId) {
         return new WorksheetAssignmentStudent(assignment, studentId);
     }
+
+    /**
+     * 답안 저장 후 진행률을 재계산한 값으로 갈아 끼운다. {@code status}는 건드리지 않는다 —
+     * {@code IN_PROGRESS}는 DB에 없는 값이라(CHECK 제약 4값 고정) 조회 시점에 파생한다.
+     */
+    public void updateProgressCount(short progressCount) {
+        this.progressCount = progressCount;
+    }
+
+    /** 제출을 확정한다. 채점은 여기서 하지 않는다 — 교사가 트리거한다. */
+    public void submit(OffsetDateTime submittedAt) {
+        this.status = AssignmentStatus.SUBMITTED;
+        this.submittedAt = submittedAt;
+    }
 }

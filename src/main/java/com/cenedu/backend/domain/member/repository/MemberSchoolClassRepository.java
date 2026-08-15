@@ -17,7 +17,7 @@ public interface MemberSchoolClassRepository extends JpaRepository<MemberSchoolC
     List<MemberSchoolClass> findAllByHomeroomTeacherIdAndDeletedAtIsNullOrderByDisplayOrderAscIdAsc(
             Long teacherId);
 
-    /** 교사 소유 활성 반을 선택된 학년도, 학년, 반 이름 조건으로 조회한다. */
+    /** 교사 소유 활성 반을 선택된 학년도와 학년 조건으로 조회한다. */
     @EntityGraph(attributePaths = "homeroomTeacher")
     @Query("""
             SELECT schoolClass
@@ -26,11 +26,26 @@ public interface MemberSchoolClassRepository extends JpaRepository<MemberSchoolC
               AND schoolClass.deletedAt IS NULL
               AND (:academicYear IS NULL OR schoolClass.academicYear = :academicYear)
               AND (:grade IS NULL OR schoolClass.grade = :grade)
-              AND (:keyword IS NULL
-                   OR LOCATE(LOWER(:keyword), LOWER(schoolClass.name)) > 0)
             ORDER BY schoolClass.displayOrder ASC, schoolClass.id ASC
             """)
     List<MemberSchoolClass> findAllForClassList(
+            @Param("teacherId") Long teacherId,
+            @Param("academicYear") Short academicYear,
+            @Param("grade") Short grade);
+
+    /** 교사 소유 활성 반을 선택된 학년도, 학년, 반 이름 검색어 조건으로 조회한다. */
+    @EntityGraph(attributePaths = "homeroomTeacher")
+    @Query("""
+            SELECT schoolClass
+            FROM MemberSchoolClass schoolClass
+            WHERE schoolClass.homeroomTeacher.id = :teacherId
+              AND schoolClass.deletedAt IS NULL
+              AND (:academicYear IS NULL OR schoolClass.academicYear = :academicYear)
+              AND (:grade IS NULL OR schoolClass.grade = :grade)
+              AND LOCATE(LOWER(:keyword), LOWER(schoolClass.name)) > 0
+            ORDER BY schoolClass.displayOrder ASC, schoolClass.id ASC
+            """)
+    List<MemberSchoolClass> findAllForClassListByKeyword(
             @Param("teacherId") Long teacherId,
             @Param("academicYear") Short academicYear,
             @Param("grade") Short grade,
