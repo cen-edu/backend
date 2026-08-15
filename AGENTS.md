@@ -211,6 +211,7 @@ if (keyword == null) {
 } else {
     repository.findAllByKeyword(..., keyword);
 }
+
 ```
 
 공백 검색어는 서비스에서 `null`로 정규화한 뒤 분기합니다. 검색어가 있는 쿼리에는
