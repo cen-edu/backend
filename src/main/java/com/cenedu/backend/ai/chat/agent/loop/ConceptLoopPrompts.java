@@ -1,6 +1,6 @@
-package com.cenedu.backend.ai.agent.chat.loop;
+package com.cenedu.backend.ai.chat.agent.loop;
 
-import com.cenedu.backend.ai.agent.chat.prompt.ConceptChatPrompts;
+import com.cenedu.backend.ai.chat.agent.prompt.ConceptChatPrompts;
 
 /**
  * 도구 루프용 시스템 프롬프트. <b>고정 2단계 파이프라인의 프롬프트와 별개 파일이다.</b>

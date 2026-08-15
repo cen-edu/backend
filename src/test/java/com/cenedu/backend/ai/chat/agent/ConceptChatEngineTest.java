@@ -1,4 +1,4 @@
-package com.cenedu.backend.ai.agent.chat;
+package com.cenedu.backend.ai.chat.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -20,8 +20,8 @@ import com.cenedu.backend.ai.agent.Actor;
 import com.cenedu.backend.ai.agent.AgentKind;
 import com.cenedu.backend.ai.agent.AgentRequest;
 import com.cenedu.backend.ai.agent.ChatMessage;
-import com.cenedu.backend.ai.agent.chat.ConceptChatResult.KeywordParse;
-import com.cenedu.backend.ai.agent.chat.prompt.ConceptChatPrompts;
+import com.cenedu.backend.ai.chat.agent.ConceptChatResult.KeywordParse;
+import com.cenedu.backend.ai.chat.agent.prompt.ConceptChatPrompts;
 import com.cenedu.backend.ai.client.LlmClient;
 import com.cenedu.backend.ai.client.LlmResponse;
 import com.cenedu.backend.domain.chat.dto.response.ConceptContext;

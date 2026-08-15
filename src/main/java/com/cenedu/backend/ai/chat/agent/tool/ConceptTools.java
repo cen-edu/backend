@@ -1,9 +1,10 @@
-package com.cenedu.backend.domain.chat.service;
+package com.cenedu.backend.ai.chat.agent.tool;
 
 import java.util.List;
 
 import com.cenedu.backend.domain.chat.dto.response.ConceptCandidate;
 import com.cenedu.backend.domain.chat.dto.response.ConceptView;
+import com.cenedu.backend.domain.chat.service.ConceptQueryService;
 
 import lombok.RequiredArgsConstructor;
 

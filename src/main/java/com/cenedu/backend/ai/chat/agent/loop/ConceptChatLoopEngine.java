@@ -1,4 +1,4 @@
-package com.cenedu.backend.ai.agent.chat.loop;
+package com.cenedu.backend.ai.chat.agent.loop;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -9,11 +9,11 @@ import java.util.Set;
 
 import com.cenedu.backend.ai.agent.AgentRequest;
 import com.cenedu.backend.ai.agent.ChatMessage;
-import com.cenedu.backend.ai.agent.chat.loop.ConceptLoopResult.InvocationOutcome;
-import com.cenedu.backend.ai.agent.chat.loop.ConceptLoopResult.LoopTrace;
-import com.cenedu.backend.ai.agent.chat.loop.ConceptLoopResult.ToolInvocation;
+import com.cenedu.backend.ai.chat.agent.loop.ConceptLoopResult.InvocationOutcome;
+import com.cenedu.backend.ai.chat.agent.loop.ConceptLoopResult.LoopTrace;
+import com.cenedu.backend.ai.chat.agent.loop.ConceptLoopResult.ToolInvocation;
 import com.cenedu.backend.domain.chat.dto.response.ConceptView;
-import com.cenedu.backend.domain.chat.service.ConceptTools;
+import com.cenedu.backend.ai.chat.agent.tool.ConceptTools;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

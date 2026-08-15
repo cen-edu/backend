@@ -1,4 +1,4 @@
-package com.cenedu.backend.ai.agent.chat.loop;
+package com.cenedu.backend.ai.chat.agent.loop;
 
 import java.util.List;
 

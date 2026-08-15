@@ -1,4 +1,4 @@
-package com.cenedu.backend.ai.agent.chat.loop;
+package com.cenedu.backend.ai.chat.agent.loop;
 
 import com.cenedu.backend.ai.client.OpenAiProperties;
 import com.openai.client.OpenAIClient;

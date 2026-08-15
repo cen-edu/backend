@@ -1,4 +1,4 @@
-package com.cenedu.backend.ai.agent.chat.prompt;
+package com.cenedu.backend.ai.chat.agent.prompt;
 
 import java.util.List;
 

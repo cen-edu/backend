@@ -1,16 +1,16 @@
-package com.cenedu.backend.ai.agent.chat;
+package com.cenedu.backend.ai.chat.agent;
 
-import static com.cenedu.backend.ai.agent.chat.ConceptChatLiveTest.ExpectedOutcome.DATA_GAP;
-import static com.cenedu.backend.ai.agent.chat.ConceptChatLiveTest.ExpectedOutcome.EMPTY_CONTEXT;
-import static com.cenedu.backend.ai.agent.chat.ConceptChatLiveTest.ExpectedOutcome.EXPLAIN;
-import static com.cenedu.backend.ai.agent.chat.ConceptChatLiveTest.ExpectedOutcome.OUT_OF_SCOPE;
-import static com.cenedu.backend.ai.agent.chat.ConceptChatLiveTest.ExpectedOutcome.REFUSE;
+import static com.cenedu.backend.ai.chat.agent.ConceptChatLiveTest.ExpectedOutcome.DATA_GAP;
+import static com.cenedu.backend.ai.chat.agent.ConceptChatLiveTest.ExpectedOutcome.EMPTY_CONTEXT;
+import static com.cenedu.backend.ai.chat.agent.ConceptChatLiveTest.ExpectedOutcome.EXPLAIN;
+import static com.cenedu.backend.ai.chat.agent.ConceptChatLiveTest.ExpectedOutcome.OUT_OF_SCOPE;
+import static com.cenedu.backend.ai.chat.agent.ConceptChatLiveTest.ExpectedOutcome.REFUSE;
 
 import java.util.List;
 
-import com.cenedu.backend.ai.agent.chat.ConceptChatLiveTest.ExpectedOutcome;
-import com.cenedu.backend.ai.agent.chat.ConceptChatLiveTest.Scenario;
-import com.cenedu.backend.ai.agent.chat.ConceptChatLiveTest.Turn;
+import com.cenedu.backend.ai.chat.agent.ConceptChatLiveTest.ExpectedOutcome;
+import com.cenedu.backend.ai.chat.agent.ConceptChatLiveTest.Scenario;
+import com.cenedu.backend.ai.chat.agent.ConceptChatLiveTest.Turn;
 
 /**
  * {@code EVAL_QUESTIONS.md} <b>v2</b> 를 코드로 옮긴 것. 원본은 EduCenDocs 의

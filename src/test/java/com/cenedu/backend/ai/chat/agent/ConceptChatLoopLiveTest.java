@@ -1,4 +1,4 @@
-package com.cenedu.backend.ai.agent.chat;
+package com.cenedu.backend.ai.chat.agent;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -12,12 +12,12 @@ import com.cenedu.backend.ai.agent.Actor;
 import com.cenedu.backend.ai.agent.AgentKind;
 import com.cenedu.backend.ai.agent.AgentRequest;
 import com.cenedu.backend.ai.agent.ChatMessage;
-import com.cenedu.backend.ai.agent.chat.ConceptChatLiveTest.Scenario;
-import com.cenedu.backend.ai.agent.chat.ConceptChatLiveTest.Turn;
-import com.cenedu.backend.ai.agent.chat.loop.ConceptChatLoopEngine;
-import com.cenedu.backend.ai.agent.chat.loop.ConceptLoopResult;
-import com.cenedu.backend.ai.agent.chat.loop.ConceptLoopResult.LoopTrace;
-import com.cenedu.backend.ai.agent.chat.loop.ConceptLoopResult.ToolInvocation;
+import com.cenedu.backend.ai.chat.agent.ConceptChatLiveTest.Scenario;
+import com.cenedu.backend.ai.chat.agent.ConceptChatLiveTest.Turn;
+import com.cenedu.backend.ai.chat.agent.loop.ConceptChatLoopEngine;
+import com.cenedu.backend.ai.chat.agent.loop.ConceptLoopResult;
+import com.cenedu.backend.ai.chat.agent.loop.ConceptLoopResult.LoopTrace;
+import com.cenedu.backend.ai.chat.agent.loop.ConceptLoopResult.ToolInvocation;
 import com.cenedu.backend.ai.guard.GuardDecision;
 import com.cenedu.backend.ai.guard.input.InputGuard;
 

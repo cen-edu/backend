@@ -1,4 +1,4 @@
-package com.cenedu.backend.ai.agent.chat;
+package com.cenedu.backend.ai.chat.agent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -6,8 +6,8 @@ import java.util.Map;
 
 import com.cenedu.backend.ai.agent.AgentRequest;
 import com.cenedu.backend.ai.agent.ChatMessage;
-import com.cenedu.backend.ai.agent.chat.ConceptChatResult.KeywordParse;
-import com.cenedu.backend.ai.agent.chat.prompt.ConceptChatPrompts;
+import com.cenedu.backend.ai.chat.agent.ConceptChatResult.KeywordParse;
+import com.cenedu.backend.ai.chat.agent.prompt.ConceptChatPrompts;
 import com.cenedu.backend.ai.client.LlmClient;
 import com.cenedu.backend.ai.client.LlmResponse;
 import com.cenedu.backend.domain.chat.dto.response.ConceptContext;

@@ -1,4 +1,4 @@
-package com.cenedu.backend.ai.agent.chat;
+package com.cenedu.backend.ai.chat.agent;
 
 import com.cenedu.backend.ai.agent.Agent;
 import com.cenedu.backend.ai.agent.AgentKind;
