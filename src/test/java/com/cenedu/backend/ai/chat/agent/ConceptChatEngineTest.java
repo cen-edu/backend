@@ -168,8 +168,8 @@ class ConceptChatEngineTest {
     }
 
     @Test
-    @DisplayName("히스토리는 두 번째 호출에만 넘긴다 — 키워드 추출은 현재 질문만 본다")
-    void sendsHistoryOnlyToGeneration() {
+    @DisplayName("히스토리를 두 호출 모두에 넘긴다 — 지시어 턴은 이력 없이는 키워드가 안 잡힌다")
+    void sendsHistoryToBothCalls() {
         llmClient.enqueue("[\"맞꼭지각\"]", "답변");
         givenContext(contextWithAnchor());
 
@@ -180,8 +180,50 @@ class ConceptChatEngineTest {
                 List.of(ChatMessage.user("맞꼭지각이 뭐야?"), ChatMessage.assistant("마주 보는 각이에요.")),
                 Map.of()));
 
-        assertThat(llmClient.messages.get(0)).hasSize(1);
+        // 이력 2개 + 현재 질문. 이력이 앞이고 현재 질문이 마지막이다.
+        assertThat(llmClient.messages.get(0)).hasSize(3);
+        assertThat(llmClient.messages.get(0).get(0).content()).isEqualTo("맞꼭지각이 뭐야?");
+        assertThat(llmClient.messages.get(0).get(2).content()).isEqualTo("그럼 그건 왜 그래요?");
         assertThat(llmClient.messages.get(1)).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("이력이 비면 추출 호출의 메시지가 이력 주입 전과 완전히 같다")
+    void extractionUnchangedWhenHistoryEmpty() {
+        llmClient.enqueue("[\"맞꼭지각\"]", "답변");
+        givenContext(contextWithAnchor());
+
+        engine.answer(request("맞꼭지각이 뭐야?", Map.of()));
+
+        // 단발성 질문 35턴이 이 경로다. 여기가 달라지면 이력 실험의 음성 대조군 자격이 사라진다.
+        assertThat(llmClient.messages.get(0))
+                .containsExactly(ChatMessage.user("맞꼭지각이 뭐야?"));
+    }
+
+    @Test
+    @DisplayName("이력이 상한을 넘으면 최근 것만 남기고 현재 질문은 항상 마지막이다")
+    void trimsHistoryToRecentMessages() {
+        llmClient.enqueue("[\"맞꼭지각\"]", "답변");
+        givenContext(contextWithAnchor());
+
+        List<ChatMessage> history = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            history.add(ChatMessage.user("질문" + i));
+            history.add(ChatMessage.assistant("답변" + i));
+        }
+
+        engine.answer(new AgentRequest(
+                AgentKind.SOLVE_CHAT,
+                new Actor(1L, Actor.Role.STUDENT),
+                "그럼 그건 왜 그래요?",
+                history,
+                Map.of()));
+
+        // 이력 10개 중 최근 6개(질문3~답변5) + 현재 질문 = 7개.
+        List<ChatMessage> extraction = llmClient.messages.get(0);
+        assertThat(extraction).hasSize(7);
+        assertThat(extraction.get(0).content()).isEqualTo("질문3");
+        assertThat(extraction.get(6).content()).isEqualTo("그럼 그건 왜 그래요?");
     }
 
     @Test

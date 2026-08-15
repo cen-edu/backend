@@ -3,6 +3,7 @@ package com.cenedu.backend.ai.chat.agent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import com.cenedu.backend.ai.agent.AgentRequest;
 import com.cenedu.backend.ai.agent.ChatMessage;
@@ -11,6 +12,7 @@ import com.cenedu.backend.ai.chat.agent.prompt.ConceptChatPrompts;
 import com.cenedu.backend.ai.client.LlmClient;
 import com.cenedu.backend.ai.client.LlmResponse;
 import com.cenedu.backend.domain.chat.dto.response.ConceptContext;
+import com.cenedu.backend.domain.chat.dto.response.ConceptView;
 import com.cenedu.backend.domain.chat.service.ConceptQueryService;
 
 import org.slf4j.Logger;
@@ -57,6 +59,14 @@ public class ConceptChatEngine {
      */
     private static final long KEYWORD_SEED = 7L;
 
+    /**
+     * 추출 호출에 실을 이력의 최대 메시지 수 (user/assistant 합산, 뒤에서부터).
+     *
+     * <p>현재 평가 세트의 최대 이력은 4개라 이 상한은 걸리지 않는다. 그래도 두는 이유는 컨트롤러가
+     * 생겼을 때 이력이 무한히 늘어나는 것을 막기 위해서다. 지금 값을 재는 데는 영향이 없다.
+     */
+    private static final int EXTRACTION_HISTORY_MAX = 6;
+
     private final LlmClient llmClient;
     private final ConceptQueryService conceptQueryService;
     private final ObjectMapper objectMapper;
@@ -80,8 +90,7 @@ public class ConceptChatEngine {
 
         LlmResponse extraction = llmClient.complete(
                 ConceptChatPrompts.keywordExtraction(subUnitConceptNames),
-                // 히스토리를 넣지 않는다. 직전 질문의 키워드가 섞이면 이번 질문의 추출이 흐려진다.
-                List.of(ChatMessage.user(request.userInput())),
+                extractionMessages(request),
                 KEYWORD_SEED);
         Parsed parsed = parseKeywords(extraction.text());
         keywords = parsed.keywords();
@@ -106,6 +115,8 @@ public class ConceptChatEngine {
                     ConceptChatPrompts.NO_EVIDENCE_ANSWER, keywords, parse, context);
         }
 
+        logEvidenceSize(context, request.history().size());
+
         String systemPrompt = ConceptChatPrompts.answerSystemPrompt(context);
         List<ChatMessage> messages = new ArrayList<>(request.history());
         messages.add(ChatMessage.user(request.userInput()));
@@ -115,6 +126,48 @@ public class ConceptChatEngine {
                 systemPrompt.length(), request.history().size(), generation.reasoningTokens());
 
         return new ConceptChatResult(generation.text(), keywords, parse, context, generation);
+    }
+
+    /**
+     * 추출 호출에 넣을 메시지. 이력을 앞에 두고 이번 질문을 마지막에 붙인다.
+     *
+     * <p>이력을 프롬프트 문자열로 직렬화하지 않고 <b>메시지 리스트로</b> 넣는다. 문자열로 만들면
+     * "이전 대화:" 같은 머리말이 생기고, 그 머리말은 이력이 비었을 때도 남아 단발성 질문 35턴의
+     * 입력까지 바꾼다. 리스트로 넣으면 <b>이력이 비었을 때 결과가 기존과 정확히 같아진다</b>.
+     *
+     * <p>지시어 턴("그럼 그건 왜 그래요?")에는 뽑을 명사가 없어 이력 없이는 키워드가 빈 배열이 된다.
+     * 반대로 이력이 섞여 이번 질문의 추출이 흐려질 수 있다는 우려도 있었는데, 그 우려가 맞는지는
+     * 이력이 실리는 턴에서만 관측된다.
+     */
+    private List<ChatMessage> extractionMessages(AgentRequest request) {
+        List<ChatMessage> history = request.history();
+        int from = Math.max(0, history.size() - EXTRACTION_HISTORY_MAX);
+
+        List<ChatMessage> messages = new ArrayList<>(history.subList(from, history.size()));
+        messages.add(ChatMessage.user(request.userInput()));
+        return messages;
+    }
+
+    /**
+     * 2차 생성 호출에 실린 근거의 크기. 앵커·선수 개념의 본문과 소단원 이름 목록을 <b>따로</b> 센다.
+     *
+     * <p>둘은 성격이 다르다. 본문은 설명의 재료이고 이름 목록은 안내의 재료다. 합쳐 버리면
+     * "근거가 얇아서 물러선 답" 과 "이름만 있어서 물러선 답" 이 같은 숫자로 보인다.
+     */
+    private static void logEvidenceSize(ConceptContext context, int historySize) {
+        int descriptionChars = context.concepts().stream()
+                .map(ConceptView::description)
+                .filter(Objects::nonNull)
+                .mapToInt(String::length)
+                .sum();
+        int subUnitNameChars = context.subUnitConceptNames().stream()
+                .mapToInt(String::length)
+                .sum();
+
+        log.info("개념 챗봇 근거 — historySize={}, conceptCount={}, descriptionChars={}, "
+                        + "subUnitNameCount={}, subUnitNameChars={}",
+                historySize, context.concepts().size(), descriptionChars,
+                context.subUnitConceptNames().size(), subUnitNameChars);
     }
 
     /**
