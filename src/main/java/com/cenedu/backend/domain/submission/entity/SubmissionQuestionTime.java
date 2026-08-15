@@ -56,4 +56,9 @@ public class SubmissionQuestionTime {
                                                 int timeSpentSeconds) {
         return new SubmissionQuestionTime(assignmentStudentId, worksheetItemId, timeSpentSeconds);
     }
+
+    /** 같은 문항에 다시 저장할 때 누적 시간을 갈아 끼운다(멱등 upsert). */
+    public void updateTimeSpentSeconds(int timeSpentSeconds) {
+        this.timeSpentSeconds = timeSpentSeconds;
+    }
 }

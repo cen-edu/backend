@@ -18,6 +18,12 @@ public interface WorksheetItemRepository extends JpaRepository<WorksheetItem, Lo
     /** 학습지 문항을 표시 순서대로 조회한다. */
     List<WorksheetItem> findAllByWorksheetIdOrderByDisplayOrderAsc(Long worksheetId);
 
+    /**
+     * 지정한 학습지들의 문항을 한 번에 조회한다. stages·totalUnits 배치 계산에 쓴다.
+     * 표시 순서로 정렬해, stages를 뽑을 때 진행 순서(복습→유사→응용)가 유지되게 한다.
+     */
+    List<WorksheetItem> findByWorksheetIdInOrderByWorksheetIdAscDisplayOrderAsc(Collection<Long> worksheetIds);
+
     /** 지정한 학습지들의 문항 수를 학습지 ID별로 센다. */
     @Query("""
             select new com.cenedu.backend.domain.worksheet.repository.row.WorksheetCountRow(

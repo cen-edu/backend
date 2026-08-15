@@ -69,8 +69,13 @@ public enum ErrorCode {
     WORKSHEET_DUPLICATE_ASSIGNMENT(HttpStatus.CONFLICT, "이미 같은 반에 배포된 학습지입니다."),
     WORKSHEET_CLASS_NOT_OWNED(HttpStatus.NOT_FOUND, "담당하는 반을 찾을 수 없습니다."),
     WORKSHEET_DUE_IN_PAST(HttpStatus.BAD_REQUEST, "제출 기한은 현재 시각 이후여야 합니다."),
+    WORKSHEET_ASSIGNMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "배정된 학습지를 찾을 수 없습니다."),
+    WORKSHEET_RESULT_NOT_RELEASED(HttpStatus.CONFLICT, "아직 채점 결과가 공개되지 않았습니다."),
 
     // ===== submission (배세빈) =====
+    SUBMISSION_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 제출한 학습지입니다."),
+    SUBMISSION_DUE_PASSED(HttpStatus.CONFLICT, "제출 기한이 지났습니다."),
+    SUBMISSION_ANSWER_UNIT_MISMATCH(HttpStatus.BAD_REQUEST, "이 문항의 채점 칸이 아닙니다."),
 
     // ===== grading (배세빈) =====
 
