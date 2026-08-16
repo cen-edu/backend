@@ -223,6 +223,14 @@ public class ConceptQueryService {
         return findNearestElementary(conceptId, DEFAULT_LANDING_DEPTH);
     }
 
+    /** 개념 한 건. 이동 전 앵커의 이름처럼 확장 없이 한 개만 필요할 때 쓴다. */
+    public Optional<ConceptView> findConcept(Long conceptId) {
+        if (conceptId == null) {
+            return Optional.empty();
+        }
+        return chatConceptRepository.findById(conceptId).map(ConceptView::from);
+    }
+
     /** 한 소단원에 속한 개념의 이름 목록을 돌려준다. 본문은 싣지 않는다. */
     public List<String> findSubUnitConceptNames(Long subUnitId) {
         if (subUnitId == null) {

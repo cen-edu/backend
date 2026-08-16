@@ -484,6 +484,86 @@ class ConceptChatEngineTest {
                 .contains("근거가 없는 칸은 제목째로 뺀다");
     }
 
+    /**
+     * task_24 에서 X 10턴 중 4턴이 이 되감김이었다. 이력에는 대화 첫 개념이 가장 진하게 남아 있어서,
+     * 한 칸 내려간 다음 턴의 키워드 검색이 <b>내려오기 전 자리로 되돌아간다.</b>
+     */
+    @Test
+    @DisplayName("되받은 앵커가 있으면 이번 턴 검색 결과가 아니라 그 자리에서 내려간다")
+    void carriedAnchorIsTheOriginOfTheMove() {
+        llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"SLIGHTLY_EASIER\"}", "답변");
+        givenContext(contextWithAnchor());
+        when(conceptQueryService.findNextStepDown(DESTINATION_ID))
+                .thenReturn(Optional.of(view("각의 크기", "벌어진 정도.", 5)));
+        when(conceptQueryService.buildContextAt(null, 6L)).thenReturn(movedContext());
+
+        ConceptChatResult result = engine.answer(request("아직 어려워요",
+                Map.of(ConceptChatEngine.PAYLOAD_CURRENT_CONCEPT_ID, DESTINATION_ID)));
+
+        assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.STEP_DOWN);
+        verify(conceptQueryService).findNextStepDown(DESTINATION_ID);
+        verify(conceptQueryService, never()).findNextStepDown(ANCHOR_ID);
+    }
+
+    /** {@code DC3-2} 가 이 경로다 — "그럼 맞꼭지각은 뭐예요?" 는 화제 전환이지 하향 신호가 아니다. */
+    @Test
+    @DisplayName("상태가 NONE 이면 되받은 앵커를 쓰지 않는다 — 앵커는 새 질문이 정한다")
+    void noneStateIgnoresCarriedAnchor() {
+        llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"NONE\"}", "답변");
+        givenContext(contextWithAnchor());
+
+        ConceptChatResult result = engine.answer(request("그럼 그건 뭐예요?",
+                Map.of(ConceptChatEngine.PAYLOAD_CURRENT_CONCEPT_ID, DESTINATION_ID)));
+
+        assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.NOT_REQUESTED);
+        assertThat(result.context().anchor().name()).isEqualTo("맞꼭지각");
+        verify(conceptQueryService, never()).findNextStepDown(any());
+        verify(conceptQueryService, never()).findNearestElementary(any());
+    }
+
+    /**
+     * 하향 신호가 있는 턴은 지시어뿐이라("그거 어려워요") 키워드가 비기 쉽고, 그러면 근거가
+     * 0건이 된다. 되받은 앵커가 있으면 <b>검색이 실패해도</b> 그 자리에서 내려갈 수 있다.
+     */
+    @Test
+    @DisplayName("근거가 전무해도 되받은 앵커가 있으면 이동한다")
+    void carriedAnchorMovesEvenWithoutEvidence() {
+        llmClient.enqueue("{\"keywords\":[],\"state\":\"SLIGHTLY_EASIER\"}", "답변");
+        givenContext(ConceptContext.noEvidence());
+        when(conceptQueryService.findNextStepDown(DESTINATION_ID))
+                .thenReturn(Optional.of(view("각의 크기", "벌어진 정도.", 5)));
+        when(conceptQueryService.buildContextAt(null, 6L)).thenReturn(movedContext());
+
+        ConceptChatResult result = engine.answer(request("그거 너무 어려워요",
+                Map.of(ConceptChatEngine.PAYLOAD_CURRENT_CONCEPT_ID, DESTINATION_ID)));
+
+        assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.STEP_DOWN);
+        assertThat(result.text()).isNotEqualTo(ConceptChatPrompts.NO_EVIDENCE_ANSWER);
+    }
+
+    /**
+     * task_24 에서 이동한 9턴 중 6턴이 "그 개념은 자료에 없어요" 로 답했다. 질문은 {@code 이항}
+     * 인데 근거는 {@code 등식과 좌변…} 이니, 이동 사실을 근거가 말해 주지 않으면 모델이 알 길이 없다.
+     */
+    @Test
+    @DisplayName("이동한 턴은 근거에 무엇에서 어디로 내려왔는지를 싣는다")
+    void movedTurnCarriesTheMoveNotice() {
+        llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"SLIGHTLY_EASIER\"}", "답변");
+        givenContext(contextWithAnchor());
+        when(conceptQueryService.findNextStepDown(ANCHOR_ID)).thenReturn(Optional.of(destination()));
+        when(conceptQueryService.buildContextAt(null, DESTINATION_ID)).thenReturn(movedContext());
+        when(conceptQueryService.findConcept(ANCHOR_ID))
+                .thenReturn(Optional.of(view("맞꼭지각", "마주 보는 두 각.", 0)));
+
+        engine.answer(request("무슨 말인지 잘 안 잡혀요", Map.of()));
+
+        assertThat(llmClient.systemPrompts.get(1))
+                .contains("학생이 물은 개념: 맞꼭지각")
+                .contains("지금 설명할 개념: 교각")
+                .contains("한 칸 내려왔다")
+                .contains("\"그 개념은 자료에 없다\" 고 말하지 않는다");
+    }
+
     private void givenContext(ConceptContext context) {
         when(conceptQueryService.buildContext(any(), anyList())).thenReturn(context);
     }

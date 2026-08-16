@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.cenedu.backend.ai.chat.agent.MoveNotice;
 import com.cenedu.backend.domain.chat.dto.response.ConceptContext;
 import com.cenedu.backend.domain.chat.dto.response.ConceptView;
 import com.cenedu.backend.domain.chat.entity.enums.GradeBand;
@@ -55,6 +56,15 @@ public final class ConceptChatPrompts {
      * <p>규칙 8 이 없으면 안 된다. 하향 신호가 있는 턴은 대개 지시어뿐이라("그거 어려워요")
      * 모델이 키워드를 비우는데, <b>어디서부터 내려갈지는 앵커가 있어야 정해진다.</b>
      * 키워드가 비면 앵커가 없고, 앵커가 없으면 판정이 맞아도 이동할 수가 없다.
+     *
+     * <p><b>규칙 6·7 이 "왜" 질문을 {@code NONE} 쪽으로 확정했다(task_24b §0-3).</b> task_24 에서
+     * 흔들린 세 턴({@code I1}·{@code DA3-2}·{@code DA3-3})이 전부 "왜 …?" 형태였고 실행마다
+     * {@code NONE} 과 {@code SLIGHTLY_EASIER} 를 오갔다. 프롬프트 표현의 문제가 아니라
+     * <b>설계가 정하지 않은 것</b>이었다 — 옛 규칙 6 의 "그 바로 앞에 있는 것을 물을 때" 가
+     * "왜" 질문을 하향 쪽으로 당기고 규칙 7 의 "판단이 서지 않으면 NONE" 이 반대로 밀었다.
+     * "왜 그래요?" 는 <b>더 쉬운 설명이 아니라 이유</b>를 원하는 것이고, 그건 답변 형식의
+     * {@code 왜/어떻게} 칸이 받을 일이지 앵커를 내릴 일이 아니다. 그래서 {@code SLIGHTLY_EASIER}
+     * 를 <b>어렵다는 직접 표현</b>만 받도록 좁히고, 당기던 문구를 뺐다.
      */
     public static String keywordExtraction(List<String> subUnitConceptNames) {
         StringBuilder prompt = new StringBuilder("""
@@ -74,10 +84,13 @@ public final class ConceptChatPrompts {
                 5. 중학교 1학년 수학과 관계없는 질문이면 keywords 를 빈 배열 [] 로 둔다.
                 6. state 는 학생이 지금 무엇을 원하는지다. 셋 중 하나를 고른다.
                    "NONE"            지금 설명을 그대로 받으면 되는 경우. 개념을 묻거나,
-                                     알아들었다고 하거나, 화제를 바꾸거나, 같은 것을 한 번 더 청할 때.
-                   "SLIGHTLY_EASIER" 방금 설명이 어렵다고 하거나, 그 바로 앞에 있는 것을 물을 때.
-                   "MUCH_EASIER"     훨씬 아래에서, 처음부터 다시 시작해 달라고 할 때.
-                7. 개념을 처음 묻는 질문은 "NONE" 이다. 판단이 서지 않아도 "NONE" 이다.
+                                     이유나 방법을 묻거나, 알아들었다고 하거나, 화제를 바꾸거나,
+                                     같은 것을 한 번 더 청할 때.
+                   "SLIGHTLY_EASIER" 어렵다, 모르겠다, 이해가 안 된다고 직접 말할 때.
+                   "MUCH_EASIER"     훨씬 아래에서, 기초부터, 처음부터 다시 시작해 달라고 할 때.
+                7. "왜" 나 "어떻게" 를 묻는 질문은 이유나 방법을 원하는 것이지 더 쉬운 설명을
+                   원하는 것이 아니다. "NONE" 이다.
+                   개념을 처음 묻는 질문도 "NONE" 이다. 판단이 서지 않아도 "NONE" 이다.
                 8. state 가 "NONE" 이 아니어도 keywords 를 비우지 않는다. 지금까지 이야기하던
                    개념의 이름을 이력에서 찾아 넣는다. 그 이름이 있어야 어디서부터 내려갈지 정해진다.
 
@@ -187,10 +200,27 @@ public final class ConceptChatPrompts {
      * 추적할 수 없다.
      */
     public static String answerSystemPrompt(ConceptContext context) {
+        return answerSystemPrompt(context, null);
+    }
+
+    /**
+     * 이동이 일어난 턴이면 그 사실을 근거 맨 앞에 실어 보낸다.
+     *
+     * <p><b>이 블록은 이동한 턴에만 붙는다.</b> {@code notice} 가 {@code null} 이면 문자열이
+     * 위 1인자 형태와 완전히 같다 — 39턴 음성 대조군 36턴이 그 경로를 타고, 거기서 근거가
+     * 달라지면 대조군 자격이 사라진다.
+     *
+     * <p>지시를 {@code ANSWER_GENERATION} 의 규칙 목록에 상수로 넣지 않고 이 블록 안에 둔 것도
+     * 같은 이유다. 규칙으로 넣으면 이동하지 않은 턴의 프롬프트까지 바뀐다.
+     */
+    public static String answerSystemPrompt(ConceptContext context, MoveNotice notice) {
         StringBuilder prompt = new StringBuilder(ANSWER_GENERATION)
                 .append("\n\n[개념 자료]\n");
 
         ConceptView anchor = context.anchor();
+        if (notice != null && notice.askedConceptName() != null && anchor != null) {
+            prompt.append(moveBlock(notice, anchor));
+        }
         if (anchor != null) {
             prompt.append("\n[앵커 개념]\n")
                     .append("이름: ").append(named(anchor)).append('\n')
@@ -216,6 +246,28 @@ public final class ConceptChatPrompts {
         }
 
         return prompt.toString();
+    }
+
+    /**
+     * 이동 사실을 근거로 적는다. <b>모델은 이 문장이 없으면 이동한 턴을 실패한 턴으로 읽는다</b> —
+     * 질문은 {@code 이항} 인데 근거는 {@code 등식과 좌변…} 이니, 규칙 1·7 을 성실히 지키면
+     * "네가 물은 것은 자료에 없다" 가 나온다(task_24: 이동 9턴 중 6턴).
+     *
+     * <p>"물은 개념" 을 읽어 오지 못했으면 블록을 아예 붙이지 않는다. 무엇에서 내려왔는지를
+     * 말하지 못하는 이동 통보는 모델에게 근거가 아니라 잡음이다.
+     */
+    private static String moveBlock(MoveNotice notice, ConceptView anchor) {
+        return "\n[이번 턴에 내려온 자리]\n"
+                + "학생이 물은 개념: " + notice.askedConceptName() + "\n"
+                + "지금 설명할 개념: " + anchor.name() + "\n"
+                + (notice.isJump()
+                        ? "학생이 기초부터 다시 듣고 싶다고 해서, 물은 개념보다 훨씬 앞에서 배우는 개념까지 건너뛰어 왔다.\n"
+                        : "학생이 더 쉬운 설명을 원해서, 물은 개념 바로 앞에 배우는 개념으로 한 칸 내려왔다.\n")
+                + """
+                학생이 물은 개념을 자료에서 못 찾은 것이 아니다. 일부러 더 쉬운 데로 내려온 것이다.
+                그러니 "그 개념은 자료에 없다" 고 말하지 않는다. 학생이 물은 개념을 먼저 짚고,
+                그것을 이해하려면 이 개념부터 알아야 한다는 흐름으로 설명한다.
+                """;
     }
 
     /**

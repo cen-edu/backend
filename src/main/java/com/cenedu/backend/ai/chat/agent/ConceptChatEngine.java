@@ -52,6 +52,21 @@ public class ConceptChatEngine {
     private static final String PAYLOAD_SUB_UNIT_ID = "subUnitId";
 
     /**
+     * 직전 턴이 돌려준 앵커를 되받는 키. 없으면 이번 턴 키워드로 찾은 앵커에서 내려간다.
+     *
+     * <p><b>이 파이프라인은 상태를 갖지 않는다.</b> 앵커를 서버에 쌓는 대신 응답에 실어 보내고
+     * 다음 요청이 되돌려준다. 그래서 대화가 여러 인스턴스에 흩어져도 같게 동작한다.
+     *
+     * <p>이게 없으면 <b>되감김</b>이 일어난다 — 매 턴 키워드로 앵커를 새로 찾는데 이력에는
+     * 시나리오 첫 개념이 가장 진하게 남아 있어서, 한 칸 내려간 것이 다음 턴에 원위치한다
+     * (task_24 에서 X 10턴 중 4턴이 이것이었다).
+     *
+     * <p>{@code SolveChatAgent} 가 같은 이름으로 응답에 실으므로 공개해 둔다. 두 곳에 문자열을
+     * 따로 적어 두면 한쪽만 고쳤을 때 <b>조용히</b> 되감김으로 돌아간다.
+     */
+    public static final String PAYLOAD_CURRENT_CONCEPT_ID = "currentConceptId";
+
+    /**
      * 키워드 추출에만 고정 시드를 준다. 이 호출은 자연어 답변이 아니라 <b>도구 호출</b>이라,
      * 같은 질문에 같은 키워드가 나오는 편이 낫다. 답변 생성에는 주지 않는다.
      *
@@ -107,6 +122,15 @@ public class ConceptChatEngine {
                 keywords.size(), parse, state, context.anchor() != null, context.concepts().size(),
                 context.subUnitConceptNames().size(), context.empty());
 
+        // 이동 판정이 근거 유무보다 앞선다. 하향 신호가 있는 턴은 지시어뿐이라 키워드가 비기 쉬운데
+        // (그래서 근거가 전무해지는데), 되받은 앵커가 있으면 그 자리에서 내려갈 수 있다.
+        Move move = moveDown(state, subUnitId, context, carriedConceptId(request.payload()));
+        if (move.outcome() == MoveOutcome.DEAD_END) {
+            return ConceptChatResult.deadEnd(
+                    ConceptChatPrompts.CANNOT_MOVE_ANSWER, keywords, parse, state, move.context());
+        }
+        context = move.context();
+
         if (context.empty()) {
             // 근거 없이 부르면 모델이 일반 지식으로 답한다. 그건 "교육과정 데이터에 근거한 답변"이라는
             // 이 설계의 전제를 깨고, 지어낸 답을 학생이 교과 내용으로 받아들이게 만든다.
@@ -114,16 +138,9 @@ public class ConceptChatEngine {
                     ConceptChatPrompts.NO_EVIDENCE_ANSWER, keywords, parse, state, context);
         }
 
-        Move move = moveDown(state, subUnitId, context);
-        if (move.outcome() == MoveOutcome.DEAD_END) {
-            return ConceptChatResult.deadEnd(
-                    ConceptChatPrompts.CANNOT_MOVE_ANSWER, keywords, parse, state, context);
-        }
-        context = move.context();
-
         logEvidenceSize(context, request.history().size());
 
-        String systemPrompt = ConceptChatPrompts.answerSystemPrompt(context);
+        String systemPrompt = ConceptChatPrompts.answerSystemPrompt(context, move.notice());
         List<ChatMessage> messages = new ArrayList<>(request.history());
         messages.add(ChatMessage.user(request.userInput()));
 
@@ -138,20 +155,28 @@ public class ConceptChatEngine {
     /**
      * 상태 판정을 실제 이동으로 옮긴다. 이동이 없으면 받은 근거를 그대로 돌려준다.
      *
+     * <p><b>출발점은 되받은 앵커가 우선이다.</b> 학생이 "어렵다"고 할 때 기준이 되는 것은 방금
+     * 설명을 들은 개념이지 이번 발화에서 검색된 개념이 아니다. 되받은 것이 없을 때만 검색 결과에서
+     * 출발한다. 상태가 {@code NONE} 이면 되받은 앵커를 <b>쓰지 않는다</b> — 화제를 바꿨을 수도 있고,
+     * 그때 앵커를 정하는 것은 새 질문이다.
+     *
      * <p><b>착지 실패는 한 칸으로 폴백한다.</b> 초등까지 가는 경로가 없는 중1 개념 10개는 1칸은
      * 갈 곳이 있다. 학생이 요청한 방향으로 한 칸이라도 가는 편이 아무것도 안 하는 것보다 낫고,
      * 물러섬 문구는 정말 갈 곳이 없는 19개에만 쓴다.
      *
-     * <p>앵커가 없으면(소단원 이름 목록만 있는 근거) 이동하지 않는다. 내려갈 출발점이 없다.
+     * <p>출발점이 아예 없으면(검색도 실패했고 되받은 것도 없으면) 이동하지 않는다.
      */
-    private Move moveDown(MoveState state, Long subUnitId, ConceptContext context) {
-        if (state == MoveState.NONE || context.anchor() == null) {
-            return new Move(MoveOutcome.NOT_REQUESTED, context);
+    private Move moveDown(MoveState state, Long subUnitId, ConceptContext context, Long carried) {
+        Long originId = state == MoveState.NONE ? null
+                : carried != null ? carried
+                : context.anchor() != null ? context.anchor().id()
+                : null;
+        if (originId == null) {
+            return new Move(MoveOutcome.NOT_REQUESTED, context, null);
         }
 
-        Long anchorId = context.anchor().id();
         Optional<ConceptLanding> landing = state == MoveState.MUCH_EASIER
-                ? conceptQueryService.findNearestElementary(anchorId)
+                ? conceptQueryService.findNearestElementary(originId)
                 : Optional.empty();
 
         Long destinationId;
@@ -160,10 +185,11 @@ public class ConceptChatEngine {
             destinationId = landing.get().concept().id();
             outcome = MoveOutcome.LANDING;
         } else {
-            Optional<ConceptView> stepDown = conceptQueryService.findNextStepDown(anchorId);
+            Optional<ConceptView> stepDown = conceptQueryService.findNextStepDown(originId);
             if (stepDown.isEmpty()) {
-                log.info("개념 챗봇 이동 — state={}, outcome=DEAD_END, anchorId={}", state, anchorId);
-                return new Move(MoveOutcome.DEAD_END, context);
+                log.info("개념 챗봇 이동 — state={}, outcome=DEAD_END, originId={}", state, originId);
+                // 못 내려갔어도 앵커는 출발점 그대로여야 한다. 그래야 다음 턴이 되받을 값이 남는다.
+                return new Move(MoveOutcome.DEAD_END, contextAt(subUnitId, originId, context), null);
             }
             destinationId = stepDown.get().id();
             outcome = state == MoveState.MUCH_EASIER
@@ -171,9 +197,20 @@ public class ConceptChatEngine {
                     : MoveOutcome.STEP_DOWN;
         }
 
-        log.info("개념 챗봇 이동 — state={}, outcome={}, anchorId={}, destinationId={}",
-                state, outcome, anchorId, destinationId);
-        return new Move(outcome, conceptQueryService.buildContextAt(subUnitId, destinationId));
+        log.info("개념 챗봇 이동 — state={}, outcome={}, originId={}, destinationId={}",
+                state, outcome, originId, destinationId);
+
+        ConceptContext moved = conceptQueryService.buildContextAt(subUnitId, destinationId);
+        String askedName = conceptQueryService.findConcept(originId)
+                .map(ConceptView::name)
+                .orElse(null);
+        return new Move(outcome, moved, new MoveNotice(askedName, outcome));
+    }
+
+    /** 출발점이 이미 앵커면 다시 조회하지 않는다. */
+    private ConceptContext contextAt(Long subUnitId, Long originId, ConceptContext context) {
+        boolean alreadyAnchored = context.anchor() != null && originId.equals(context.anchor().id());
+        return alreadyAnchored ? context : conceptQueryService.buildContextAt(subUnitId, originId);
     }
 
     /**
@@ -303,6 +340,12 @@ public class ConceptChatEngine {
         return payload.get(PAYLOAD_SUB_UNIT_ID) instanceof Number number ? number.longValue() : null;
     }
 
+    /** 직전 턴이 돌려준 앵커. 없으면 {@code null} 이고, 그러면 검색 결과에서 출발한다. */
+    private static Long carriedConceptId(Map<String, Object> payload) {
+        return payload.get(PAYLOAD_CURRENT_CONCEPT_ID) instanceof Number number
+                ? number.longValue() : null;
+    }
+
     private record Parsed(List<String> keywords, MoveState state, KeywordParse parse) {
     }
 
@@ -310,7 +353,7 @@ public class ConceptChatEngine {
     private record Extraction(List<String> keywords, String state) {
     }
 
-    /** 이동 결과와 그 결과로 쓸 근거. {@code DEAD_END} 면 근거는 이동 전 그대로다. */
-    private record Move(MoveOutcome outcome, ConceptContext context) {
+    /** 이동 결과와 그 결과로 쓸 근거. {@code notice} 는 실제로 이동한 턴에만 있다. */
+    private record Move(MoveOutcome outcome, ConceptContext context, MoveNotice notice) {
     }
 }
