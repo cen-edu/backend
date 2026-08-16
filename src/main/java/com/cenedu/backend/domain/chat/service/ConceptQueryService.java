@@ -4,9 +4,11 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.cenedu.backend.domain.chat.dto.response.ConceptCandidate;
 import com.cenedu.backend.domain.chat.dto.response.ConceptContext;
+import com.cenedu.backend.domain.chat.dto.response.ConceptLanding;
 import com.cenedu.backend.domain.chat.dto.response.ConceptView;
 import com.cenedu.backend.domain.chat.entity.ChatConcept;
 import com.cenedu.backend.domain.chat.repository.ChatConceptRepository;
@@ -48,6 +50,25 @@ public class ConceptQueryService {
 
     /** 앵커 후보로 훑을 검색 결과 상한. 첫 건만 앵커로 쓰지만 상위가 후보를 볼 수 있게 남긴다. */
     private static final int DEFAULT_SEARCH_LIMIT = 5;
+
+    /**
+     * 건너뛰기 착지의 기본 탐색 깊이.
+     *
+     * <p>7 인 이유는 <b>실측상 회수 가능한 최대 홉이 7</b>이기 때문이다. 중1 210개 중 초등에 닿는
+     * 181개가 전부 7홉 안에 있으므로, 이 값이면 도달 가능한 것을 하나도 놓치지 않는다.
+     */
+    private static final int DEFAULT_LANDING_DEPTH = 7;
+
+    private static final int MIN_LANDING_DEPTH = 1;
+
+    /**
+     * 탐색 깊이 상한.
+     *
+     * <p>재귀 CTE 는 노드가 아니라 <b>경로</b>를 열거해서 깊이를 열면 폭발한다. 중1 210개를 한꺼번에
+     * 돌린 실측에서 상한 6 은 29ms 였지만 상한 20 은 180초 안에 끝나지 않았다. 런타임에는 앵커
+     * 하나만 돌아 훨씬 싸지만, 그 성질 자체는 남아 있으므로 열어 두지 않는다.
+     */
+    private static final int MAX_LANDING_DEPTH = 10;
 
     private final ChatConceptRepository chatConceptRepository;
 
@@ -157,6 +178,46 @@ public class ConceptQueryService {
     /** 기본 깊이와 기본 초등 상한으로 확장한다. */
     public List<ConceptView> expandPrereqs(Long conceptId) {
         return expandPrereqs(conceptId, DEFAULT_DEPTH, DEFAULT_ELEM_HOP_MAX);
+    }
+
+    /**
+     * 앵커에서 한 칸 내려간 개념을 돌려준다. 하향 탐색의 기본 이동이다.
+     *
+     * <p>선수가 없으면 빈 결과다 — 예외가 아니라 "갈 곳 없음"이라는 정상 경로이며, 중1 210개 중
+     * 19개가 여기 해당한다. 존재하지 않는 {@code conceptId} 도 같은 이유로 빈 결과다.
+     * 이 계층에서 예외를 던지면 {@code GlobalExceptionHandler} 에 해당 핸들러가 없어 500 으로 샌다.
+     */
+    public Optional<ConceptView> findNextStepDown(Long conceptId) {
+        if (conceptId == null) {
+            return Optional.empty();
+        }
+        return chatConceptRepository.findNextStepDownId(conceptId)
+                .flatMap(chatConceptRepository::findById)
+                .map(ConceptView::from);
+    }
+
+    /**
+     * 앵커에서 가장 가까운 초등 개념으로 건너뛴다. 상한 안에서 못 찾으면 빈 결과다.
+     *
+     * <p>{@code maxDepth} 는 <b>거부하지 않고 범위 안으로 누른다.</b> 이 값은 학생 입력이 아니라
+     * 호출부가 주는 성능 보호 장치라, 범위를 벗어났다고 대화를 끊을 이유가 없다. 예외를 던지면
+     * 500 으로 새기도 한다. 같은 이유로 {@code ConceptTools} 도 LLM 이 준 인자를 클램프한다.
+     */
+    public Optional<ConceptLanding> findNearestElementary(Long conceptId, int maxDepth) {
+        if (conceptId == null) {
+            return Optional.empty();
+        }
+        int depth = Math.clamp(maxDepth, MIN_LANDING_DEPTH, MAX_LANDING_DEPTH);
+
+        return chatConceptRepository.findNearestElementary(conceptId, depth)
+                .flatMap(hop -> chatConceptRepository.findById(hop.getId())
+                        .map(concept -> new ConceptLanding(
+                                ConceptView.from(concept, hop.getHop()), hop.getHop())));
+    }
+
+    /** 기본 상한으로 건너뛴다. */
+    public Optional<ConceptLanding> findNearestElementary(Long conceptId) {
+        return findNearestElementary(conceptId, DEFAULT_LANDING_DEPTH);
     }
 
     /** 한 소단원에 속한 개념의 이름 목록을 돌려준다. 본문은 싣지 않는다. */
