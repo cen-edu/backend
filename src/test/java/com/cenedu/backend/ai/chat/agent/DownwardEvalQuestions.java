@@ -3,7 +3,30 @@ package com.cenedu.backend.ai.chat.agent;
 import java.util.List;
 
 /**
- * 하향 탐색 평가 세트 (c). 문항과 정답표만 담는다.
+ * 하향 탐색 평가 세트 (c) <b>v2</b>. 문항과 정답표만 담는다.
+ *
+ * <h2>v2 변경 내역 (task_24b §0-5) — 여기 적힌 것 외에는 손대지 않았다</h2>
+ *
+ * v1 은 한 번 돌았을 뿐 baseline 으로 굳지 않았다. 굳기 전에 아래 셋을 바로잡는다.
+ *
+ * <ol>
+ *   <li><b>{@code DC3-2} 내부 모순</b> — 주석은 "앵커는 새 질문이 정한다"인데 기대 앵커가
+ *       직전 앵커 {@code 교각}(4)이었다. 주석대로 {@code 맞꼭지각}(16)으로 고쳤다.
+ *   <li><b>{@code DA3-2} 기대 상태</b> — "그게 왜 그렇게 되는 거예요?" 의 기대가
+ *       {@code SLIGHTLY_EASIER} 였다. task_24b §0-3 이 <b>"왜" 질문은 하향 신호가 아니라고
+ *       확정</b>했으므로 {@code NONE}(이동 없음)으로 바꿨다. <b>이 한 턴이 뒤 세 턴을 끌고 간다</b> —
+ *       DA3 는 1칸 체인(54 → 161 → 159 → 80)으로 엮여 있어서, 2번 턴이 안 움직이면
+ *       {@code DA3-3}·{@code DA3-4}·{@code DA3-5} 의 기대 앵커가 한 칸씩 밀린다
+ *       (159→161 · 159→161 · 80→159). 밀린 값은 task_20 전수표에서 다시 읽었다.
+ *       <b>문항(발화)은 넷 다 그대로이고 기대값만 움직였다.</b>
+ *   <li><b>폴백 시나리오 {@code DE1} 신설</b> — v1 30발화에서 {@code FALLBACK_STEP_DOWN} 이
+ *       0회라 그 경로가 사는지 죽었는지 알 수 없었다.
+ * </ol>
+ *
+ * <p><b>연속 하강 유형은 v1·v2 모두 초등에 닿지 않는다.</b> DA1 은 2, DA2 는 60, DA3 는
+ * (v1) 80 · (v2) 159 에서 끝나는데 <b>전부 {@code MIDDLE_1}</b> 이다. task_22 §3-1 이 이 유형의
+ * 앵커를 "중1 안에서 1순위로 3칸 이상"으로 골랐기 때문이며, 따라서 <b>대역 전환을 재는 것은
+ * 건너뛰기 3턴뿐</b>이다. v2 가 만든 손실이 아니라 원래 없던 것이다.
  *
  * <p><b>기존 39턴 세트({@link EvalQuestions})와 완전히 분리된 세트다.</b> 합치면 분모가 바뀌어
  * task_08~18 전체와 비교가 끊긴다. 상속하지도 재사용하지도 않는다.
@@ -56,6 +79,14 @@ final class DownwardEvalQuestions {
         DESCENT,
         /** 한 번에 최단 초등 개념으로 건너뛴다. */
         SKIP,
+        /**
+         * 건너뛰기를 요청받았지만 초등까지 가는 경로가 없어 한 칸으로 내려간다.
+         *
+         * <p>{@link #SKIP} 과 나눈 이유는 두 유형이 <b>다른 코드 경로</b>를 타기 때문이다.
+         * 합쳐 두면 "건너뛰기가 됐다"와 "폴백이 걸렸다"가 같은 칸에서 세어져,
+         * 폴백이 죽어 있어도 지표에 드러나지 않는다.
+         */
+        FALLBACK,
         /** 이동하면 안 되는 턴. 이 세트의 통제 장치다. */
         NEGATIVE,
         /** 선수가 없어 내려갈 곳이 없다. */
@@ -114,6 +145,10 @@ final class DownwardEvalQuestions {
     private static final String SRC_NONE = "task_20/21 선수 0개 19건 목록";
     private static final String SRC_FIRST = "앵커 확정용, 채점 제외";
     private static final String SRC_HOLD = "음성 — 이동 없음이 통과 조건";
+    private static final String SRC_WHY = "v2 — \"왜\" 질문은 하향 신호가 아니다 (task_24b §0-3)";
+    private static final String SRC_TOPIC = "v2 — 화제 전환이므로 새 질문이 앵커를 정한다";
+    private static final String SRC_FALLBACK =
+            "task_23 경로 없음 10건 + task_20 rank1.tsv — 착지가 없어 1칸으로 폴백";
 
     static final List<Scenario> ALL = List.of(
 
@@ -150,25 +185,30 @@ final class DownwardEvalQuestions {
                             Verdict.ANCHOR_MATCHES, SRC_RANK))),
 
             // 음성 턴(DA3-4) 삽입. 그 다음 턴은 DA3-4 직전 앵커에서 한 칸이다.
+            //
+            // v2 — DA3-2 를 NONE 으로 바로잡으면서 뒤 세 턴이 한 칸씩 밀렸다. 클래스 주석의
+            // "v2 변경 내역" 참조. 밀린 기대 앵커는 task_20 전수표에서 다시 읽었다
+            // (54 → 161 → 159, 그 아래가 80).
             new Scenario("DA3", Category.DESCENT, 54L, "나눗셈 기호의 생략", List.of(
                     new Turn("DA3-1", "나눗셈 기호는 언제 생략해요?", false,
                             MoveState.NONE, 54L, 54L, "나눗셈 기호의 생략", 14,
                             Verdict.ANCHOR_MATCHES, SRC_FIRST),
+                    // "왜" 질문은 이유를 원하는 것이지 더 쉬운 설명을 원하는 것이 아니다.
                     new Turn("DA3-2", "그게 왜 그렇게 되는 거예요?", true,
+                            MoveState.NONE, 54L, 54L,
+                            "나눗셈 기호의 생략", 14,
+                            Verdict.ANCHOR_MATCHES, SRC_WHY),
+                    new Turn("DA3-3", "역수가 뭔지도 헷갈려요", true,
                             MoveState.SLIGHTLY_EASIER, 54L, 161L,
                             "역수를 이용한 나눗셈", 14,
                             Verdict.ANCHOR_MATCHES, SRC_RANK),
-                    new Turn("DA3-3", "역수가 뭔지도 헷갈려요", true,
-                            MoveState.SLIGHTLY_EASIER, 161L, 159L,
-                            "부호가 다른 두 수의 곱셈", 14,
-                            Verdict.ANCHOR_MATCHES, SRC_RANK),
                     new Turn("DA3-4", "그건 이해했어요", true,
-                            MoveState.NONE, 159L, 159L,
-                            "부호가 다른 두 수의 곱셈", 14,
+                            MoveState.NONE, 161L, 161L,
+                            "역수를 이용한 나눗셈", 14,
                             Verdict.ANCHOR_MATCHES, SRC_HOLD + " (하강 중간 이탈)"),
                     new Turn("DA3-5", "그래도 아직 어려워요", true,
-                            MoveState.SLIGHTLY_EASIER, 159L, 80L,
-                            "유리수", 14,
+                            MoveState.SLIGHTLY_EASIER, 161L, 159L,
+                            "부호가 다른 두 수의 곱셈", 14,
                             Verdict.ANCHOR_MATCHES, SRC_RANK))),
 
             // ── 건너뛰기 ─────────────────────────────────────────────────
@@ -197,6 +237,20 @@ final class DownwardEvalQuestions {
                             MoveState.MUCH_EASIER, 1L, 246L, "각의 크기", 7,
                             Verdict.ANCHOR_MATCHES, SRC_LAND + " — 1홉"))),
 
+            // ── 폴백 (건너뛰기를 요청받았지만 착지가 없다) ────────────────
+            //
+            // 시작 앵커 선정: task_23 이 낸 "경로 없음 10건"(4·5·20·40·41·42·48·49·165·208) 중
+            // id 오름차순으로, ① 이미 다른 시나리오의 시작 앵커인 것(4·5)과
+            // ② 폴백 착지가 다른 시나리오의 시작 앵커와 겹치는 것(20 → 9 = DD2 시작)을 건너뛰어 40.
+            // 겹치면 폴백이 걸린 것인지 다른 데서 온 것인지 판독이 흐려진다.
+            new Scenario("DE1", Category.FALLBACK, 40L, "중앙값", List.of(
+                    new Turn("DE1-1", "중앙값이 뭐예요?", false,
+                            MoveState.NONE, 40L, 40L, "중앙값", 14,
+                            Verdict.ANCHOR_MATCHES, SRC_FIRST),
+                    new Turn("DE1-2", "제일 아래쪽 개념부터 알려주세요", true,
+                            MoveState.MUCH_EASIER, 40L, 39L, "대푯값", 14,
+                            Verdict.ANCHOR_MATCHES, SRC_FALLBACK))),
+
             // ── 음성 (이동하면 안 된다) ───────────────────────────────────
             new Scenario("DC1", Category.NEGATIVE, 2L, "공간에서 두 직선의 위치 관계", List.of(
                     new Turn("DC1-1", "공간에서 두 직선의 위치 관계가 뭐예요?", false,
@@ -219,9 +273,10 @@ final class DownwardEvalQuestions {
                             MoveState.NONE, 4L, 4L, "교각", 14,
                             Verdict.ANCHOR_MATCHES, SRC_FIRST),
                     // 화제 전환. 하향 신호가 아니라 새 개념 질문이다. 앵커는 새 질문이 정한다.
+                    // v2 — 기대 앵커가 주석과 어긋나 있었다(직전 앵커 교각). 주석대로 고쳤다.
                     new Turn("DC3-2", "그럼 맞꼭지각은 뭐예요?", true,
-                            MoveState.NONE, 4L, 4L, "교각", 14,
-                            Verdict.ANCHOR_MATCHES, SRC_HOLD + " (화제 전환, 하향 이동 없음)"))),
+                            MoveState.NONE, 4L, 16L, "맞꼭지각", 14,
+                            Verdict.ANCHOR_MATCHES, SRC_TOPIC))),
 
             new Scenario("DC4", Category.NEGATIVE, 5L, "교선", List.of(
                     new Turn("DC4-1", "교선이 뭐예요?", false,
