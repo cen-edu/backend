@@ -65,6 +65,17 @@ public final class ConceptChatPrompts {
      * "왜 그래요?" 는 <b>더 쉬운 설명이 아니라 이유</b>를 원하는 것이고, 그건 답변 형식의
      * {@code 왜/어떻게} 칸이 받을 일이지 앵커를 내릴 일이 아니다. 그래서 {@code SLIGHTLY_EASIER}
      * 를 <b>어렵다는 직접 표현</b>만 받도록 좁히고, 당기던 문구를 뺐다.
+     *
+     * <p><b>그 축소가 너무 넓었다(task_24c §0-1·§0-2).</b> 옛 규칙 6 의 "<b>방금 설명이</b> 어렵다" 는
+     * 직전 턴을 가리키는 시간 한정이었는데 그것까지 함께 떨어졌고, 그래서 대화 <b>첫 발화</b>의
+     * "정비례가 뭔지 하나도 모르겠어요" 가 하향 신호로 읽혔다(39턴 대조군 2턴). 시간 한정을
+     * 되살렸지만 <b>보장은 프롬프트가 아니라 코드 게이트가 한다</b>
+     * ({@code ConceptChatEngine.withoutFirstUtteranceDescent}).
+     *
+     * <p><b>{@code HOLD} 를 넷째 값으로 더했다.</b> "알아들었다 · 한 번 더 설명해 달라" 는 이동은
+     * 없지만 <b>앵커를 지켜야</b> 하고, "화제를 바꾼다" 는 이동도 없고 <b>앵커를 새로 찾아야</b> 한다.
+     * 둘이 {@code NONE} 하나에 묶여 있는 동안 재검색 규칙이 후자를 살리고 전자를 죽였다.
+     * <b>규칙 7 의 기본값은 여전히 {@code NONE} 이다</b> — {@code HOLD} 가 기본이 되면 화제 전환이 죽는다.
      */
     public static String keywordExtraction(List<String> subUnitConceptNames) {
         StringBuilder prompt = new StringBuilder("""
@@ -82,11 +93,12 @@ public final class ConceptChatPrompts {
                 4. 둘 다 있으면 둘 다 넣는다. 하나만 고르지 않는다.
                    어느 쪽이 맞는지는 검색이 알아서 고른다.
                 5. 중학교 1학년 수학과 관계없는 질문이면 keywords 를 빈 배열 [] 로 둔다.
-                6. state 는 학생이 지금 무엇을 원하는지다. 셋 중 하나를 고른다.
-                   "NONE"            지금 설명을 그대로 받으면 되는 경우. 개념을 묻거나,
-                                     이유나 방법을 묻거나, 알아들었다고 하거나, 화제를 바꾸거나,
-                                     같은 것을 한 번 더 청할 때.
-                   "SLIGHTLY_EASIER" 어렵다, 모르겠다, 이해가 안 된다고 직접 말할 때.
+                6. state 는 학생이 지금 무엇을 원하는지다. 넷 중 하나를 고른다.
+                   "NONE"            새로 묻는 경우. 개념을 묻거나, 이유나 방법을 묻거나,
+                                     화제를 바꿀 때.
+                   "HOLD"            방금 설명한 개념에 대해 말하고 있는 경우. 알아들었다고
+                                     하거나, 고맙다고 하거나, 같은 것을 한 번 더 청할 때.
+                   "SLIGHTLY_EASIER" 방금 설명이 어렵다, 모르겠다, 이해가 안 된다고 직접 말할 때.
                    "MUCH_EASIER"     훨씬 아래에서, 기초부터, 처음부터 다시 시작해 달라고 할 때.
                 7. "왜" 나 "어떻게" 를 묻는 질문은 이유나 방법을 원하는 것이지 더 쉬운 설명을
                    원하는 것이 아니다. "NONE" 이다.
@@ -106,6 +118,9 @@ public final class ConceptChatPrompts {
 
                 앞에서 "원주율" 을 설명한 뒤 — 질문: 초등학교 때 배운 데까지 내려가 주세요
                 {"keywords":["원주율"],"state":"MUCH_EASIER"}
+
+                앞에서 "부채꼴" 을 설명한 뒤 — 질문: 아하 그렇구나
+                {"keywords":["부채꼴"],"state":"HOLD"}
 
                 질문: 오늘 급식 뭐예요?
                 {"keywords":[],"state":"NONE"}""");

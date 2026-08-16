@@ -377,7 +377,7 @@ class ConceptChatEngineTest {
                 .thenReturn(Optional.of(destination()));
         when(conceptQueryService.buildContextAt(null, DESTINATION_ID)).thenReturn(movedContext());
 
-        ConceptChatResult result = engine.answer(request("무슨 말인지 잘 안 잡혀요", Map.of()));
+        ConceptChatResult result = engine.answer(requestWithHistory("무슨 말인지 잘 안 잡혀요"));
 
         assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.STEP_DOWN);
         assertThat(result.context().anchor().name()).isEqualTo("교각");
@@ -394,7 +394,7 @@ class ConceptChatEngineTest {
                 .thenReturn(Optional.of(new ConceptLanding(destination(), 3)));
         when(conceptQueryService.buildContextAt(null, DESTINATION_ID)).thenReturn(movedContext());
 
-        ConceptChatResult result = engine.answer(request("바닥부터 다시 알려주세요", Map.of()));
+        ConceptChatResult result = engine.answer(requestWithHistory("바닥부터 다시 알려주세요"));
 
         assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.LANDING);
         assertThat(result.context().anchor().name()).isEqualTo("교각");
@@ -412,7 +412,7 @@ class ConceptChatEngineTest {
                 .thenReturn(Optional.of(destination()));
         when(conceptQueryService.buildContextAt(null, DESTINATION_ID)).thenReturn(movedContext());
 
-        ConceptChatResult result = engine.answer(request("바닥부터 다시 알려주세요", Map.of()));
+        ConceptChatResult result = engine.answer(requestWithHistory("바닥부터 다시 알려주세요"));
 
         assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.FALLBACK_STEP_DOWN);
         assertThat(result.context().anchor().name()).isEqualTo("교각");
@@ -427,7 +427,7 @@ class ConceptChatEngineTest {
         givenContext(context);
         when(conceptQueryService.findNextStepDown(ANCHOR_ID)).thenReturn(Optional.empty());
 
-        ConceptChatResult result = engine.answer(request("더 아래부터 설명해 주세요", Map.of()));
+        ConceptChatResult result = engine.answer(requestWithHistory("더 아래부터 설명해 주세요"));
 
         assertThat(llmClient.systemPrompts).hasSize(1);
         assertThat(result.text()).isEqualTo(ConceptChatPrompts.CANNOT_MOVE_ANSWER);
@@ -502,7 +502,7 @@ class ConceptChatEngineTest {
                 .thenReturn(Optional.of(view("각의 크기", "벌어진 정도.", 5)));
         when(conceptQueryService.buildContextAt(null, 6L)).thenReturn(movedContext());
 
-        ConceptChatResult result = engine.answer(request("아직 어려워요",
+        ConceptChatResult result = engine.answer(requestWithHistory("아직 어려워요",
                 Map.of(ConceptChatEngine.PAYLOAD_CURRENT_CONCEPT_ID, DESTINATION_ID)));
 
         assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.STEP_DOWN);
@@ -517,7 +517,7 @@ class ConceptChatEngineTest {
         llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"NONE\"}", "답변");
         givenContext(contextWithAnchor());
 
-        ConceptChatResult result = engine.answer(request("그럼 그건 뭐예요?",
+        ConceptChatResult result = engine.answer(requestWithHistory("그럼 그건 뭐예요?",
                 Map.of(ConceptChatEngine.PAYLOAD_CURRENT_CONCEPT_ID, DESTINATION_ID)));
 
         assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.NOT_REQUESTED);
@@ -539,7 +539,7 @@ class ConceptChatEngineTest {
                 .thenReturn(Optional.of(view("각의 크기", "벌어진 정도.", 5)));
         when(conceptQueryService.buildContextAt(null, 6L)).thenReturn(movedContext());
 
-        ConceptChatResult result = engine.answer(request("그거 너무 어려워요",
+        ConceptChatResult result = engine.answer(requestWithHistory("그거 너무 어려워요",
                 Map.of(ConceptChatEngine.PAYLOAD_CURRENT_CONCEPT_ID, DESTINATION_ID)));
 
         assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.STEP_DOWN);
@@ -560,13 +560,83 @@ class ConceptChatEngineTest {
         when(conceptQueryService.findConcept(ANCHOR_ID))
                 .thenReturn(Optional.of(view("맞꼭지각", "마주 보는 두 각.", 0)));
 
-        engine.answer(request("무슨 말인지 잘 안 잡혀요", Map.of()));
+        engine.answer(requestWithHistory("무슨 말인지 잘 안 잡혀요"));
 
         assertThat(llmClient.systemPrompts.get(1))
                 .contains("학생이 물은 개념: 맞꼭지각")
                 .contains("지금 설명할 개념: 교각")
                 .contains("한 칸 내려왔다")
                 .contains("\"그 개념은 자료에 없다\" 고 말하지 않는다");
+    }
+
+    /**
+     * task_24b 39턴 대조군의 `B2`·`B4` 가 이 경로였다 — 대화의 첫 마디인 "정비례가 뭔지 하나도
+     * 모르겠어요" 가 하향 신호로 읽혀 초등까지 건너뛰었다. "더 쉽게" 는 항상 무언가에 상대적인데
+     * 첫 발화에는 그 상대 대상이 없다.
+     */
+    @Test
+    @DisplayName("이력이 비면 하향 신호가 있어도 상태를 NONE 으로 강제한다")
+    void firstUtteranceCannotBeADescentSignal() {
+        llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"MUCH_EASIER\"}", "답변");
+        givenContext(contextWithAnchor());
+
+        ConceptChatResult result = engine.answer(request("맞꼭지각이 뭔지 하나도 모르겠어요", Map.of()));
+
+        assertThat(result.moveState()).isEqualTo(MoveState.NONE);
+        assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.NOT_REQUESTED);
+        assertThat(result.context().anchor().name()).isEqualTo("맞꼭지각");
+        verify(conceptQueryService, never()).findNextStepDown(any());
+        verify(conceptQueryService, never()).findNearestElementary(any());
+    }
+
+    /** 이력이 있으면 가드가 걸리지 않는다. 걸리면 하향 기능 자체가 죽는다. */
+    @Test
+    @DisplayName("이력이 있으면 하향 신호를 그대로 받는다")
+    void descentSurvivesWhenHistoryExists() {
+        llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"SLIGHTLY_EASIER\"}", "답변");
+        givenContext(contextWithAnchor());
+        when(conceptQueryService.findNextStepDown(ANCHOR_ID)).thenReturn(Optional.of(destination()));
+        when(conceptQueryService.buildContextAt(null, DESTINATION_ID)).thenReturn(movedContext());
+
+        ConceptChatResult result = engine.answer(requestWithHistory("아직도 모르겠어요"));
+
+        assertThat(result.moveState()).isEqualTo(MoveState.SLIGHTLY_EASIER);
+        assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.STEP_DOWN);
+    }
+
+    /**
+     * {@code DA1-3}("아 그건 알아요") 이 세 실행 모두 X 였던 자리다 — 되받은 앵커가 맞는데도
+     * {@code NONE} 이라 버리고 재검색해 대화 첫 개념으로 되감겼다.
+     */
+    @Test
+    @DisplayName("HOLD 면 되받은 앵커를 지키고 이동 조회를 부르지 않는다")
+    void holdKeepsCarriedAnchorWithoutMoving() {
+        llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"HOLD\"}", "답변");
+        givenContext(contextWithAnchor());
+        when(conceptQueryService.buildContextAt(null, DESTINATION_ID)).thenReturn(movedContext());
+
+        ConceptChatResult result = engine.answer(requestWithHistory("아 그건 알겠어요",
+                Map.of(ConceptChatEngine.PAYLOAD_CURRENT_CONCEPT_ID, DESTINATION_ID)));
+
+        assertThat(result.moveState()).isEqualTo(MoveState.HOLD);
+        assertThat(result.moveOutcome()).isEqualTo(MoveOutcome.NOT_REQUESTED);
+        assertThat(result.context().anchor().id()).isEqualTo(DESTINATION_ID);
+        verify(conceptQueryService, never()).findNextStepDown(any());
+        verify(conceptQueryService, never()).findNearestElementary(any());
+    }
+
+    /** 지킬 자리가 없을 뿐이지 판정이 틀린 것은 아니므로 {@code NONE} 으로 강등하지 않는다. */
+    @Test
+    @DisplayName("HOLD 인데 되받은 앵커가 없으면 키워드로 찾은 앵커를 그대로 쓴다")
+    void holdWithoutCarriedAnchorFallsBackToSearch() {
+        llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"HOLD\"}", "답변");
+        givenContext(contextWithAnchor());
+
+        ConceptChatResult result = engine.answer(requestWithHistory("아 그렇구나"));
+
+        assertThat(result.moveState()).isEqualTo(MoveState.HOLD);
+        assertThat(result.context().anchor().name()).isEqualTo("맞꼭지각");
+        verify(conceptQueryService, never()).buildContextAt(any(), any());
     }
 
     private void givenContext(ConceptContext context) {
@@ -599,6 +669,19 @@ class ConceptChatEngineTest {
 
     private static AgentRequest request(String userInput, Map<String, Object> payload) {
         return AgentRequest.of(AgentKind.SOLVE_CHAT, new Actor(1L, Actor.Role.STUDENT), userInput, payload);
+    }
+
+    private static AgentRequest requestWithHistory(String userInput) {
+        return requestWithHistory(userInput, Map.of());
+    }
+
+    /**
+     * 이력이 있는 턴. <b>하향 신호가 살아야 하는 테스트는 반드시 이것을 쓴다</b> —
+     * 첫 발화 가드가 이력 없는 요청의 하향 판정을 {@code NONE} 으로 되돌리기 때문이다.
+     */
+    private static AgentRequest requestWithHistory(String userInput, Map<String, Object> payload) {
+        return new AgentRequest(AgentKind.SOLVE_CHAT, new Actor(1L, Actor.Role.STUDENT), userInput,
+                List.of(ChatMessage.user("앞 질문"), ChatMessage.assistant("앞 답변")), payload);
     }
 
     /** 큐에 넣어 둔 텍스트를 순서대로 돌려주고, 받은 프롬프트와 메시지를 기록한다. */

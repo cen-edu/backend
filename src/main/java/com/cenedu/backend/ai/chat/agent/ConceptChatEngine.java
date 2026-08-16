@@ -107,7 +107,7 @@ public class ConceptChatEngine {
                 KEYWORD_SEED);
         Parsed parsed = parseExtraction(extraction.text());
         List<String> keywords = parsed.keywords();
-        MoveState state = parsed.state();
+        MoveState state = withoutFirstUtteranceDescent(parsed.state(), request.history());
         KeywordParse parse = parsed.parse();
 
         // buildContext 가 이름 목록을 한 번 더 읽는다. 그 중복을 의도적으로 둔다 —
@@ -153,6 +153,32 @@ public class ConceptChatEngine {
     }
 
     /**
+     * <b>대화의 첫 발화에서는 하향 신호를 받지 않는다.</b> 이력이 비어 있으면
+     * {@code SLIGHTLY_EASIER}·{@code MUCH_EASIER} 를 {@code NONE} 으로 되돌린다.
+     *
+     * <p>"더 쉽게" 는 <b>항상 무언가에 상대적</b>인데 첫 발화에는 그 상대 대상이 없다. 게다가
+     * 챗봇에 오는 모든 질문은 "이걸 모른다" 를 함축하므로, "모르겠어요" 만으로 하향을 걸면
+     * <b>거의 모든 첫 질문이 하향 요청이 된다.</b> task_24b 에서 39턴 대조군의 첫 발화 2턴이
+     * 실제로 그렇게 읽혔다 — {@code B2}("정비례가 뭔지 하나도 모르겠어요") 가 초등까지 건너뛰었고
+     * {@code B4}("…위치 관계가 어려워요") 가 한 칸 내려갔다. 셋 다 대화의 첫 마디였다.
+     *
+     * <p><b>프롬프트가 아니라 코드로 막는다.</b> 규칙 6 에 "방금 설명이" 라는 시간 한정을 되살려
+     * 두긴 했지만 그건 보조이고, 모델 판단은 실행마다 흔들린다. 이 게이트는 흔들리지 않는다.
+     *
+     * <p>{@code HOLD} 는 되돌리지 않는다. 하향 신호가 아니고, 되받은 앵커가 없는 첫 턴에서는
+     * 어차피 키워드로 찾은 앵커를 쓰므로 {@code NONE} 과 행동이 같다. 로그에서 두 경우를 갈라
+     * 보려면 판정값을 살려 두는 편이 낫다(task_24c §0-2).
+     */
+    private static MoveState withoutFirstUtteranceDescent(MoveState judged, List<ChatMessage> history) {
+        boolean descent = judged == MoveState.SLIGHTLY_EASIER || judged == MoveState.MUCH_EASIER;
+        if (!history.isEmpty() || !descent) {
+            return judged;
+        }
+        log.info("개념 챗봇 첫 발화 가드 — judged={}, forced=NONE", judged);
+        return MoveState.NONE;
+    }
+
+    /**
      * 상태 판정을 실제 이동으로 옮긴다. 이동이 없으면 받은 근거를 그대로 돌려준다.
      *
      * <p><b>출발점은 되받은 앵커가 우선이다.</b> 학생이 "어렵다"고 할 때 기준이 되는 것은 방금
@@ -165,8 +191,16 @@ public class ConceptChatEngine {
      * 물러섬 문구는 정말 갈 곳이 없는 19개에만 쓴다.
      *
      * <p>출발점이 아예 없으면(검색도 실패했고 되받은 것도 없으면) 이동하지 않는다.
+     *
+     * <p><b>{@code HOLD} 는 이동이 아니라 유지다.</b> 이동 조회를 부르지 않고 되받은 앵커 자리로
+     * 근거만 다시 세운다 — 이 턴의 키워드 검색은 대개 대화 첫 개념을 다시 집어 오기 때문에
+     * 그대로 두면 되감긴다.
      */
     private Move moveDown(MoveState state, Long subUnitId, ConceptContext context, Long carried) {
+        if (state == MoveState.HOLD) {
+            return hold(subUnitId, context, carried);
+        }
+
         Long originId = state == MoveState.NONE ? null
                 : carried != null ? carried
                 : context.anchor() != null ? context.anchor().id()
@@ -205,6 +239,22 @@ public class ConceptChatEngine {
                 .map(ConceptView::name)
                 .orElse(null);
         return new Move(outcome, moved, new MoveNotice(askedName, outcome));
+    }
+
+    /**
+     * 되받은 앵커를 지킨다. <b>이동 조회({@code findNextStepDown}·{@code findNearestElementary})를
+     * 부르지 않는다</b> — 학생은 지금 방금 들은 개념에 대해 말하고 있지 다른 데로 가자는 것이 아니다.
+     *
+     * <p>되받은 것이 없으면(첫 턴 등) 이번 턴 검색 결과를 그대로 쓴다. 지킬 자리가 없을 뿐이지
+     * 판정이 틀린 것은 아니므로 {@code NONE} 으로 강등하지 않고 로그로만 구분한다.
+     */
+    private Move hold(Long subUnitId, ConceptContext context, Long carried) {
+        if (carried == null) {
+            log.info("개념 챗봇 유지 — state=HOLD, carried=none (키워드 앵커를 그대로 쓴다)");
+            return new Move(MoveOutcome.NOT_REQUESTED, context, null);
+        }
+        log.info("개념 챗봇 유지 — state=HOLD, anchorId={}", carried);
+        return new Move(MoveOutcome.NOT_REQUESTED, contextAt(subUnitId, carried, context), null);
     }
 
     /** 출발점이 이미 앵커면 다시 조회하지 않는다. */
