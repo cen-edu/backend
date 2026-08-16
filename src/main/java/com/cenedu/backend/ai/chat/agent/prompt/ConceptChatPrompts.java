@@ -1,9 +1,12 @@
 package com.cenedu.backend.ai.chat.agent.prompt;
 
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.cenedu.backend.domain.chat.dto.response.ConceptContext;
 import com.cenedu.backend.domain.chat.dto.response.ConceptView;
+import com.cenedu.backend.domain.chat.entity.enums.GradeBand;
 
 /**
  * 개념 챗봇이 쓰는 프롬프트. 고정 2단계라 프롬프트도 두 개뿐이다.
@@ -19,6 +22,9 @@ public final class ConceptChatPrompts {
 
     private ConceptChatPrompts() {
     }
+
+    /** {@code source_semester} 에서 초등 학년만 읽는다. 예: {@code 초등-초4-1학기} → {@code 4} */
+    private static final Pattern ELEMENTARY_GRADE = Pattern.compile("초([1-6])-");
 
     /**
      * 1차 — 질문에 있는 말을 그대로 살리고, 거기에 교과 용어를 덧붙인다.
@@ -137,7 +143,18 @@ public final class ConceptChatPrompts {
                "아직 배우지 않는 내용이거나, 내 자료에 없는 개념일 수 있다" 고 두 가능성을
                함께 알린다. 그다음 무엇을 물어보면 되는지 안내한다.
             8. 어느 쪽인지 단정하지 않는다. 어느 학년에서 배우는지는 자료에 없으므로 알 수 없다.
-               "그건 중2 에서 배워요", "고등학교 과정이에요" 처럼 학년을 못 박는 문장은 쓰지 않는다.""";
+               "그건 중2 에서 배워요", "고등학교 과정이에요" 처럼 학년을 못 박는 문장은 쓰지 않는다.
+            9. 개념 이름 뒤의 괄호는 그 개념을 배우는 학년이다. 예: 수직과 수선(초4)
+               괄호가 붙어 있는 개념은 그 학년을 말해도 된다. 괄호를 그대로 옮겨 쓰지는 말고
+               "초등학교 4학년 때 배운" 처럼 문장으로 푼다.
+               괄호가 없는 개념의 학년은 여전히 알 수 없다.
+
+            답변 형식
+            아래 칸을 순서대로 쓴다. 근거가 있는 칸만 쓰고, 근거가 없는 칸은 제목째로 뺀다.
+              정의             [앵커 개념] 의 설명으로 답한다.
+              왜/어떻게        자료에 이유나 방법이 있을 때만 쓴다.
+              알아두면 좋은 것  [선수 개념] 이 있을 때만 쓴다.
+            칸을 채우려고 자료에 없는 말을 만들지 않는다. 쓸 것이 없으면 그 칸은 빼는 것이 맞다.""";
 
     /**
      * 하향 요청을 받았지만 앵커에 선수가 하나도 없을 때 돌려주는 고정 문구.
@@ -176,7 +193,7 @@ public final class ConceptChatPrompts {
         ConceptView anchor = context.anchor();
         if (anchor != null) {
             prompt.append("\n[앵커 개념]\n")
-                    .append("이름: ").append(anchor.name()).append('\n')
+                    .append("이름: ").append(named(anchor)).append('\n')
                     .append("설명: ").append(anchor.description()).append('\n');
         }
 
@@ -187,7 +204,7 @@ public final class ConceptChatPrompts {
         if (!prereqs.isEmpty()) {
             prompt.append("\n[선수 개념]\n");
             for (ConceptView prereq : prereqs) {
-                prompt.append("- ").append(prereq.name()).append(": ")
+                prompt.append("- ").append(named(prereq)).append(": ")
                         .append(prereq.description()).append('\n');
             }
         }
@@ -199,5 +216,33 @@ public final class ConceptChatPrompts {
         }
 
         return prompt.toString();
+    }
+
+    /**
+     * 개념 이름에 학년을 병기한다. 하향 탐색이 붙으면서 <b>한 답변 안에 여러 학년의 개념이
+     * 섞이기</b> 때문에 필요해졌다 — 초등으로 건너뛴 답변에서 학생은 그게 언제 배운 것인지
+     * 알 수 없고, 이름이 같은 개념이 중1과 초등에 걸쳐 11쌍 있다.
+     *
+     * <p><b>[이 단원의 개념 목록] 에는 붙이지 않는다.</b> 소단원이 달린 개념은 455개 중 중1
+     * 210개뿐이고 초등 245개는 소단원이 없다. 그 목록에 병기하면 모든 줄이 {@code (중1)} 로
+     * 끝나 정보가 아니라 잡음이 된다. 학년이 실제로 갈리는 곳은 앵커와 선수 개념이다.
+     *
+     * <p>학년 축은 {@code grade_band} 가 우선이다. 전처리로 중1에 편입된 4건이
+     * {@code source_semester} 에 원천 학년(중3)을 그대로 갖고 있어, 중1이면 학기를 읽지 않는다.
+     * task_20 §1-2 에서 정렬 축을 이렇게 정한 것과 같은 이유이며 같은 규칙이어야 한다.
+     */
+    private static String named(ConceptView concept) {
+        String grade = gradeLabel(concept);
+        return grade == null ? concept.name() : concept.name() + "(" + grade + ")";
+    }
+
+    /** 읽어 낼 수 없으면 {@code null} — 없는 학년을 지어내느니 표시를 빼는 편이 낫다. */
+    private static String gradeLabel(ConceptView concept) {
+        if (concept.gradeBand() == GradeBand.MIDDLE_1) {
+            return "중1";
+        }
+        Matcher matcher = ELEMENTARY_GRADE.matcher(
+                concept.sourceSemester() == null ? "" : concept.sourceSemester());
+        return matcher.find() ? "초" + matcher.group(1) : null;
     }
 }

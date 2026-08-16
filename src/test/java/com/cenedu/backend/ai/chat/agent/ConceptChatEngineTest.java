@@ -449,6 +449,41 @@ class ConceptChatEngineTest {
         assertThat(result.moveState()).isEqualTo(MoveState.NONE);
     }
 
+    @Test
+    @DisplayName("근거의 개념 이름에 학년을 병기한다 — 단원 목록에는 붙이지 않는다")
+    void evidenceCarriesGradeLabels() {
+        llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"NONE\"}", "답변");
+        ConceptView anchor = view("맞꼭지각", "두 직선이 만날 때 마주 보는 두 각.", 0);
+        givenContext(ConceptContext.of(
+                anchor,
+                List.of(anchor, new ConceptView(2L, "각의 크기", "벌어진 정도.",
+                        GradeBand.ELEMENTARY, "초등-초4-1학기", 1)),
+                List.of("맞꼭지각", "교각")));
+
+        engine.answer(request("맞꼭지각이 뭐야?", Map.of("subUnitId", SUB_UNIT_ID)));
+
+        String answerPrompt = llmClient.systemPrompts.get(1);
+        assertThat(answerPrompt).contains("맞꼭지각(중1)").contains("각의 크기(초4)");
+        // 소단원 개념은 전부 중1이라 병기하면 모든 줄이 (중1) 로 끝나는 잡음이 된다.
+        String subUnitSection = answerPrompt.substring(answerPrompt.lastIndexOf("[이 단원의 개념 목록]"));
+        assertThat(subUnitSection).contains("맞꼭지각, 교각");
+    }
+
+    @Test
+    @DisplayName("답변 프롬프트가 칸 구조를 지시하고 빈 칸을 빼라고 말한다")
+    void answerPromptDefinesSections() {
+        llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"NONE\"}", "답변");
+        givenContext(contextWithAnchor());
+
+        engine.answer(request("맞꼭지각이 뭐야?", Map.of()));
+
+        assertThat(llmClient.systemPrompts.get(1))
+                .contains("정의")
+                .contains("왜/어떻게")
+                .contains("알아두면 좋은 것")
+                .contains("근거가 없는 칸은 제목째로 뺀다");
+    }
+
     private void givenContext(ConceptContext context) {
         when(conceptQueryService.buildContext(any(), anyList())).thenReturn(context);
     }
