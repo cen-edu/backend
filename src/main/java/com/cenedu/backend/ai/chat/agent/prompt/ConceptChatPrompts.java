@@ -157,10 +157,8 @@ public final class ConceptChatPrompts {
                함께 알린다. 그다음 무엇을 물어보면 되는지 안내한다.
             8. 어느 쪽인지 단정하지 않는다. 어느 학년에서 배우는지는 자료에 없으므로 알 수 없다.
                "그건 중2 에서 배워요", "고등학교 과정이에요" 처럼 학년을 못 박는 문장은 쓰지 않는다.
-            9. 개념 이름 뒤의 괄호는 그 개념을 배우는 학년이다. 예: 수직과 수선(초4)
-               괄호가 붙어 있는 개념은 그 학년을 말해도 된다. 괄호를 그대로 옮겨 쓰지는 말고
-               "초등학교 4학년 때 배운" 처럼 문장으로 푼다.
-               괄호가 없는 개념의 학년은 여전히 알 수 없다.
+            9. 개념 이름 뒤에 배우는 시기가 적혀 있으면 그 학년은 말해도 된다.
+               적혀 있지 않은 개념의 학년은 여전히 알 수 없다.
 
             답변 형식
             아래 칸을 순서대로 쓴다. 근거가 있는 칸만 쓰고, 근거가 없는 칸은 제목째로 뺀다.
@@ -271,7 +269,7 @@ public final class ConceptChatPrompts {
     }
 
     /**
-     * 개념 이름에 학년을 병기한다. 하향 탐색이 붙으면서 <b>한 답변 안에 여러 학년의 개념이
+     * 개념 이름에 배우는 시기를 병기한다. 하향 탐색이 붙으면서 <b>한 답변 안에 여러 학년의 개념이
      * 섞이기</b> 때문에 필요해졌다 — 초등으로 건너뛴 답변에서 학생은 그게 언제 배운 것인지
      * 알 수 없고, 이름이 같은 개념이 중1과 초등에 걸쳐 11쌍 있다.
      *
@@ -285,16 +283,24 @@ public final class ConceptChatPrompts {
      */
     private static String named(ConceptView concept) {
         String grade = gradeLabel(concept);
-        return grade == null ? concept.name() : concept.name() + "(" + grade + ")";
+        return grade == null ? concept.name() : concept.name() + " — " + grade + " 때 배우는 개념";
     }
 
-    /** 읽어 낼 수 없으면 {@code null} — 없는 학년을 지어내느니 표시를 빼는 편이 낫다. */
+    /**
+     * 학년을 <b>이미 풀어 쓴 문장</b>으로 돌려준다. 읽어 낼 수 없으면 {@code null} — 없는 학년을
+     * 지어내느니 표시를 빼는 편이 낫다.
+     *
+     * <p><b>괄호를 쓰지 않는 것이 요점이다.</b> 예전에는 {@code 수직과 수선(초4)} 로 실어 보내고
+     * 규칙 9 가 "괄호를 그대로 옮겨 쓰지 말고 문장으로 풀라"고 시켰는데, task_24 에서 39턴 중
+     * 12~13턴이 {@code 등식과 좌변, 우변, 양변(중1)의 설명에 따르면 …} 처럼 그대로 내보냈다.
+     * 모델에게 시키는 대신 <b>조립 단계에서 미리 풀면 옮겨 쓸 괄호가 애초에 없어진다.</b>
+     */
     private static String gradeLabel(ConceptView concept) {
         if (concept.gradeBand() == GradeBand.MIDDLE_1) {
-            return "중1";
+            return "중학교 1학년";
         }
         Matcher matcher = ELEMENTARY_GRADE.matcher(
                 concept.sourceSemester() == null ? "" : concept.sourceSemester());
-        return matcher.find() ? "초" + matcher.group(1) : null;
+        return matcher.find() ? "초등학교 " + matcher.group(1) + "학년" : null;
     }
 }

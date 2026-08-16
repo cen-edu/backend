@@ -450,7 +450,7 @@ class ConceptChatEngineTest {
     }
 
     @Test
-    @DisplayName("근거의 개념 이름에 학년을 병기한다 — 단원 목록에는 붙이지 않는다")
+    @DisplayName("근거의 개념 이름에 학년을 문장으로 병기한다 — 단원 목록에는 붙이지 않는다")
     void evidenceCarriesGradeLabels() {
         llmClient.enqueue("{\"keywords\":[\"맞꼭지각\"],\"state\":\"NONE\"}", "답변");
         ConceptView anchor = view("맞꼭지각", "두 직선이 만날 때 마주 보는 두 각.", 0);
@@ -463,7 +463,12 @@ class ConceptChatEngineTest {
         engine.answer(request("맞꼭지각이 뭐야?", Map.of("subUnitId", SUB_UNIT_ID)));
 
         String answerPrompt = llmClient.systemPrompts.get(1);
-        assertThat(answerPrompt).contains("맞꼭지각(중1)").contains("각의 크기(초4)");
+        // 괄호로 실으면 모델이 그대로 옮겨 쓴다(task_24: 39턴 중 12~13턴). 조립에서 미리 푼다.
+        assertThat(answerPrompt)
+                .contains("맞꼭지각 — 중학교 1학년 때 배우는 개념")
+                .contains("각의 크기 — 초등학교 4학년 때 배우는 개념")
+                .doesNotContain("(중1)")
+                .doesNotContain("(초4)");
         // 소단원 개념은 전부 중1이라 병기하면 모든 줄이 (중1) 로 끝나는 잡음이 된다.
         String subUnitSection = answerPrompt.substring(answerPrompt.lastIndexOf("[이 단원의 개념 목록]"));
         assertThat(subUnitSection).contains("맞꼭지각, 교각");
