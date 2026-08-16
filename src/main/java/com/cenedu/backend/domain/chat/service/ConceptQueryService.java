@@ -48,6 +48,9 @@ public class ConceptQueryService {
      */
     public static final short DEFAULT_ELEM_HOP_MAX = 1;
 
+    /** 상한을 사실상 걸지 않는 값. {@link #buildContextAt} 처럼 깊이 1 로 도는 확장에만 쓴다. */
+    private static final short ELEM_HOP_UNBOUNDED = Short.MAX_VALUE;
+
     /** 앵커 후보로 훑을 검색 결과 상한. 첫 건만 앵커로 쓰지만 상위가 후보를 볼 수 있게 남긴다. */
     private static final int DEFAULT_SEARCH_LIMIT = 5;
 
@@ -262,5 +265,23 @@ public class ConceptQueryService {
     /** 기본 깊이와 기본 초등 상한으로 근거를 만든다. */
     public ConceptContext buildContext(Long subUnitId, List<String> keywords) {
         return buildContext(subUnitId, keywords, DEFAULT_DEPTH, DEFAULT_ELEM_HOP_MAX);
+    }
+
+    /**
+     * <b>이미 정해진 개념</b>을 앵커로 두고 근거를 만든다. 하향 이동 뒤의 재앵커링이 쓴다.
+     *
+     * <p>{@link #buildContext} 와 다른 점은 검색을 하지 않는다는 것 하나다. 이동은 그래프가
+     * 정한 것이라 이름으로 다시 찾을 이유가 없고, 다시 찾으면 검색 순위가 이동 결과를 덮어쓴다.
+     *
+     * <p><b>초등 상한을 걸지 않는다.</b> 깊이가 1 이라 직접 선수만 들어오므로 상한이 할 일이
+     * 없는데, 걸어 두면 착지한 초등 개념에서 손해가 크다 — 초등 앵커의 직접 선수는 대개
+     * {@code elem_hop} 이 2 이상이라 기본 상한 1 에서 통째로 잘린다(실측 159개 중 52개만 통과).
+     * 그러면 "도착 개념 + 직접 선수" 라는 재앵커링의 정의가 지켜지지 않는다.
+     */
+    public ConceptContext buildContextAt(Long subUnitId, Long conceptId) {
+        List<String> subUnitConceptNames = findSubUnitConceptNames(subUnitId);
+        List<ConceptView> concepts = expandPrereqs(conceptId, DEFAULT_DEPTH, ELEM_HOP_UNBOUNDED);
+        ConceptView anchor = concepts.isEmpty() ? null : concepts.get(0);
+        return ConceptContext.of(anchor, concepts, subUnitConceptNames);
     }
 }

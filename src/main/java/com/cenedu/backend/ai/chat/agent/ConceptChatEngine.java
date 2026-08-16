@@ -2,16 +2,21 @@ package com.cenedu.backend.ai.chat.agent;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 import com.cenedu.backend.ai.agent.AgentRequest;
 import com.cenedu.backend.ai.agent.ChatMessage;
 import com.cenedu.backend.ai.chat.agent.ConceptChatResult.KeywordParse;
+import com.cenedu.backend.ai.chat.agent.ConceptChatResult.MoveOutcome;
+import com.cenedu.backend.ai.chat.agent.ConceptChatResult.MoveState;
 import com.cenedu.backend.ai.chat.agent.prompt.ConceptChatPrompts;
 import com.cenedu.backend.ai.client.LlmClient;
 import com.cenedu.backend.ai.client.LlmResponse;
 import com.cenedu.backend.domain.chat.dto.response.ConceptContext;
+import com.cenedu.backend.domain.chat.dto.response.ConceptLanding;
 import com.cenedu.backend.domain.chat.dto.response.ConceptView;
 import com.cenedu.backend.domain.chat.service.ConceptQueryService;
 
@@ -19,7 +24,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
-import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -46,9 +50,6 @@ public class ConceptChatEngine {
 
     /** {@code AgentRequest.payload()} 에서 현재 소단원을 꺼낼 키. 없으면 소단원 목록 없이 진행한다. */
     private static final String PAYLOAD_SUB_UNIT_ID = "subUnitId";
-
-    private static final TypeReference<List<String>> KEYWORD_LIST = new TypeReference<>() {
-    };
 
     /**
      * 키워드 추출에만 고정 시드를 준다. 이 호출은 자연어 답변이 아니라 <b>도구 호출</b>이라,
@@ -79,9 +80,6 @@ public class ConceptChatEngine {
     }
 
     public ConceptChatResult answer(AgentRequest request) {
-        ConceptChatResult.KeywordParse parse;
-        List<String> keywords;
-
         Long subUnitId = subUnitId(request.payload());
 
         // 소단원 개념 이름을 추출 프롬프트에 참고로 넣는다. 실제 개념명을 보여 주면 DB 에 없는
@@ -92,9 +90,10 @@ public class ConceptChatEngine {
                 ConceptChatPrompts.keywordExtraction(subUnitConceptNames),
                 extractionMessages(request),
                 KEYWORD_SEED);
-        Parsed parsed = parseKeywords(extraction.text());
-        keywords = parsed.keywords();
-        parse = parsed.parse();
+        Parsed parsed = parseExtraction(extraction.text());
+        List<String> keywords = parsed.keywords();
+        MoveState state = parsed.state();
+        KeywordParse parse = parsed.parse();
 
         // buildContext 가 이름 목록을 한 번 더 읽는다. 그 중복을 의도적으로 둔다 —
         // 없애려면 "근거가 없으면 LLM 을 부르지 않는다" 판정을 여기로 복제해야 하는데,
@@ -103,17 +102,24 @@ public class ConceptChatEngine {
 
         // 질문·컨텍스트·답변 본문은 남기지 않는다. 학생 입력과 시험 문항이 로그로 나가면
         // 정답 유출 정책이 무너진다. 개수와 길이만으로도 대부분의 추적은 된다.
-        log.info("개념 챗봇 조회 — keywordCount={}, keywordParse={}, anchorFound={}, conceptCount={}, "
-                        + "subUnitConceptCount={}, empty={}",
-                keywords.size(), parse, context.anchor() != null, context.concepts().size(),
+        log.info("개념 챗봇 조회 — keywordCount={}, keywordParse={}, moveState={}, anchorFound={}, "
+                        + "conceptCount={}, subUnitConceptCount={}, empty={}",
+                keywords.size(), parse, state, context.anchor() != null, context.concepts().size(),
                 context.subUnitConceptNames().size(), context.empty());
 
         if (context.empty()) {
             // 근거 없이 부르면 모델이 일반 지식으로 답한다. 그건 "교육과정 데이터에 근거한 답변"이라는
             // 이 설계의 전제를 깨고, 지어낸 답을 학생이 교과 내용으로 받아들이게 만든다.
             return ConceptChatResult.noEvidence(
-                    ConceptChatPrompts.NO_EVIDENCE_ANSWER, keywords, parse, context);
+                    ConceptChatPrompts.NO_EVIDENCE_ANSWER, keywords, parse, state, context);
         }
+
+        Move move = moveDown(state, subUnitId, context);
+        if (move.outcome() == MoveOutcome.DEAD_END) {
+            return ConceptChatResult.deadEnd(
+                    ConceptChatPrompts.CANNOT_MOVE_ANSWER, keywords, parse, state, context);
+        }
+        context = move.context();
 
         logEvidenceSize(context, request.history().size());
 
@@ -125,7 +131,49 @@ public class ConceptChatEngine {
         log.info("개념 챗봇 생성 — contextLength={}, historySize={}, reasoningTokens={}",
                 systemPrompt.length(), request.history().size(), generation.reasoningTokens());
 
-        return new ConceptChatResult(generation.text(), keywords, parse, context, generation);
+        return new ConceptChatResult(
+                generation.text(), keywords, parse, state, move.outcome(), context, generation);
+    }
+
+    /**
+     * 상태 판정을 실제 이동으로 옮긴다. 이동이 없으면 받은 근거를 그대로 돌려준다.
+     *
+     * <p><b>착지 실패는 한 칸으로 폴백한다.</b> 초등까지 가는 경로가 없는 중1 개념 10개는 1칸은
+     * 갈 곳이 있다. 학생이 요청한 방향으로 한 칸이라도 가는 편이 아무것도 안 하는 것보다 낫고,
+     * 물러섬 문구는 정말 갈 곳이 없는 19개에만 쓴다.
+     *
+     * <p>앵커가 없으면(소단원 이름 목록만 있는 근거) 이동하지 않는다. 내려갈 출발점이 없다.
+     */
+    private Move moveDown(MoveState state, Long subUnitId, ConceptContext context) {
+        if (state == MoveState.NONE || context.anchor() == null) {
+            return new Move(MoveOutcome.NOT_REQUESTED, context);
+        }
+
+        Long anchorId = context.anchor().id();
+        Optional<ConceptLanding> landing = state == MoveState.MUCH_EASIER
+                ? conceptQueryService.findNearestElementary(anchorId)
+                : Optional.empty();
+
+        Long destinationId;
+        MoveOutcome outcome;
+        if (landing.isPresent()) {
+            destinationId = landing.get().concept().id();
+            outcome = MoveOutcome.LANDING;
+        } else {
+            Optional<ConceptView> stepDown = conceptQueryService.findNextStepDown(anchorId);
+            if (stepDown.isEmpty()) {
+                log.info("개념 챗봇 이동 — state={}, outcome=DEAD_END, anchorId={}", state, anchorId);
+                return new Move(MoveOutcome.DEAD_END, context);
+            }
+            destinationId = stepDown.get().id();
+            outcome = state == MoveState.MUCH_EASIER
+                    ? MoveOutcome.FALLBACK_STEP_DOWN
+                    : MoveOutcome.STEP_DOWN;
+        }
+
+        log.info("개념 챗봇 이동 — state={}, outcome={}, anchorId={}, destinationId={}",
+                state, outcome, anchorId, destinationId);
+        return new Move(outcome, conceptQueryService.buildContextAt(subUnitId, destinationId));
     }
 
     /**
@@ -171,31 +219,32 @@ public class ConceptChatEngine {
     }
 
     /**
-     * 1차 응답을 JSON 배열로 읽는다. 코드펜스가 붙어 오면 한 번은 관대하게 벗겨내고 다시 읽는다.
+     * 1차 응답을 JSON 객체로 읽는다. 코드펜스가 붙어 오면 한 번은 관대하게 벗겨내고 다시 읽는다.
      *
      * <p>모델이 형식을 어기는 것은 흔한 일이라 한 번의 관용은 값을 하지만, 그 횟수는
      * {@link KeywordParse} 로 남긴다. 조용히 봐주면 프롬프트가 나빠져도 알 수 없다.
      *
      * <p>읽지 못하면 예외를 던지지 않고 빈 키워드로 진행한다. 소단원 개념 목록만으로도 답할 수
-     * 있고, 키워드 추출 실패가 대화 자체를 끊을 이유는 없다.
+     * 있고, 키워드 추출 실패가 대화 자체를 끊을 이유는 없다. 그때 상태는 {@code NONE} 이다 —
+     * <b>읽지 못한 응답을 근거로 앵커를 옮기면 안 된다.</b>
      */
-    private Parsed parseKeywords(String rawText) {
+    private Parsed parseExtraction(String rawText) {
         String raw = rawText.trim();
-        List<String> keywords = readArray(raw);
-        if (keywords != null) {
-            return new Parsed(keywords, KeywordParse.PARSED);
+        Parsed parsed = readExtraction(raw, KeywordParse.PARSED);
+        if (parsed != null) {
+            return parsed;
         }
 
         String stripped = stripCodeFence(raw);
         if (!stripped.equals(raw)) {
-            keywords = readArray(stripped);
-            if (keywords != null) {
-                return new Parsed(keywords, KeywordParse.PARSED_AFTER_FENCE_STRIP);
+            parsed = readExtraction(stripped, KeywordParse.PARSED_AFTER_FENCE_STRIP);
+            if (parsed != null) {
+                return parsed;
             }
         }
 
-        log.warn("키워드 추출 응답을 JSON 배열로 읽지 못했다 — length={}", raw.length());
-        return new Parsed(List.of(), KeywordParse.FAILED);
+        log.warn("키워드 추출 응답을 JSON 객체로 읽지 못했다 — length={}", raw.length());
+        return new Parsed(List.of(), MoveState.NONE, KeywordParse.FAILED);
     }
 
     /**
@@ -203,12 +252,31 @@ public class ConceptChatEngine {
      *
      * <p>Jackson 3 은 파싱 예외가 unchecked 라 잡지 않으면 그대로 올라간다. 모델 출력은 언제든
      * 형식을 어길 수 있으니 여기서 삼킨다.
+     *
+     * <p>모르는 {@code state} 값은 {@code NONE} 으로 받는다. 형식은 맞는데 값만 어긋난 경우까지
+     * 통째로 실패시키면 멀쩡한 키워드를 버리게 된다.
      */
-    private List<String> readArray(String text) {
+    private Parsed readExtraction(String text, KeywordParse parse) {
         try {
-            return objectMapper.readValue(text, KEYWORD_LIST);
+            Extraction extraction = objectMapper.readValue(text, Extraction.class);
+            return new Parsed(
+                    extraction.keywords() == null ? List.of() : extraction.keywords(),
+                    moveState(extraction.state()),
+                    parse);
         } catch (JacksonException e) {
             return null;
+        }
+    }
+
+    private static MoveState moveState(String raw) {
+        if (raw == null) {
+            return MoveState.NONE;
+        }
+        try {
+            return MoveState.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            log.warn("알 수 없는 상태 판정값이라 NONE 으로 읽는다 — state={}", raw);
+            return MoveState.NONE;
         }
     }
 
@@ -235,6 +303,14 @@ public class ConceptChatEngine {
         return payload.get(PAYLOAD_SUB_UNIT_ID) instanceof Number number ? number.longValue() : null;
     }
 
-    private record Parsed(List<String> keywords, KeywordParse parse) {
+    private record Parsed(List<String> keywords, MoveState state, KeywordParse parse) {
+    }
+
+    /** 1차 응답의 JSON 형태. {@code state} 는 문자열로 받아 {@link #moveState} 가 해석한다. */
+    private record Extraction(List<String> keywords, String state) {
+    }
+
+    /** 이동 결과와 그 결과로 쓸 근거. {@code DEAD_END} 면 근거는 이동 전 그대로다. */
+    private record Move(MoveOutcome outcome, ConceptContext context) {
     }
 }
