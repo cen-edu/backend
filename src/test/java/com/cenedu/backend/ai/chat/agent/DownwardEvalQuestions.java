@@ -3,7 +3,26 @@ package com.cenedu.backend.ai.chat.agent;
 import java.util.List;
 
 /**
- * 하향 탐색 평가 세트 (c) <b>v2</b>. 문항과 정답표만 담는다.
+ * 하향 탐색 평가 세트 (c) <b>v3</b>. 문항과 정답표만 담는다.
+ *
+ * <h2>v3 변경 내역 (task_24c §0-4) — <b>기대 상태만</b> 바꿨다</h2>
+ *
+ * {@code HOLD} 도입에 따라 <b>음성 턴 5개의 기대 상태를 {@code NONE} → {@code HOLD}</b> 로 옮겼다.
+ * 정답표가 이미 "앵커 유지" 를 적어 둔 턴들이므로 <b>기대 앵커는 한 글자도 바뀌지 않았고</b>
+ * 발화·시나리오 구성도 그대로다.
+ *
+ * <pre>
+ * DA1-3  아 그건 알아요                        NONE → HOLD
+ * DA3-4  그건 이해했어요                        NONE → HOLD
+ * DC1-2  아 이제 알겠어요                       NONE → HOLD
+ * DC2-2  이해했어요, 고맙습니다                   NONE → HOLD
+ * DC4-2  방금 설명해 준 거 한 번만 더 말해 주세요   NONE → HOLD
+ * DC3-2  그럼 맞꼭지각은 뭐예요?                  NONE 유지 ← 화제 전환
+ * </pre>
+ *
+ * <p><b>{@code DC3-2} 만 {@code NONE} 으로 남는 것이 요점이다.</b> 여섯 턴 모두 "이동하지 않는다"
+ * 는 같지만, 화제 전환은 <b>앵커를 새 질문이 정해야</b> 하고 나머지 다섯은 <b>직전 앵커를 지켜야</b>
+ * 한다. v2 까지 둘이 한 값에 묶여 있어 세 실행 모두 {@code DA1-3} 이 되감겼다.
  *
  * <h2>v2 변경 내역 (task_24b §0-5) — 여기 적힌 것 외에는 손대지 않았다</h2>
  *
@@ -95,8 +114,10 @@ final class DownwardEvalQuestions {
 
     /** LLM 호출 ①이 판정해야 하는 학생 상태. 코드가 이것을 이동 거리로 환산한다. */
     enum MoveState {
-        /** 이동 없음. */
+        /** 이동 없음. <b>앵커는 새 질문이 정한다</b>(화제 전환·새 개념 질문). */
         NONE,
+        /** 이동 없음. <b>직전 앵커를 지킨다</b>(이해 표현·재설명 요청). v3 신설. */
+        HOLD,
         /** 1순위로 한 칸. */
         SLIGHTLY_EASIER,
         /** 최단 초등 개념으로 점프. */
@@ -163,7 +184,7 @@ final class DownwardEvalQuestions {
                             "공간에서 직선과 평면의 위치 관계", 14,
                             Verdict.ANCHOR_MATCHES, SRC_RANK),
                     new Turn("DA1-3", "아 그건 알아요", true,
-                            MoveState.NONE, 3L, 3L,
+                            MoveState.HOLD, 3L, 3L,
                             "공간에서 직선과 평면의 위치 관계", 14,
                             Verdict.ANCHOR_MATCHES, SRC_HOLD + " (하강 중간 이탈)"),
                     new Turn("DA1-4", "근데 그 앞부분이 헷갈려요", true,
@@ -203,7 +224,7 @@ final class DownwardEvalQuestions {
                             "역수를 이용한 나눗셈", 14,
                             Verdict.ANCHOR_MATCHES, SRC_RANK),
                     new Turn("DA3-4", "그건 이해했어요", true,
-                            MoveState.NONE, 161L, 161L,
+                            MoveState.HOLD, 161L, 161L,
                             "역수를 이용한 나눗셈", 14,
                             Verdict.ANCHOR_MATCHES, SRC_HOLD + " (하강 중간 이탈)"),
                     new Turn("DA3-5", "그래도 아직 어려워요", true,
@@ -257,7 +278,7 @@ final class DownwardEvalQuestions {
                             MoveState.NONE, 2L, 2L, "공간에서 두 직선의 위치 관계", 14,
                             Verdict.ANCHOR_MATCHES, SRC_FIRST),
                     new Turn("DC1-2", "아 이제 알겠어요", true,
-                            MoveState.NONE, 2L, 2L, "공간에서 두 직선의 위치 관계", 14,
+                            MoveState.HOLD, 2L, 2L, "공간에서 두 직선의 위치 관계", 14,
                             Verdict.ANCHOR_MATCHES, SRC_HOLD))),
 
             new Scenario("DC2", Category.NEGATIVE, 3L, "공간에서 직선과 평면의 위치 관계", List.of(
@@ -265,7 +286,7 @@ final class DownwardEvalQuestions {
                             MoveState.NONE, 3L, 3L, "공간에서 직선과 평면의 위치 관계", 14,
                             Verdict.ANCHOR_MATCHES, SRC_FIRST),
                     new Turn("DC2-2", "이해했어요, 고맙습니다", true,
-                            MoveState.NONE, 3L, 3L, "공간에서 직선과 평면의 위치 관계", 14,
+                            MoveState.HOLD, 3L, 3L, "공간에서 직선과 평면의 위치 관계", 14,
                             Verdict.ANCHOR_MATCHES, SRC_HOLD))),
 
             new Scenario("DC3", Category.NEGATIVE, 4L, "교각", List.of(
@@ -284,7 +305,7 @@ final class DownwardEvalQuestions {
                             Verdict.ANCHOR_MATCHES, SRC_FIRST),
                     // 재설명 요청. 같은 개념을 다시 듣고 싶다는 것이지 더 쉬운 것을 달라는 게 아니다.
                     new Turn("DC4-2", "방금 설명해 준 거 한 번만 더 말해 주세요", true,
-                            MoveState.NONE, 5L, 5L, "교선", 14,
+                            MoveState.HOLD, 5L, 5L, "교선", 14,
                             Verdict.ANCHOR_MATCHES, SRC_HOLD + " (재설명 요청)"))),
 
             // ── 갈 곳 없음 ───────────────────────────────────────────────
@@ -309,11 +330,19 @@ final class DownwardEvalQuestions {
         return ALL.stream().flatMap(s -> s.turns().stream()).filter(Turn::scored).count();
     }
 
-    /** 음성 턴 수. 이 세트의 유일한 통제 장치이므로 따로 센다. */
+    /**
+     * 음성 턴 수. 이 세트의 유일한 통제 장치이므로 따로 센다.
+     *
+     * <p><b>v3 에서 {@code HOLD} 를 함께 센다.</b> 음성의 정의는 "이동하면 안 되는 턴" 이고
+     * {@code NONE}·{@code HOLD} 는 둘 다 이동하지 않는다 — 갈리는 것은 앵커를 새로 찾느냐
+     * 지키느냐다. {@code NONE} 만 세면 v3 에서 음성이 6턴에서 1턴으로 줄어든 것처럼 보인다.
+     */
     static long negativeTurnCount() {
         return ALL.stream()
                 .flatMap(s -> s.turns().stream())
-                .filter(t -> t.scored() && t.expectedState() == MoveState.NONE)
+                .filter(t -> t.scored()
+                        && (t.expectedState() == MoveState.NONE
+                                || t.expectedState() == MoveState.HOLD))
                 .count();
     }
 }
