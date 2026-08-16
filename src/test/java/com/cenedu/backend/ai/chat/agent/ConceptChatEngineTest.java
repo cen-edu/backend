@@ -463,12 +463,14 @@ class ConceptChatEngineTest {
         engine.answer(request("맞꼭지각이 뭐야?", Map.of("subUnitId", SUB_UNIT_ID)));
 
         String answerPrompt = llmClient.systemPrompts.get(1);
-        // 괄호로 실으면 모델이 그대로 옮겨 쓴다(task_24: 39턴 중 12~13턴). 조립에서 미리 푼다.
+        // 괄호로 실으면 모델이 그대로 옮겨 쓰고(task_24: 12~13턴), 이름 뒤에 이어 붙여도
+        // 이름의 일부처럼 읽혀 옮겨 쓴다(task_24b: 1~2턴). 그래서 줄을 나눈다.
         assertThat(answerPrompt)
-                .contains("맞꼭지각 — 중학교 1학년 때 배우는 개념")
-                .contains("각의 크기 — 초등학교 4학년 때 배우는 개념")
+                .contains("이름: 맞꼭지각\n배우는 시기: 중학교 1학년\n설명: ")
+                .contains("- 각의 크기\n  배우는 시기: 초등학교 4학년\n  설명: ")
                 .doesNotContain("(중1)")
-                .doesNotContain("(초4)");
+                .doesNotContain("(초4)")
+                .doesNotContain("때 배우는 개념");
         // 소단원 개념은 전부 중1이라 병기하면 모든 줄이 (중1) 로 끝나는 잡음이 된다.
         String subUnitSection = answerPrompt.substring(answerPrompt.lastIndexOf("[이 단원의 개념 목록]"));
         assertThat(subUnitSection).contains("맞꼭지각, 교각");

@@ -172,7 +172,7 @@ public final class ConceptChatPrompts {
                함께 알린다. 그다음 무엇을 물어보면 되는지 안내한다.
             8. 어느 쪽인지 단정하지 않는다. 어느 학년에서 배우는지는 자료에 없으므로 알 수 없다.
                "그건 중2 에서 배워요", "고등학교 과정이에요" 처럼 학년을 못 박는 문장은 쓰지 않는다.
-            9. 개념 이름 뒤에 배우는 시기가 적혀 있으면 그 학년은 말해도 된다.
+            9. "배우는 시기" 가 적힌 개념은 그 학년을 말해도 된다.
                적혀 있지 않은 개념의 학년은 여전히 알 수 없다.
 
             답변 형식
@@ -236,8 +236,9 @@ public final class ConceptChatPrompts {
         }
         if (anchor != null) {
             prompt.append("\n[앵커 개념]\n")
-                    .append("이름: ").append(named(anchor)).append('\n')
-                    .append("설명: ").append(anchor.description()).append('\n');
+                    .append("이름: ").append(anchor.name()).append('\n');
+            appendGrade(prompt, anchor, "");
+            prompt.append("설명: ").append(anchor.description()).append('\n');
         }
 
         // concepts 의 첫 원소는 앵커 자신(hop 0)이라 선수 개념에서는 뺀다.
@@ -247,8 +248,9 @@ public final class ConceptChatPrompts {
         if (!prereqs.isEmpty()) {
             prompt.append("\n[선수 개념]\n");
             for (ConceptView prereq : prereqs) {
-                prompt.append("- ").append(named(prereq)).append(": ")
-                        .append(prereq.description()).append('\n');
+                prompt.append("- ").append(prereq.name()).append('\n');
+                appendGrade(prompt, prereq, "  ");
+                prompt.append("  설명: ").append(prereq.description()).append('\n');
             }
         }
 
@@ -284,9 +286,14 @@ public final class ConceptChatPrompts {
     }
 
     /**
-     * 개념 이름에 배우는 시기를 병기한다. 하향 탐색이 붙으면서 <b>한 답변 안에 여러 학년의 개념이
-     * 섞이기</b> 때문에 필요해졌다 — 초등으로 건너뛴 답변에서 학생은 그게 언제 배운 것인지
-     * 알 수 없고, 이름이 같은 개념이 중1과 초등에 걸쳐 11쌍 있다.
+     * 배우는 시기를 <b>이름과 다른 줄에</b> 적는다. 하향 탐색이 붙으면서 <b>한 답변 안에 여러
+     * 학년의 개념이 섞이기</b> 때문에 필요해졌다 — 초등으로 건너뛴 답변에서 학생은 그게 언제
+     * 배운 것인지 알 수 없고, 이름이 같은 개념이 중1과 초등에 걸쳐 11쌍 있다.
+     *
+     * <p><b>줄을 나눈 이유(task_24c §0-3).</b> 이름 뒤에 이어 붙이면 <b>이름의 일부처럼 읽혀서</b>
+     * 모델이 통째로 옮겨 쓴다 — task_24b 에서 {@code 최대공약수 구하는 방법 — 중학교 1학년 때
+     * 배우는 개념: 1. 소인수분해를 …} 처럼 나간 턴이 1~2턴 있었다. 괄호를 떼어낸 것과 같은 처방을
+     * 한 번 더 적용한 것이며, <b>프롬프트를 강화하는 대신 조립을 고쳤다.</b>
      *
      * <p><b>[이 단원의 개념 목록] 에는 붙이지 않는다.</b> 소단원이 달린 개념은 455개 중 중1
      * 210개뿐이고 초등 245개는 소단원이 없다. 그 목록에 병기하면 모든 줄이 {@code (중1)} 로
@@ -296,9 +303,11 @@ public final class ConceptChatPrompts {
      * {@code source_semester} 에 원천 학년(중3)을 그대로 갖고 있어, 중1이면 학기를 읽지 않는다.
      * task_20 §1-2 에서 정렬 축을 이렇게 정한 것과 같은 이유이며 같은 규칙이어야 한다.
      */
-    private static String named(ConceptView concept) {
+    private static void appendGrade(StringBuilder prompt, ConceptView concept, String indent) {
         String grade = gradeLabel(concept);
-        return grade == null ? concept.name() : concept.name() + " — " + grade + " 때 배우는 개념";
+        if (grade != null) {
+            prompt.append(indent).append("배우는 시기: ").append(grade).append('\n');
+        }
     }
 
     /**
