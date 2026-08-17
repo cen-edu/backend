@@ -47,6 +47,7 @@ class StudentWorksheetControllerTest {
     private String studentToken;
     private long choiceQuestionId;
     private long stepQuestionId;
+    private long answerRefQuestionId;
     private long assignmentStudentId;
 
     @BeforeEach
@@ -78,9 +79,26 @@ class StudentWorksheetControllerTest {
                 """);
         insertAnswerUnit(stepQuestionId, stepId, "B1", 0, "VALUE", "18");
 
+        // 기존 STEP_FILL 픽스처는 1단계·B1 하나라 ANSWER_REF를 표현할 수 없다. 수정하지 않고 따로 만든다.
+        // 실측(로컬 DB): ANSWER_REF 1,657개가 전부 자기보다 앞선 display_order의 step을 참조한다.
+        answerRefQuestionId = insertQuestion(subUnitId, "STEP_FILL", """
+                [{"blockId":"T1","blockKind":"TEXT","displayOrder":0,"text":"부채꼴의 중심각을 구하시오."}]
+                """);
+        long refStep1Id = insertStep(answerRefQuestionId, 0, "풀이 과정 1", """
+                [{"type":"TEXT","value":"작은 부채꼴의 중심각은"},{"type":"BLANK","unitKey":"B1"}]
+                """);
+        insertAnswerUnit(answerRefQuestionId, refStep1Id, "B1", 0, "VALUE", "50");
+        long refStep2Id = insertStep(answerRefQuestionId, 1, "풀이 과정 2", """
+                [{"type":"ANSWER_REF","unitKey":"B1"},
+                 {"type":"TEXT","value":"를 이용하면 큰 부채꼴의 중심각은 100°이므로 x = "},
+                 {"type":"BLANK","unitKey":"B2"}]
+                """);
+        insertAnswerUnit(answerRefQuestionId, refStep2Id, "B2", 1, "VALUE", "100");
+
         long worksheetId = insertWorksheet(teacherId, "GENERAL_LEARNING", "STANDARD");
         insertWorksheetItem(worksheetId, choiceQuestionId, 1);
         insertWorksheetItem(worksheetId, stepQuestionId, 2);
+        insertWorksheetItem(worksheetId, answerRefQuestionId, 3);
 
         long classId = insertClass(teacherId);
         long assignmentId = insertAssignment(worksheetId, classId);
@@ -99,8 +117,8 @@ class StudentWorksheetControllerTest {
                 .andExpect(jsonPath("$.data.assignments[0].category").value("homework"))
                 .andExpect(jsonPath("$.data.assignments[0].status").value("not-started"))
                 .andExpect(jsonPath("$.data.assignments[0].doneUnits").value(0))
-                // GENERAL_LEARNING → 문항들의 answer_unit 수 합(1+1=2), 문항 수(2)가 아니다.
-                .andExpect(jsonPath("$.data.assignments[0].totalUnits").value(2))
+                // GENERAL_LEARNING → 문항들의 answer_unit 수 합(1+1+2=4), 문항 수(3)가 아니다.
+                .andExpect(jsonPath("$.data.assignments[0].totalUnits").value(4))
                 .andExpect(jsonPath("$.data.assignments[0].resultReady").value(false))
                 .andExpect(jsonPath("$.data.assignments[0].stages").doesNotExist());
     }
@@ -138,6 +156,37 @@ class StudentWorksheetControllerTest {
                 .andExpect(jsonPath("$.data.items[1].steps[0].segments[1].answerUnitId")
                         .value(org.hamcrest.Matchers.notNullValue()))
                 .andExpect(jsonPath("$.data.items[1].steps[0].instruction").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("ANSWER_REF 세그먼트가 answerRef 토큰과 참조 칸의 answerUnitId로 나가고 value는 없다")
+    void getAssignmentDetail_rendersAnswerRefSegment() throws Exception {
+        // 2단계 ANSWER_REF(B1)이 가리켜야 하는 값 — 1단계 BLANK(B1)의 answerUnitId와 같아야 한다.
+        long b1AnswerUnitId = jdbcTemplate.queryForObject(
+                "SELECT id FROM problem_answer_unit WHERE question_id = ? AND unit_key = 'B1'",
+                Long.class, answerRefQuestionId);
+        long b2AnswerUnitId = jdbcTemplate.queryForObject(
+                "SELECT id FROM problem_answer_unit WHERE question_id = ? AND unit_key = 'B2'",
+                Long.class, answerRefQuestionId);
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId)
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[2].format").value("step"))
+                .andExpect(jsonPath("$.data.items[2].steps[0].segments[1].type").value("blank"))
+                .andExpect(jsonPath("$.data.items[2].steps[0].segments[1].answerUnitId").value(b1AnswerUnitId))
+                // 1. 토큰은 소문자 파생(answer_ref)이 아니라 프론트가 비교하는 answerRef다.
+                .andExpect(jsonPath("$.data.items[2].steps[1].segments[0].type").value("answerRef"))
+                // 2. 앞선 단계 BLANK(B1)와 동일한 answerUnitId — 프론트가 이 ID로 답안 상태를 공유한다.
+                .andExpect(jsonPath("$.data.items[2].steps[1].segments[0].answerUnitId").value(b1AnswerUnitId))
+                // 3. value는 영구히 null. 서버가 아는 값은 정답뿐이라 채우면 정답이 노출된다.
+                .andExpect(jsonPath("$.data.items[2].steps[1].segments[0].value").doesNotExist())
+                // 뒤따르는 TEXT/BLANK도 그대로 살아 있어야 한다(세그먼트가 사라지던 증상의 반대편).
+                .andExpect(jsonPath("$.data.items[2].steps[1].segments[1].type").value("text"))
+                .andExpect(jsonPath("$.data.items[2].steps[1].segments[1].value")
+                        .value(org.hamcrest.Matchers.containsString("큰 부채꼴의 중심각은 100°")))
+                .andExpect(jsonPath("$.data.items[2].steps[1].segments[2].type").value("blank"))
+                .andExpect(jsonPath("$.data.items[2].steps[1].segments[2].answerUnitId").value(b2AnswerUnitId));
     }
 
     @Test
