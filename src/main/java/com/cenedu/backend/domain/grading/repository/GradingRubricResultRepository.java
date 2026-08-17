@@ -14,6 +14,10 @@ import org.springframework.data.repository.query.Param;
  * 서술형 채점 결과 조회. {@code ProblemRubricItem}(problem 도메인) 배치 조회도 여기 둔다 —
  * 채점 기준(항목)과 판정 결과가 같은 화면(학생 결과 조회)에서 함께 필요해서다.
  * domain/problem 쪽 파일은 만들거나 고치지 않는다 — 읽기 전용 쿼리만 내 패키지 안에 둔다.
+ *
+ * <p><b>TODO(배세빈, 도메인 경계 정리):</b> 다른 도메인의 Entity를 이 Repository에서 직접
+ * 조회하는 현재 방식은 AGENTS.md 3절 1·2번과 맞지 않는다. Problem 도메인의 공개 루브릭
+ * Response/Service를 통해 조회하도록 교체하고, 이 Repository는 Grading Entity만 반환한다.
  */
 public interface GradingRubricResultRepository extends JpaRepository<GradingRubricResult, Long> {
 

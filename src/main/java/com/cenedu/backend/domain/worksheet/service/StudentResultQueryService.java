@@ -48,6 +48,12 @@ import tools.jackson.databind.ObjectMapper;
  * ({@code worksheet_assignment_student.total_score})을 쓰지 않고 문항 점수 합으로 직접
  * 계산한다 — 그 컬럼은 "종합평가 전용"이라 일반학습에선 비어 있을 수 있어, 응답에 실제로
  * 나가는 문항별 점수와 항상 같은 축이 되도록 여기서 다시 더한다.
+ *
+ * <p><b>TODO(배세빈, 도메인 경계 정리):</b> Problem·Submission·Grading Repository와 Entity를
+ * 직접 참조하는 현재 조회는 AGENTS.md 3절 1·2번과 맞지 않는다. 각 소유 도메인의 공개 배치
+ * Response/Service로 교체하고, S2로 최종화된 문항은
+ * {@link com.cenedu.backend.domain.problem.service.ProblemSnapshotQueryService#getFinalized(long)}를
+ * 통해 저장 당시 S1을 조회한다.
  */
 @Service
 @RequiredArgsConstructor

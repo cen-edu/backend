@@ -179,10 +179,17 @@ domain/problem/
 ├── service/
 ├── repository/
 ├── entity/
+├── authoring/                 문제 생성·수정·검증에 함께 쓰는 AI 독립 계약 (이하영)
 └── dto/
     ├── request/                 HTTP 요청 DTO (`*Request`)
     └── response/                HTTP 응답·서비스 반환 DTO (`*Response`)
 ```
+
+`domain/problem/authoring`은 LLM 구현 패키지가 아닙니다. 문제 스냅샷, 생성·수정 명령,
+검증 요청·결과, 실행 Port처럼 Problem 도메인이 소유하는 계약만 둡니다. 실제 AI 구현은
+사용자 프롬프트 경로면 `ai/problem/agent`, 시스템 호출 경로면 `ai/problem/adapter` 또는
+`ai/verification/adapter`에 둡니다. 따라서 `domain/problem/authoring`에서는
+`ai/client`, `com.openai`, Spring AI를 직접 참조하지 않습니다.
 
 요청·응답 DTO는 패키지와 클래스 이름 모두로 용도를 구분합니다. HTTP 응답과 서비스 처리 결과, 도메인 간 공개 데이터는 `dto/response`에 두고 기본적으로 `*Response`로 이름 짓습니다. 비밀번호 해시처럼 API로 반환하면 안 되는 특수 목적 데이터는 `*Credentials`처럼 용도가 드러나는 이름을 사용하고, API 응답으로 반환하지 않습니다. JPA 엔티티를 DTO로 반환하지 않습니다.
 
