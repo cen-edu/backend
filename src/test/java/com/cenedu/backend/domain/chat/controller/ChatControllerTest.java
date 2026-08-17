@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -17,6 +18,7 @@ import java.util.stream.IntStream;
 import com.cenedu.backend.ai.agent.AgentRequest;
 import com.cenedu.backend.ai.agent.AgentResponse;
 import com.cenedu.backend.ai.agent.ChatMessage;
+import com.cenedu.backend.ai.chat.agent.ConceptChatEngine;
 import com.cenedu.backend.ai.dispatcher.AgentDispatcher;
 import com.cenedu.backend.domain.chat.service.ChatService;
 import com.cenedu.backend.global.common.enums.UserRole;
@@ -106,6 +108,27 @@ class ChatControllerTest {
                 .extracting(ChatMessage::role)
                 .containsExactly(ChatMessage.Role.USER, ChatMessage.Role.ASSISTANT);
         assertThat(dispatched.payload()).containsEntry("currentConceptId", EXISTING_CONCEPT_ID);
+    }
+
+    /**
+     * task_25 §1-4 가 기록한 함정: payload 키는 컴파일 시점 상수라 javac 가 값을 인라인하고
+     * 바이트코드에 엔진 클래스 참조가 남지 않는다. ArchUnit 이 이 결합을 보지 못하고, 드리프트를
+     * 잡는 {@code twoTurnDescent} 는 {@code OPENAI_API_KEY} 가 없으면 스킵된다 — CI 에 키가
+     * 없으면 방어선이 사라진다. 리플렉션은 인라인을 우회하므로 여기서 드리프트가 드러난다.
+     *
+     * <p>필드 이름을 리터럴로 적으므로 엔진 쪽 필드명이 바뀌어도 이 테스트가 먼저 깨진다.
+     */
+    @Test
+    @DisplayName("컨트롤러가 싣는 payload 키가 엔진이 읽는 상수와 같다")
+    void answer_payloadKeys_matchEngineConstants() throws Exception {
+        mockMvc.perform(chat("""
+                        {"question":"맞꼭지각이 뭐예요?","subUnitId":1,"currentConceptId":%d}
+                        """.formatted(EXISTING_CONCEPT_ID)))
+                .andExpect(status().isOk());
+
+        assertThat(captureRequest().payload())
+                .containsKey(engineConstant("PAYLOAD_CURRENT_CONCEPT_ID"))
+                .containsKey(engineConstant("PAYLOAD_SUB_UNIT_ID"));
     }
 
     /**
@@ -268,6 +291,13 @@ class ChatControllerTest {
                 .header("Authorization", "Bearer " + studentToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body);
+    }
+
+    /** 상수 인라인을 우회해 엔진이 실제로 들고 있는 값을 읽는다. */
+    private static String engineConstant(String fieldName) throws Exception {
+        Field field = ConceptChatEngine.class.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return (String) field.get(null);
     }
 
     private AgentRequest captureRequest() {
