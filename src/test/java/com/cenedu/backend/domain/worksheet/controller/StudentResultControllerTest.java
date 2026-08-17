@@ -222,6 +222,89 @@ class StudentResultControllerTest {
     }
 
     @Test
+    @DisplayName("미제출 + 반 미확정이면 200이되 정답·해설은 조립되지 않는다 — 판정만 보인다")
+    void getResult_notSubmittedAndClassNotReleased_returnsMaskedResult() throws Exception {
+        long questionId = insertQuestion("MULTIPLE_CHOICE");
+        insertChoice(questionId, 0, "1");
+        insertChoice(questionId, 1, "4");
+        insertAnswerUnit(questionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        // 같은 배포에 확정된 형제 행이 없다.
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "NOT_SUBMITTED", null);
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].result").value("empty"))
+                .andExpect(jsonPath("$.data.items[0].score").value(0))
+                .andExpect(jsonPath("$.data.items[0].explanation").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctAnswer").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("미제출이어도 형제 행에 released_at이 있으면 반 확정으로 보고 전부 공개한다")
+    void getResult_notSubmittedButClassReleased_disclosesEverything() throws Exception {
+        long questionId = insertQuestion("MULTIPLE_CHOICE");
+        insertChoice(questionId, 0, "1");
+        insertChoice(questionId, 1, "4");
+        insertAnswerUnit(questionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "NOT_SUBMITTED", null);
+        // 같은 배포의 제출자 한 명이 확정됐다 — 미제출자 본인 행은 여전히 released_at이 없다.
+        insertOtherStudentAssignment(assignmentId, "GRADED", "now()");
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].explanation").value("해설 원문"))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctAnswer").value("4"));
+    }
+
+    @Test
+    @DisplayName("마감이 지난 NOT_STARTED도 미제출로 파생해 200을 낸다 — DB는 아직 NOT_SUBMITTED가 아니다")
+    void getResult_notStartedPastDue_treatedAsNotSubmitted() throws Exception {
+        long questionId = insertQuestion("MULTIPLE_CHOICE");
+        insertAnswerUnit(questionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertOverdueAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "NOT_STARTED", null);
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].explanation").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("마감 전 NOT_STARTED는 미제출로 보지 않아 409로 막힌다")
+    void getResult_notStartedBeforeDue_returns409() throws Exception {
+        long questionId = insertQuestion("MULTIPLE_CHOICE");
+        insertAnswerUnit(questionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "NOT_STARTED", null);
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("WORKSHEET_RESULT_NOT_RELEASED"));
+    }
+
+    @Test
     @DisplayName("남의 assignmentStudentId로 결과를 조회하면 404 WORKSHEET_ASSIGNMENT_NOT_FOUND")
     void getResult_notOwned_returns404() throws Exception {
         long questionId = insertQuestion("MULTIPLE_CHOICE");
@@ -371,13 +454,37 @@ class StudentResultControllerTest {
                 """, Long.class, worksheetId, classId);
     }
 
+    /** 마감이 이미 지난 배포. NOT_STARTED를 미제출로 파생하는 경로를 만든다(§2.4). */
+    private long insertOverdueAssignment(long worksheetId, long classId) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO worksheet_assignment(worksheet_id, class_id, assigned_at, due_at)
+                VALUES (?, ?, now() - interval '14 days', now() - interval '7 days')
+                RETURNING id
+                """, Long.class, worksheetId, classId);
+    }
+
     /** releasedAtExpr가 null이면 released_at을 비워 게이트(409) 시나리오를 만든다. */
     private long insertAssignmentStudent(long assignmentId, String releasedAtExpr) {
+        return insertAssignmentStudent(assignmentId, "GRADED", releasedAtExpr);
+    }
+
+    private long insertAssignmentStudent(long assignmentId, String status, String releasedAtExpr) {
         String releasedAtSql = releasedAtExpr == null ? "null" : releasedAtExpr;
         return jdbcTemplate.queryForObject("""
                 INSERT INTO worksheet_assignment_student(assignment_id, student_id, status, progress_count, released_at)
-                VALUES (?, ?, 'GRADED', 1, %s)
+                VALUES (?, ?, ?, 1, %s)
                 RETURNING id
-                """.formatted(releasedAtSql), Long.class, assignmentId, studentId);
+                """.formatted(releasedAtSql), Long.class, assignmentId, studentId, status);
+    }
+
+    /** 같은 배포의 형제 행. 반 확정 판정(§8.1)이 이 행을 보고 갈린다. */
+    private void insertOtherStudentAssignment(long assignmentId, String status, String releasedAtExpr) {
+        long otherStudentId = insertAccount("STUDENT", "result-test-sibling", "학생3");
+        insertStudentProfile(otherStudentId, teacherId);
+        String releasedAtSql = releasedAtExpr == null ? "null" : releasedAtExpr;
+        jdbcTemplate.update("""
+                INSERT INTO worksheet_assignment_student(assignment_id, student_id, status, progress_count, released_at)
+                VALUES (?, ?, ?, 1, %s)
+                """.formatted(releasedAtSql), assignmentId, otherStudentId, status);
     }
 }

@@ -1,6 +1,7 @@
 package com.cenedu.backend.domain.worksheet.service;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -31,6 +32,7 @@ import com.cenedu.backend.domain.worksheet.repository.WorksheetAssignmentStudent
 import com.cenedu.backend.domain.worksheet.repository.WorksheetItemRepository;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
+import com.cenedu.backend.global.common.enums.AssignmentStatus;
 import com.cenedu.backend.global.common.enums.QuestionType;
 
 import lombok.RequiredArgsConstructor;
@@ -70,9 +72,14 @@ public class StudentResultQueryService {
             throw new BusinessException(ErrorCode.WORKSHEET_ASSIGNMENT_NOT_FOUND);
         }
         // 점수·정답·해설·루브릭 어느 것도 담기 전에 검사한다(명세 7-2/8절).
-        if (was.getReleasedAt() == null) {
+        boolean notSubmitted = isNotSubmitted(was);
+        if (!notSubmitted && was.getReleasedAt() == null) {
             throw new BusinessException(ErrorCode.WORKSHEET_RESULT_NOT_RELEASED);
         }
+        // 미제출자 행에는 확정이 released_at을 채우지 않아(교사 채점 10절) 형제 행으로 반 확정을 본다.
+        boolean disclose = !notSubmitted
+                || worksheetAssignmentStudentRepository
+                        .existsByAssignment_IdAndReleasedAtIsNotNull(was.getAssignment().getId());
 
         long worksheetId = was.getAssignment().getWorksheet().getId();
         List<WorksheetItem> items = worksheetItemRepository
@@ -136,7 +143,7 @@ public class StudentResultQueryService {
                         unit.getId(),
                         unit.getDisplayOrder(),
                         resolveMyAnswer(question.getQuestionType(), answer, choices),
-                        resolveCorrectAnswer(question.getQuestionType(), unit, choices),
+                        disclose ? resolveCorrectAnswer(question.getQuestionType(), unit, choices) : null,
                         unitResult,
                         score,
                         answer != null && answer.getAnswerImageRef() != null));
@@ -157,10 +164,28 @@ public class StudentResultQueryService {
 
             itemResponses.add(StudentResultItemResponse.from(
                     item, question, itemResult, itemScore, itemMaxScore,
-                    parseContentBlocks(question.getContentBlocks(), question.getId()), unitResponses, rubric));
+                    parseContentBlocks(question.getContentBlocks(), question.getId()), unitResponses, rubric,
+                    disclose));
         }
 
         return StudentResultResponse.from(was, itemResponses, totalScore, maxTotalScore);
+    }
+
+    /**
+     * 미제출 판정(명세 2.4 파생 규칙). {@code NOT_STARTED}인데 마감이 지났으면 DB가 아직
+     * {@code NOT_SUBMITTED}로 확정하기 전이라 조회 시각으로 파생해야 한다 — 목록 응답의
+     * {@code StudentResponseFormatter.toApiStatus}가 쓰는 규칙과 같은 축이다.
+     *
+     * <p>마감 전 {@code NOT_STARTED}는 미제출로 보지 않는다. 아직 낼 수 있는 상태라 결과를
+     * 열어 줄 이유가 없고, 게이트가 그대로 409로 막는다.
+     */
+    private boolean isNotSubmitted(WorksheetAssignmentStudent was) {
+        AssignmentStatus status = was.getStatus();
+        if (status == AssignmentStatus.NOT_SUBMITTED) {
+            return true;
+        }
+        return status == AssignmentStatus.NOT_STARTED
+                && was.getAssignment().getDueAt().isBefore(OffsetDateTime.now());
     }
 
     /**
