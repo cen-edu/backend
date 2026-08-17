@@ -95,4 +95,31 @@ public class WorksheetAssignmentStudent {
         this.status = AssignmentStatus.SUBMITTED;
         this.submittedAt = submittedAt;
     }
+
+    /**
+     * 전 칸 채점이 끝났음을 기록한다. 종합평가가 아니면 {@code totalScore}가 {@code null}이다.
+     */
+    public void markGraded(OffsetDateTime gradedAt, BigDecimal totalScore) {
+        this.status = AssignmentStatus.GRADED;
+        this.gradedAt = gradedAt;
+        this.totalScore = totalScore;
+    }
+
+    /** 교사가 점수를 고친 뒤 총점만 다시 계산한다. 채점 상태와 시각은 그대로 둔다. */
+    public void updateTotalScore(BigDecimal totalScore) {
+        this.totalScore = totalScore;
+    }
+
+    /** 교사가 반 단위로 확정한다. 이때부터 학생이 점수·정답·해설을 본다. */
+    public void release(OffsetDateTime releasedAt) {
+        this.releasedAt = releasedAt;
+    }
+
+    /**
+     * 확정 시점까지 내지 않은 학생을 미제출로 기록한다. {@code released_at}은 채우지 않는다 —
+     * 공개할 결과가 없다.
+     */
+    public void markNotSubmitted() {
+        this.status = AssignmentStatus.NOT_SUBMITTED;
+    }
 }

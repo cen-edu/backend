@@ -78,6 +78,13 @@ public enum ErrorCode {
     SUBMISSION_ANSWER_UNIT_MISMATCH(HttpStatus.BAD_REQUEST, "이 문항의 채점 칸이 아닙니다."),
 
     // ===== grading (배세빈) =====
+    GRADING_ASSIGNMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "배포된 학습지를 찾을 수 없습니다."),
+    GRADING_NOT_SUBMITTED(HttpStatus.CONFLICT, "아직 제출하지 않은 학생입니다."),
+    GRADING_ALREADY_RUNNING(HttpStatus.CONFLICT, "이미 자동채점이 진행 중입니다."),
+    GRADING_INCOMPLETE(HttpStatus.CONFLICT, "채점이 끝나지 않은 학생이 있습니다."),
+    GRADING_ALREADY_RELEASED(HttpStatus.CONFLICT, "이미 확정된 학습지입니다."),
+    GRADING_SCORE_OUT_OF_RANGE(HttpStatus.BAD_REQUEST, "점수가 허용 범위를 벗어났습니다."),
+    GRADING_RUBRIC_ITEM_MISMATCH(HttpStatus.BAD_REQUEST, "이 문항의 채점 기준이 아닙니다."),
 
     // ===== chat (배세빈) =====
     CHAT_QUESTION_BLANK(HttpStatus.BAD_REQUEST, "질문을 입력해 주세요."),
