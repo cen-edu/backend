@@ -80,6 +80,9 @@ public enum ErrorCode {
     // ===== grading (배세빈) =====
 
     // ===== chat (배세빈) =====
+    CHAT_QUESTION_BLANK(HttpStatus.BAD_REQUEST, "질문을 입력해 주세요."),
+    CHAT_QUESTION_TOO_LONG(HttpStatus.BAD_REQUEST, "질문이 너무 깁니다."),
+    CHAT_HISTORY_INVALID(HttpStatus.BAD_REQUEST, "이전 대화 형식이 올바르지 않습니다."),
 
     // ===== curriculum (이하영) =====
 

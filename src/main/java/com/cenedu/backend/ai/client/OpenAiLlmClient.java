@@ -20,6 +20,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Component;
 
 /**
@@ -37,14 +38,19 @@ public class OpenAiLlmClient implements LlmClient {
     private final OpenAiChatModel chatModel;
     private final OpenAiProperties properties;
 
-    public OpenAiLlmClient(OpenAiChatModel chatModel, OpenAiProperties properties) {
-        this.chatModel = chatModel;
+    /**
+     * <b>파라미터 이름을 바꾸지 않는다.</b> {@code OpenAiChatModel} 빈은 둘이다 — 여기서 쓰는
+     * {@code openAiChatModel} 과 도구 루프의 {@code loopChatModel}. 타입만으로는 갈리지 않아
+     * Spring 이 파라미터 이름으로 후보를 고른다. 이름이 어긋나면 기동이 실패한다.
+     */
+    public OpenAiLlmClient(OpenAiChatModel openAiChatModel, OpenAiProperties properties) {
+        this.chatModel = openAiChatModel;
         this.properties = properties;
     }
 
     @Override
-    public LlmResponse complete(String systemPrompt, List<ChatMessage> messages) {
-        Prompt prompt = buildPrompt(systemPrompt, messages);
+    public LlmResponse complete(String systemPrompt, List<ChatMessage> messages, Long seed) {
+        Prompt prompt = buildPrompt(systemPrompt, messages, seed);
 
         long startedAt = System.nanoTime();
         ChatResponse response;
@@ -98,7 +104,7 @@ public class OpenAiLlmClient implements LlmClient {
         return new LlmResponse(text, promptTokens, completionTokens, reasoningTokens);
     }
 
-    private Prompt buildPrompt(String systemPrompt, List<ChatMessage> messages) {
+    private Prompt buildPrompt(String systemPrompt, List<ChatMessage> messages, Long seed) {
         List<Message> springMessages = new ArrayList<>();
 
         if (systemPrompt != null && !systemPrompt.isBlank()) {
@@ -111,7 +117,22 @@ public class OpenAiLlmClient implements LlmClient {
             }
         }
 
-        return new Prompt(springMessages);
+        if (seed == null) {
+            // 옵션을 싣지 않는다. 모델 빈의 기본 옵션이 그대로 쓰인다.
+            return new Prompt(springMessages);
+        }
+
+        // 모델 파라미터를 여기서 다시 적는다. 런타임 옵션을 실어 보내면 기본 옵션 중
+        // model 만 복사되고 reasoningEffort · maxCompletionTokens 는 요청에서 사라진다
+        // (task_17 §5 실측). 안 적으면 seed 를 주는 호출만 상한도 추론 강도도 없이 나간다.
+        return new Prompt(springMessages, OpenAiChatOptions.builder()
+                .model(properties.model())
+                .reasoningEffort(properties.reasoningEffort())
+                .maxCompletionTokens(Math.toIntExact(properties.maxCompletionTokens()))
+                // Spring AI 의 seed 는 Integer 다. LlmClient 가 Long 을 받는 것은 호출부
+                // 편의이고, 범위를 넘는 값은 조용히 잘리지 않고 여기서 예외로 드러나야 한다.
+                .seed(Math.toIntExact(seed))
+                .build());
     }
 
     private static long elapsedMs(long startedAt) {
