@@ -130,4 +130,55 @@ public class SubmissionAnswer {
         this.answerImageRef = answerImageRef;
         this.compareMethod = compareMethod;
     }
+
+    /**
+     * 자동채점 결과를 기록한다.
+     *
+     * <p>{@code auto_score}는 값이 없을 때만 쓴다 — 컬럼 주석의 "최초 기록 후 불변"을
+     * 호출부 규율이 아니라 여기서 보장한다. 재채점은 {@code final_score}만 갱신한다.
+     */
+    public void recordAutoScore(String normalized, BigDecimal score) {
+        this.normalized = normalized;
+        if (this.autoScore == null) {
+            this.autoScore = score;
+        }
+        this.finalScore = score;
+        this.gradingStatus = GradingStatus.GRADED;
+        this.failureReason = null;
+    }
+
+    /**
+     * 채점하지 못했음을 기록한다. {@code auto_score}는 건드리지 않아 {@code null}로 남고,
+     * 그래야 나중에 진짜 자동채점값이 최초 기록으로 들어갈 수 있다.
+     *
+     * <p>정규화까지 실패했으면 {@code normalized}에 {@code null}을 넘긴다.
+     */
+    public void recordGradingFailure(String normalized, String failureReason) {
+        this.normalized = normalized;
+        this.gradingStatus = GradingStatus.FAILED;
+        this.failureReason = failureReason;
+    }
+
+    /** 교사가 점수를 직접 고친다. {@code auto_score}는 건드리지 않는다. */
+    public void overrideScore(BigDecimal finalScore, Long teacherId, OffsetDateTime overriddenAt) {
+        this.finalScore = finalScore;
+        this.overriddenBy = teacherId;
+        this.overriddenAt = overriddenAt;
+        this.gradingStatus = GradingStatus.GRADED;
+        this.failureReason = null;
+    }
+
+    /**
+     * 교사 수정을 되돌려 자동채점값으로 복귀시킨다. 되돌린 칸은 다음 자동채점 대상에 다시 들어간다.
+     *
+     * <p>{@code auto_score}가 없는 칸에 호출하면 안 된다 — 되돌릴 값이 없다. 호출 전에
+     * 서비스가 검증한다.
+     */
+    public void resetToAutoScore() {
+        this.finalScore = this.autoScore;
+        this.overriddenBy = null;
+        this.overriddenAt = null;
+        this.gradingStatus = GradingStatus.GRADED;
+        this.failureReason = null;
+    }
 }

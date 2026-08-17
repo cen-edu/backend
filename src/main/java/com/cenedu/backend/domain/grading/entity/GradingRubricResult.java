@@ -60,4 +60,15 @@ public class GradingRubricResult {
                                              boolean satisfied, String evidence) {
         return new GradingRubricResult(studentAnswerId, rubricItemId, satisfied, evidence);
     }
+
+    /**
+     * 같은 항목을 다시 판정했을 때 결과를 갈아 끼운다.
+     *
+     * <p>{@code uk_grading_rubric_result}가 (답안, 기준 항목)을 유일하게 묶으므로 행을 새로
+     * 만들 수 없다. 교사가 같은 칸의 체크를 두 번 보내는 경로가 이것을 필요로 한다.
+     */
+    public void updateJudgement(boolean satisfied, String evidence) {
+        this.satisfied = satisfied;
+        this.evidence = evidence;
+    }
 }

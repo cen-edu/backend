@@ -12,8 +12,6 @@ import java.util.stream.Collectors;
 
 import com.cenedu.backend.domain.curriculum.dto.response.CurriculumPathResponse;
 import com.cenedu.backend.domain.curriculum.service.CurriculumUnitQueryService;
-import com.cenedu.backend.domain.member.dto.request.SchoolClassListRequest;
-import com.cenedu.backend.domain.member.dto.response.SchoolClassResponse;
 import com.cenedu.backend.domain.member.service.SchoolClassService;
 import com.cenedu.backend.domain.member.service.StudentListQueryService;
 import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionDetailResponse;
@@ -153,10 +151,7 @@ public class WorksheetQueryService {
                 .filter(studentId -> studentId != null)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
-        Map<Long, String> classNamesById = classIds.isEmpty() ? Map.of() : schoolClassService
-                .getClasses(teacherId, new SchoolClassListRequest(null, null, null)).stream()
-                .filter(schoolClass -> classIds.contains(schoolClass.id()))
-                .collect(Collectors.toMap(SchoolClassResponse::id, SchoolClassResponse::name));
+        Map<Long, String> classNamesById = schoolClassService.getClassNamesByIds(teacherId, classIds);
         Map<Long, String> studentNamesById = studentIds.isEmpty()
                 ? Map.of()
                 : studentListQueryService.getStudentNamesByIds(teacherId, List.copyOf(studentIds));
