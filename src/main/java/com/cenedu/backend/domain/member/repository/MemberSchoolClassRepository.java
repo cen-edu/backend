@@ -1,5 +1,6 @@
 package com.cenedu.backend.domain.member.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -53,6 +54,15 @@ public interface MemberSchoolClassRepository extends JpaRepository<MemberSchoolC
 
     /** 반 ID로 삭제되지 않은 반을 조회한다. */
     Optional<MemberSchoolClass> findByIdAndDeletedAtIsNull(Long id);
+
+    /**
+     * 지정한 ID 중 교사가 소유한 활성 반을 한 번에 조회한다.
+     *
+     * <p>소유와 소프트 삭제를 쿼리에서 거른다 — {@code homeroomTeacher}가 LAZY 라 Java 쪽에서
+     * 거르면 반마다 지연 로딩이 돈다.
+     */
+    List<MemberSchoolClass> findAllByIdInAndHomeroomTeacherIdAndDeletedAtIsNull(
+            Collection<Long> ids, Long teacherId);
 
     /** 교사가 소유한 마지막 표시 순서의 반을 조회한다. */
     Optional<MemberSchoolClass> findTopByHomeroomTeacherIdAndDeletedAtIsNullOrderByDisplayOrderDesc(

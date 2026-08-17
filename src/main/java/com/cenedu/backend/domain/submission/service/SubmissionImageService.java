@@ -1,6 +1,9 @@
 package com.cenedu.backend.domain.submission.service;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import com.cenedu.backend.domain.problem.service.ProblemAnswerUnitService;
 import com.cenedu.backend.domain.worksheet.service.WorksheetImageAccessService;
@@ -56,6 +59,36 @@ public class SubmissionImageService {
                 answerKey(assignmentStudentId, answerUnitId),
                 ANSWER_IMAGE_URL_EXPIRATION
         );
+    }
+
+    /**
+     * 한 배정의 여러 칸에 대한 조회 URL을 <b>한 번의 배정 권한 검증</b>으로 만든다.
+     *
+     * <p>{@link #createGetUrl}을 칸마다 부르면 칸마다 {@code validateTarget}이 돌아 배정·학습지
+     * 조회가 반복된다. 채점 화면은 한 학생이 수십 칸이라 그 자리에서 N+1이 난다.
+     *
+     * <p>배정 권한은 1회만 검증하고, 칸이 이 학습지 문항인지는 칸마다 확인한다 — 검증을 줄이는 게
+     * 아니라 같은 검증을 반복하지 않게 하는 것이다.
+     */
+    public Map<Long, String> createGetUrls(long memberId, UserRole role, long assignmentStudentId,
+                                           List<Long> answerUnitIds) {
+        if (answerUnitIds.isEmpty()) {
+            return Map.of();
+        }
+        long worksheetId = worksheetImageAccessService.getAuthorizedWorksheetId(
+                memberId, role, assignmentStudentId);
+
+        Map<Long, String> urlsByAnswerUnitId = new LinkedHashMap<>();
+        for (Long answerUnitId : answerUnitIds) {
+            long questionId = answerUnitService.getQuestionId(answerUnitId);
+            worksheetImageAccessService.validateQuestionIncluded(worksheetId, questionId);
+            urlsByAnswerUnitId.put(answerUnitId, imageStorageService.createGetUrl(
+                    s3Properties.requiredAnswerBucket(),
+                    answerKey(assignmentStudentId, answerUnitId),
+                    ANSWER_IMAGE_URL_EXPIRATION
+            ));
+        }
+        return urlsByAnswerUnitId;
     }
 
     private void validateTarget(long memberId, UserRole role, long assignmentStudentId,

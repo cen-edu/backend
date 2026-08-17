@@ -1,5 +1,6 @@
 package com.cenedu.backend.domain.member.service;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -107,6 +108,27 @@ public class SchoolClassService {
                         enrollmentRepository.countBySchoolClassIdAndStudentDeletedAtIsNull(
                                 schoolClass.getId())))
                 .toList();
+    }
+
+    /**
+     * 반 ID 목록으로 이름을 반환한다. 존재하지 않거나 이 교사의 반이 아닌 ID는 결과에서 빠진다.
+     *
+     * <p>다른 도메인이 "이 배포가 어느 반이더라"만 알면 될 때 쓴다. {@link #getClasses}는 교사 검증
+     * 1회 + 반 목록 1회 + <b>반마다 인원 COUNT</b>로 {@code 2+N} 쿼리가 드는데, 그 인원 수는
+     * 이름만 필요한 호출부가 그대로 버린다. 여기서는 <b>쿼리 하나</b>로 끝낸다.
+     *
+     * <p>{@code getRequiredTeacher}를 부르지 않는다 — 소유가 아닌 반은 결과에서 빠지므로 남의 반
+     * 이름이 새지 않고, 교사 존재 검증 때문에 쿼리를 하나 더 쓸 이유가 없다.
+     * {@code StudentListQueryService#getStudentNamesByIds}와 같은 규약이다.
+     */
+    public Map<Long, String> getClassNamesByIds(long teacherId, Collection<Long> classIds) {
+        if (classIds.isEmpty()) {
+            return Map.of();
+        }
+        return schoolClassRepository
+                .findAllByIdInAndHomeroomTeacherIdAndDeletedAtIsNull(classIds, teacherId)
+                .stream()
+                .collect(Collectors.toMap(MemberSchoolClass::getId, MemberSchoolClass::getName));
     }
 
     /** 교사 소유 학생 중 반 학년과 이름 검색 조건에 맞는 학생을 모두 반환한다. */

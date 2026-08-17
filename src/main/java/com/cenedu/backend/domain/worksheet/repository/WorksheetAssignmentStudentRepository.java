@@ -43,4 +43,28 @@ public interface WorksheetAssignmentStudentRepository
      */
     List<WorksheetAssignmentStudent> findByStudentIdAndAssignment_IdIn(
             long studentId, Collection<Long> assignmentIds);
+
+    /** 배포 하나에 딸린 학생별 배정 전부. 점수표와 확정이 이 축으로 돈다. */
+    List<WorksheetAssignmentStudent> findByAssignment_Id(long assignmentId);
+
+    /** 여러 배포의 학생별 배정을 한 번에 읽는다. 목록의 인원 집계가 배포마다 조회하지 않게 한다. */
+    List<WorksheetAssignmentStudent> findByAssignment_IdIn(Collection<Long> assignmentIds);
+
+    /**
+     * 확정 후 정정이 있었던 배포 ID. 답안의 {@code overridden_at}이 그 학생의
+     * {@code released_at}보다 나중이면 정정으로 본다(명세 2.4).
+     *
+     * <p>{@code modified} 플래그 하나 때문에 답안 전체를 읽지 않으려고 집계로 판정한다.
+     */
+    @Query("""
+            select distinct was.assignment.id
+            from WorksheetAssignmentStudent was, SubmissionAnswer sa
+            where sa.assignmentStudentId = was.id
+              and was.assignment.id in :assignmentIds
+              and was.releasedAt is not null
+              and sa.overriddenAt is not null
+              and sa.overriddenAt > was.releasedAt
+            """)
+    List<Long> findAssignmentIdsModifiedAfterRelease(
+            @Param("assignmentIds") Collection<Long> assignmentIds);
 }
