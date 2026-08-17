@@ -123,9 +123,59 @@ class StudentResultControllerTest {
         mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].format").value("step"))
                 .andExpect(jsonPath("$.data.items[0].result").value("partial"))
                 .andExpect(jsonPath("$.data.items[0].score").value(1.0))
-                .andExpect(jsonPath("$.data.items[0].maxScore").value(2.0));
+                .andExpect(jsonPath("$.data.items[0].maxScore").value(2.0))
+                .andExpect(jsonPath("$.data.summary.totalCount").value(1))
+                .andExpect(jsonPath("$.data.summary.partialCount").value(1))
+                // 일반 학습은 배점이 없어 요약의 점수 축을 접는다. 문항 단위 점수는 위처럼 그대로다.
+                .andExpect(jsonPath("$.data.summary.score").doesNotExist())
+                .andExpect(jsonPath("$.data.summary.maxScore").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("종합평가는 summary.score가 저장된 total_score와 일치하고 최상위 점수 필드는 없다")
+    void getResult_assessment_summaryMatchesStoredTotalScore() throws Exception {
+        long choiceQuestionId = insertQuestion("MULTIPLE_CHOICE");
+        long wrongChoiceId = insertChoice(choiceQuestionId, 0, "1");
+        insertChoice(choiceQuestionId, 1, "4");
+        long choiceUnitId = insertAnswerUnit(choiceQuestionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long shortQuestionId = insertQuestion("SHORT_INPUT");
+        long shortUnitId = insertAnswerUnit(shortQuestionId, null, "MAIN", 0, "VALUE", "42");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, choiceQuestionId, 1, new BigDecimal("10.00"));
+        insertWorksheetItem(worksheetId, shortQuestionId, 2, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+
+        insertGradedChoiceAnswer(assignmentStudentId, choiceUnitId, wrongChoiceId, new BigDecimal("0.00"), "CHOICE");
+        insertGradedHandwritingAnswer(assignmentStudentId, shortUnitId, "42", new BigDecimal("10.00"));
+        // 교사 채점이 남긴 비정규화 총점. 응답의 합산값과 구조상 같아야 한다(5-2절).
+        jdbcTemplate.update(
+                "UPDATE worksheet_assignment_student SET total_score = 10.00 WHERE id = ?", assignmentStudentId);
+        BigDecimal storedTotalScore = jdbcTemplate.queryForObject(
+                "SELECT total_score FROM worksheet_assignment_student WHERE id = ?",
+                BigDecimal.class, assignmentStudentId);
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("submitted"))
+                // 최상위 점수는 summary로 옮겼다 — 두 곳에 같은 값을 두지 않는다.
+                .andExpect(jsonPath("$.data.totalScore").doesNotExist())
+                .andExpect(jsonPath("$.data.maxTotalScore").doesNotExist())
+                .andExpect(jsonPath("$.data.summary.totalCount").value(2))
+                .andExpect(jsonPath("$.data.summary.correctCount").value(1))
+                .andExpect(jsonPath("$.data.summary.partialCount").value(0))
+                .andExpect(jsonPath("$.data.summary.wrongCount").value(1))
+                .andExpect(jsonPath("$.data.summary.score").value(storedTotalScore.doubleValue()))
+                .andExpect(jsonPath("$.data.summary.maxScore").value(20.0))
+                .andExpect(jsonPath("$.data.items[0].format").value("choice"))
+                .andExpect(jsonPath("$.data.items[1].format").value("short"));
     }
 
     @Test
@@ -186,6 +236,7 @@ class StudentResultControllerTest {
         mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].format").value("essay"))
                 .andExpect(jsonPath("$.data.items[0].rubric").isArray())
                 .andExpect(jsonPath("$.data.items[0].rubric[0].satisfied").value(true))
                 .andExpect(jsonPath("$.data.items[0].rubric[1].satisfied").value(false))
@@ -239,6 +290,7 @@ class StudentResultControllerTest {
         mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("not-submitted"))
                 .andExpect(jsonPath("$.data.items[0].result").value("empty"))
                 .andExpect(jsonPath("$.data.items[0].score").value(0))
                 .andExpect(jsonPath("$.data.items[0].explanation").doesNotExist())

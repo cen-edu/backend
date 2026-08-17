@@ -19,6 +19,9 @@ public record StudentResultItemResponse(
         int displayOrder,
         Long questionId,
 
+        @Schema(description = "문항 형식", allowableValues = {"choice", "short", "step", "essay"})
+        String format,
+
         @Schema(description = "문항 판정", allowableValues = {"correct", "partial", "wrong", "empty", "pending"})
         String result,
 
@@ -46,6 +49,7 @@ public record StudentResultItemResponse(
                 item.getId(),
                 item.getDisplayOrder(),
                 question.getId(),
+                WorksheetResponseFormatter.toApiQuestionType(question.getQuestionType()),
                 result,
                 score,
                 maxScore,
