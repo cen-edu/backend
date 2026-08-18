@@ -85,6 +85,14 @@ public class ProblemEditPolicy {
     ) {
         LinkedHashSet<ProblemEditTargetRef> targets = new LinkedHashSet<>();
         for (ProblemEditInstruction instruction : safeInstructions(command.instructions())) {
+            // QUESTION_BODY는 독립 저장 필드가 아니라 TEXT contentBlocks의 합성 뷰다.
+            // 둘 중 하나를 수정하면 다른 표현도 같이 변하므로 보호 대상에서 제외한다.
+            if (instruction.targetType() == EditTargetType.QUESTION_BODY) {
+                snapshot.contentBlocks().forEach(block -> targets.add(
+                        keyed(EditTargetType.CONTENT_BLOCK, block.blockKey())));
+            } else if (instruction.targetType() == EditTargetType.CONTENT_BLOCK) {
+                targets.add(single(EditTargetType.QUESTION_BODY));
+            }
             if (instruction.changeNature() == EditChangeNature.PRESENTATIONAL) {
                 continue;
             }

@@ -2,6 +2,7 @@ package com.cenedu.backend.ai.verification.adapter;
 
 import java.util.List;
 
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotLearningGuide;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotRubricItem;
@@ -33,6 +34,9 @@ final class VerificationPrompts {
                 - 수식은 LaTeX 로 쓴다. displayUnit 이 있으면 단위는 답에 쓰지 않는다.
                 - 문항이 모순되거나 정보가 부족해 풀 수 없으면 solved 를 false 로 둔다. 추측하지 않는다.
                 - reason 은 한 줄이다. 풀이 과정을 적지 않는다.
+                - JSON을 쓰기 전에는 내부적으로 계산을 단계대로 수행하고 최종 답을 한 번 더 역검산한다.
+                - 지수나 분수를 임의로 생략하지 마라. 소인수분해로 최대공약수를 구할 때는
+                  공통 소인수의 지수 중 작은 값을 각각 적용한 뒤 그 값들을 모두 곱한다.
 
                 오직 아래 JSON 만 출력한다. 설명이나 코드 펜스를 덧붙이지 않는다.
                 {"solved": true, "answers": [{"unitKey": "MAIN", "answer": "..."}], "reason": "한 줄 근거"}
@@ -80,9 +84,14 @@ final class VerificationPrompts {
                 - kind=ANSWER_VALUE: 정답 값이나 최종 계산 결과를 그대로 담았다.
                 - kind=SOLUTION_DIRECTION: 값은 없지만 어떤 순서로 풀라고 방향을 지정했다.
                 learningGuide 가 없으면 이 항목은 건너뛴다.
+
+                [CURRICULUM] 요청한 교육과정과 발문이 실제로 다루는 수학 개념을 비교한다.
+                - 메타데이터 ID가 같아도 문제의 핵심 풀이가 소단원 개념과 명백히 다르면 결함이다.
+                - 소단원 범위의 응용이거나 소재만 다른 것은 결함이 아니다.
+                - 명백한 이탈일 때만 type=CURRICULUM으로 반환한다.
                 %s
                 규칙:
-                1. 결함 유형을 STRUCTURE / LEAKAGE / EXPLANATION / RUBRIC 중 하나로 분류한다.
+                1. 결함 유형을 STRUCTURE / LEAKAGE / EXPLANATION / CURRICULUM / RUBRIC 중 하나로 분류한다.
                 2. location 에는 문제가 있는 위치(필드 경로·인덱스)만 적는다.
                    정답 값·계산 결과를 그대로 옮겨 적지 않는다. detail 에도 적지 않는다.
                    예: learningGuide.keyPoints[2] (O) / 정답 420 이 노출됨 (X)
@@ -96,10 +105,24 @@ final class VerificationPrompts {
     }
 
     /** 원본 검사에 넣는 입력. 정답·해설·개념 안내·채점 기준을 모두 담는다. */
-    static String contentIntegrityUserPrompt(QuestionSnapshotV1 snapshot) {
+    static String contentIntegrityUserPrompt(
+            QuestionSnapshotV1 snapshot,
+            CurriculumContext expectedCurriculum
+    ) {
         StringBuilder builder = new StringBuilder();
         builder.append("[유형] ").append(snapshot.metadata() == null
                 ? "알 수 없음" : snapshot.metadata().questionType()).append('\n');
+
+        builder.append("\n[요청 교육과정]\n");
+        if (expectedCurriculum == null) {
+            builder.append("(없음)\n");
+        } else {
+            builder.append("학년: ").append(expectedCurriculum.grade()).append('\n');
+            builder.append("학기: ").append(expectedCurriculum.semester()).append('\n');
+            builder.append("대단원: ").append(expectedCurriculum.majorUnitName()).append('\n');
+            builder.append("중단원: ").append(expectedCurriculum.middleUnitName()).append('\n');
+            builder.append("소단원: ").append(expectedCurriculum.subUnitName()).append('\n');
+        }
 
         builder.append("\n[발문]\n");
         snapshot.contentBlocks().forEach(block -> {

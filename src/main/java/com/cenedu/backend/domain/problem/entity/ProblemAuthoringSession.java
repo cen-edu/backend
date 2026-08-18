@@ -120,6 +120,15 @@ public class ProblemAuthoringSession extends BaseTimeEntity {
 
     /** 새 수정 사항을 받기 위해 HITL 수집 상태를 연다. */
     public void startCollecting() {
+        // 실패한 후보는 이력에 남지만 current PASSED Version은 그대로다.
+        // 새로운 교사 수정 요청이 오면 이전 실패 실행 정보를 정리하고 다시 시작한다.
+        if (operationStatus == AuthoringOperationStatus.FAILED
+                && pendingVersionId == null
+                && interactionStatus == AuthoringInteractionStatus.IDLE) {
+            operationStatus = AuthoringOperationStatus.IDLE;
+            clearActiveExecution();
+            lastErrorCode = null;
+        }
         requireDraftIdle();
         interactionStatus = AuthoringInteractionStatus.COLLECTING;
     }

@@ -40,6 +40,21 @@ public class ProblemAuthoringStateService {
         session.failPendingVersion(versionId, errorCode);
     }
 
+    /** 의미 검증에 실패한 수정 후보를 유지하고 다음 AI 수정 후보를 받을 상태로 전환한다. */
+    @Transactional
+    public void prepareModificationRetry(long ownerTeacherId, long sessionId,
+                                         String errorCode) {
+        ProblemAuthoringSession session = getOwnedSession(sessionId, ownerTeacherId);
+        session.prepareRetry(true, errorCode);
+    }
+
+    /** Version 등록 전까지 반복 실패한 수정 실행을 실패 상태로 마감한다. */
+    @Transactional
+    public void failOperation(long ownerTeacherId, long sessionId, String errorCode) {
+        ProblemAuthoringSession session = getOwnedSession(sessionId, ownerTeacherId);
+        session.failOperation(errorCode);
+    }
+
     /** 같은 Session의 이전 PASSED Version을 현재 표시 문항으로 복원한다. */
     @Transactional
     public void restorePassedVersion(long ownerTeacherId, long sessionId, long versionId) {

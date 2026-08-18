@@ -140,8 +140,11 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
         // 원본 검사는 Finding 을 여러 건 낼 수 있다. RUBRIC_QUALITY 는 항상 1건 포함된다.
         findings.addAll(isolateMany(
                 List.of(VerificationCheckType.ANSWER_CONSISTENCY,
+                        VerificationCheckType.CURRICULUM_ALIGNMENT,
                         VerificationCheckType.RUBRIC_QUALITY),
-                () -> contentIntegrityChecker.check(snapshot)));
+                () -> contentIntegrityChecker.check(snapshot,
+                        request.expectation() == null
+                                ? null : request.expectation().expectedCurriculum())));
         findings.add(Findings.notApplicable(VerificationCheckType.ASSET_CONSISTENCY,
                 "CONTENT 범위에서는 자산을 판정하지 않습니다."));
         findings.add(isolate(VerificationCheckType.EDIT_REQUIREMENT,

@@ -22,12 +22,13 @@ public class ProblemGenerationOutputMapper {
         }
         List<SnapshotAssetReference> assets = mapAssets(output.assets());
         List<SnapshotContentBlock> blocks = mapBlocks(output, assets);
+        List<SnapshotStep> steps = mapSteps(output.steps());
         SnapshotMetadata metadata = new SnapshotMetadata(command.specification().questionType(),
                 presentation(blocks), command.specification().difficulty(), command.curriculumContext().subUnitId(),
                 null, command.specification().targetEvaluationArea(), null);
         QuestionSnapshotV1 snapshot = new QuestionSnapshotV1(QuestionSnapshotV1.CURRENT_SCHEMA_VERSION,
-                metadata, blocks, assets, mapChoices(output.choices()), mapSteps(output.steps()),
-                mapAnswers(output.answerUnits()), required(output.explanation(), "explanation"),
+                metadata, blocks, assets, mapChoices(output.choices()), steps,
+                mapAnswers(output.answerUnits(), steps), required(output.explanation(), "explanation"),
                 new SnapshotLearningGuide(required(output.learningGuide().conceptTitle(), "conceptTitle"),
                         required(output.learningGuide().summary(), "learningGuide.summary"),
                         copy(output.learningGuide().keyPoints())), mapRubrics(output.rubricItems()));
@@ -45,7 +46,13 @@ public class ProblemGenerationOutputMapper {
         List<SnapshotContentBlock> result = new ArrayList<>();
         for (int index = 0; index < source.size(); index++) {
             var block = source.get(index);
-            SnapshotBlockKind kind = SnapshotBlockKind.valueOf(required(block.blockKind(), "blockKind"));
+            // 모델이 일반 발문 블록의 blockKind를 생략하는 경우가 있어 TEXT로 보정한다.
+            // 자산/마크업 블록까지 무조건 TEXT로 바꾸면 구조가 왜곡될 수 있으므로
+            // 명시된 값은 그대로 검증한다.
+            String blockKind = block.blockKind();
+            SnapshotBlockKind kind = blockKind == null || blockKind.isBlank()
+                    ? SnapshotBlockKind.TEXT
+                    : SnapshotBlockKind.valueOf(blockKind);
             String assetRef = block.assetRef();
             if (kind == SnapshotBlockKind.FIGURE && assetRef == null && assets.size() == 1) assetRef = "F1";
             result.add(new SnapshotContentBlock("CB" + (index + 1), kind, index,
@@ -63,32 +70,59 @@ public class ProblemGenerationOutputMapper {
 
     private List<SnapshotStep> mapSteps(List<ProblemGenerationOutput.StepOutput> source) {
         List<ProblemGenerationOutput.StepOutput> values = copy(source); List<SnapshotStep> result = new ArrayList<>();
+        int nextBlankIndex = 0;
         for (int stepIndex = 0; stepIndex < values.size(); stepIndex++) {
             var step = values.get(stepIndex);
-            List<SnapshotSegment> segments = copy(step.segments()).stream().map(segment ->
-                    new SnapshotSegment(SnapshotSegmentType.valueOf(required(segment.type(), "segment.type")),
-                            segment.text(), segment.answerUnitIndex() == null ? null : "B" + (segment.answerUnitIndex() + 1))).toList();
+            List<SnapshotSegment> segments = new ArrayList<>();
+            for (var segment : copy(step.segments())) {
+                SnapshotSegmentType type = SnapshotSegmentType.valueOf(
+                        required(segment.type(), "segment.type"));
+                String unitKey = switch (type) {
+                    // 생성 모델이 같은 answerUnitIndex를 반복하거나 TEXT에도 인덱스를 넣는 경우가 있다.
+                    // BLANK는 화면에 나타나는 순서가 곧 answerUnits 순서라는 생성 계약으로 정규화한다.
+                    case BLANK -> "B" + (++nextBlankIndex);
+                    case ANSWER_REF -> segment.answerUnitIndex() == null
+                            ? null : "B" + (segment.answerUnitIndex() + 1);
+                    case TEXT -> null;
+                };
+                segments.add(new SnapshotSegment(type, segment.text(), unitKey));
+            }
             result.add(new SnapshotStep("ST" + (stepIndex + 1), stepIndex,
-                    required(step.label(), "step.label"), segments));
+                    required(step.label(), "step.label"), List.copyOf(segments)));
         }
         return List.copyOf(result);
     }
 
-    private List<SnapshotAnswerUnit> mapAnswers(List<ProblemGenerationOutput.AnswerUnitOutput> source) {
+    private List<SnapshotAnswerUnit> mapAnswers(
+            List<ProblemGenerationOutput.AnswerUnitOutput> source,
+            List<SnapshotStep> steps
+    ) {
         List<ProblemGenerationOutput.AnswerUnitOutput> values = copy(source); List<SnapshotAnswerUnit> result = new ArrayList<>();
         for (int index = 0; index < values.size(); index++) {
-            var unit = values.get(index); boolean step = unit.stepIndex() != null;
+            var unit = values.get(index); boolean step = !steps.isEmpty();
             CompareMethod method = CompareMethod.valueOf(required(unit.compareMethod(), "compareMethod"));
             String normalized = switch (method) {
                 case VALUE, EXACT, SET -> required(unit.answerRaw(), "answerRaw").trim();
                 case CHOICE, SUBST, RUBRIC -> null;
             };
+            String unitKey = step ? "B" + (index + 1) : "MAIN";
             result.add(new SnapshotAnswerUnit(step ? "B" + (index + 1) : "MAIN",
-                    step ? "ST" + (unit.stepIndex() + 1) : null, index, unit.answerRaw(), normalized,
+                    step ? stepKeyFor(steps, unitKey) : null, index, unit.answerRaw(), normalized,
                     method,
                     unit.diagnosticType() == null ? null : DiagnosticType.valueOf(unit.diagnosticType()), unit.displayUnit()));
         }
         return List.copyOf(result);
+    }
+
+    /** BLANK에 서버 키를 부여한 결과를 정본으로 answerUnit의 소속 단계를 찾는다. */
+    private String stepKeyFor(List<SnapshotStep> steps, String unitKey) {
+        return steps.stream()
+                .filter(step -> step.segments().stream()
+                        .anyMatch(segment -> segment.type() == SnapshotSegmentType.BLANK
+                                && unitKey.equals(segment.unitKey())))
+                .map(SnapshotStep::stepKey)
+                .findFirst()
+                .orElse(null);
     }
 
     private List<SnapshotRubricItem> mapRubrics(List<ProblemGenerationOutput.RubricOutput> source) {

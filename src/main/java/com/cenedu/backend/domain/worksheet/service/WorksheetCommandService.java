@@ -13,6 +13,8 @@ import java.util.stream.IntStream;
 
 import com.cenedu.backend.domain.member.dto.response.SchoolClassDetailResponse;
 import com.cenedu.backend.domain.member.service.SchoolClassService;
+import com.cenedu.backend.domain.problem.dto.response.FinalizedProblemReferenceResponse;
+import com.cenedu.backend.domain.problem.service.ProblemAuthoringFinalizationService;
 import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetAssignmentCreateRequest;
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetCreateRequest;
@@ -58,6 +60,7 @@ public class WorksheetCommandService {
     private final WorksheetAssignmentRepository worksheetAssignmentRepository;
     private final WorksheetAssignmentStudentRepository worksheetAssignmentStudentRepository;
     private final ProblemQuestionDetailService problemQuestionDetailService;
+    private final ProblemAuthoringFinalizationService problemAuthoringFinalizationService;
     private final SchoolClassService schoolClassService;
 
     /** 학습지 저장 - 검증을 마친 뒤 학습지·출제조건·문항을 한 트랜잭션으로 저장한다. */
@@ -67,8 +70,8 @@ public class WorksheetCommandService {
         WorksheetOrigin origin = toWorksheetOrigin(request.origin());
         String semester = toSemester(request.semester());
 
-        List<WorksheetItemRequest> items = request.items();
-        List<Long> questionIds = items.stream().map(WorksheetItemRequest::questionId).toList();
+        List<ResolvedWorksheetItem> items = resolveProblemReferences(teacherId, request.items());
+        List<Long> questionIds = items.stream().map(ResolvedWorksheetItem::questionId).toList();
         Set<Long> distinctQuestionIds = new LinkedHashSet<>(questionIds);
 
         Map<Long, QuestionType> questionTypesById =
@@ -96,7 +99,7 @@ public class WorksheetCommandService {
         }
 
         validateSourceAssignment(origin, request.sourceAssignmentId());
-        validateDisplayOrdersAndSupportMapping(items);
+        validateDisplayOrdersAndSupportMapping(request.items());
 
         WorksheetAssignment sourceAssignment = origin == WorksheetOrigin.CUSTOM
                 ? worksheetAssignmentRepository.getReferenceById(request.sourceAssignmentId())
@@ -127,6 +130,34 @@ public class WorksheetCommandService {
         worksheetItemRepository.saveAll(worksheetItems);
 
         return WorksheetCreateResponse.from(worksheet, worksheetItems.size());
+    }
+
+    /** 작성 Session을 원자적으로 최종화하고 모든 문항 참조를 questionId로 통일한다. */
+    private List<ResolvedWorksheetItem> resolveProblemReferences(
+            long teacherId, List<WorksheetItemRequest> items
+    ) {
+        List<Long> sessionIds = items.stream()
+                .map(WorksheetItemRequest::sessionId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        Map<Long, FinalizedProblemReferenceResponse> finalizedBySession =
+                problemAuthoringFinalizationService.finalizeForWorksheet(teacherId, sessionIds).stream()
+                        .collect(Collectors.toMap(
+                                FinalizedProblemReferenceResponse::sessionId,
+                                response -> response));
+
+        return items.stream().map(item -> {
+            Long questionId = item.questionId();
+            if (item.sessionId() != null) {
+                FinalizedProblemReferenceResponse finalized = finalizedBySession.get(item.sessionId());
+                if (finalized == null) {
+                    throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_SESSION_NOT_FOUND);
+                }
+                questionId = finalized.questionId();
+            }
+            return new ResolvedWorksheetItem(questionId, item.displayOrder(),
+                    item.supportMode(), item.customStage());
+        }).toList();
     }
 
     /** 학습지 배포 - 반 소유권·기한·중복을 검증한 뒤 배포와 학생별 배정을 함께 저장한다. */
@@ -310,5 +341,14 @@ public class WorksheetCommandService {
             case "independent" -> CustomStage.ADVANCED;
             default -> throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "customStage 값이 올바르지 않습니다.");
         };
+    }
+
+    /** Worksheet 저장에서 사용하는 최종 questionId 기준 문항이다. */
+    private record ResolvedWorksheetItem(
+            Long questionId,
+            Integer displayOrder,
+            String supportMode,
+            String customStage
+    ) {
     }
 }

@@ -8,6 +8,7 @@ import java.util.Map;
 import com.cenedu.backend.ai.agent.ChatMessage;
 import com.cenedu.backend.ai.client.LlmClient;
 import com.cenedu.backend.ai.client.LlmUseCase;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
@@ -77,10 +78,14 @@ public class VerificationLlmClient {
      * @param includeRubric ESSAY 일 때 true. 루브릭 절을 요구한다
      * @return 결함 목록. 비어 있으면 결함 없음이다
      */
-    public List<OriginalDefect> inspectOriginal(QuestionSnapshotV1 snapshot, boolean includeRubric) {
+    public List<OriginalDefect> inspectOriginal(
+            QuestionSnapshotV1 snapshot,
+            boolean includeRubric,
+            CurriculumContext expectedCurriculum
+    ) {
         JsonNode root = call(
                 VerificationPrompts.contentIntegritySystemPrompt(includeRubric),
-                VerificationPrompts.contentIntegrityUserPrompt(snapshot));
+                VerificationPrompts.contentIntegrityUserPrompt(snapshot, expectedCurriculum));
 
         JsonNode findings = root.path("findings");
         if (findings.isMissingNode() || findings.isNull()) {

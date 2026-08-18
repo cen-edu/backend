@@ -38,12 +38,31 @@ class ProblemEditPolicyTest {
 
         assertThat(plan.action()).isEqualTo(EditAction.MODIFY);
         assertThat(plan.dependentTargets()).contains(
+                new ProblemEditTargetRef(EditTargetType.CONTENT_BLOCK, "CB1"),
                 new ProblemEditTargetRef(EditTargetType.ANSWER_UNIT, "MAIN"),
                 new ProblemEditTargetRef(EditTargetType.EXPLANATION, null),
                 new ProblemEditTargetRef(EditTargetType.LEARNING_GUIDE, null));
         assertThat(plan.protectedTargets()).contains(
-                new ProblemEditTargetRef(EditTargetType.CONTENT_BLOCK, "CB1"),
                 new ProblemEditTargetRef(EditTargetType.DIFFICULTY, null));
+        assertThat(plan.protectedTargets()).doesNotContain(
+                new ProblemEditTargetRef(EditTargetType.CONTENT_BLOCK, "CB1"));
+    }
+
+    @Test
+    @DisplayName("발문 표현 수정도 실제 저장 필드인 본문 블록을 의존 대상으로 둔다")
+    void questionBodyPresentationAllowsContentBlockChange() {
+        ConfirmedProblemEditCommand command = command(
+                List.of(new ProblemEditInstruction(
+                        EditTargetType.QUESTION_BODY, null,
+                        EditChangeNature.PRESENTATIONAL, "발문을 다듬어 주세요")),
+                null, null, ReplacementSourcePolicy.NONE);
+
+        ProblemEditExecutionPlan plan = policy.plan(command, shortInput(), null);
+
+        assertThat(plan.dependentTargets()).contains(
+                new ProblemEditTargetRef(EditTargetType.CONTENT_BLOCK, "CB1"));
+        assertThat(plan.protectedTargets()).doesNotContain(
+                new ProblemEditTargetRef(EditTargetType.CONTENT_BLOCK, "CB1"));
     }
 
     @Test

@@ -21,7 +21,7 @@ class SpringAiProblemGenerationAdapterTest {
     void usesCommonLlmClientAndMapsResponseWithoutCallingOpenAiDirectly() {
         LlmClient client = mock(LlmClient.class);
         UUID requestId = UUID.randomUUID();
-        when(client.complete(any(), any())).thenReturn(new LlmResponse("""
+        when(client.completeStructured(any(), any(), any())).thenReturn(new LlmResponse("""
                 {"question":"12를 구하시오.","explanation":"계산한다.",
                  "learningGuide":{"conceptTitle":"연산","summary":"연산 개념","keyPoints":["연산 규칙"]},
                  "answerUnits":[{"answerRaw":"12","compareMethod":"VALUE"}]}
@@ -39,6 +39,6 @@ class SpringAiProblemGenerationAdapterTest {
         var draft = adapter.generate(command);
 
         assertEquals(requestId, draft.requestId());
-        verify(client).complete(any(), any());
+        verify(client).completeStructured(any(), any(), any());
     }
 }

@@ -62,7 +62,8 @@ class ProblemGenerationWorkerTest {
     @Test
     @DisplayName("검증 실패를 2회 재생성한 뒤 성공하면 Item을 성공으로 종료한다")
     void retriesTwiceThenSucceeds() {
-        when(generationPort.generate(any())).thenReturn(candidate());
+        when(generationPort.generate(any())).thenAnswer(invocation ->
+                candidate(invocation.getArgument(0, ProblemGenerationCommand.class).requestId()));
         when(candidateService.process(any()))
                 .thenReturn(result(VerificationOverallStatus.FAILED, false))
                 .thenReturn(result(VerificationOverallStatus.FAILED, false))
@@ -93,7 +94,8 @@ class ProblemGenerationWorkerTest {
     @Test
     @DisplayName("검증 기술 오류는 새 후보를 생성하지 않고 Item을 실패로 종료한다")
     void verificationErrorDoesNotRegenerate() {
-        when(generationPort.generate(any())).thenReturn(candidate());
+        when(generationPort.generate(any())).thenAnswer(invocation ->
+                candidate(invocation.getArgument(0, ProblemGenerationCommand.class).requestId()));
         when(candidateService.process(any()))
                 .thenReturn(result(VerificationOverallStatus.ERROR, false));
 
@@ -113,9 +115,9 @@ class ProblemGenerationWorkerTest {
         verifyNoInteractions(generationPort, candidateService);
     }
 
-    private ProblemCandidateDraft candidate() {
+    private ProblemCandidateDraft candidate(UUID requestId) {
         return new ProblemCandidateDraft(
-                workItem.command().requestId(), shortInput(), List.of(),
+                requestId, shortInput(), List.of(),
                 new CandidateProvenance(
                         CandidateSourceType.AI_GENERATE, null, List.of()));
     }
