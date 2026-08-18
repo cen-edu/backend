@@ -12,6 +12,7 @@ import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -36,10 +37,21 @@ public class ProblemSearchIndexingService {
 
     /** 검증된 적재 문항 Snapshot을 검색 인덱싱 큐에 멱등 등록한다. */
     public boolean enqueueImported(long questionId, QuestionSnapshotV1 snapshot) {
-        return enqueue(questionId, null, snapshot);
+        return enqueue(questionId, null, snapshot, Map.of());
+    }
+
+    /** 가져온 문항의 준비된 이미지 storage key와 함께 검색 인덱싱 큐에 등록한다. */
+    public boolean enqueueImported(long questionId, QuestionSnapshotV1 snapshot,
+            Map<String, String> assetStorageKeys) {
+        return enqueue(questionId, null, snapshot, assetStorageKeys);
     }
 
     private boolean enqueue(long questionId, Long versionId, QuestionSnapshotV1 snapshot) {
+        return enqueue(questionId, versionId, snapshot, Map.of());
+    }
+
+    private boolean enqueue(long questionId, Long versionId, QuestionSnapshotV1 snapshot,
+            Map<String, String> assetStorageKeys) {
         if (!properties.enabled() || !properties.indexing().enabled()) return false;
         ProblemQuestion question = questionRepository.findById(questionId)
                 .orElseThrow(() -> new IllegalArgumentException("검색 인덱싱 문항이 없습니다."));
@@ -49,6 +61,6 @@ public class ProblemSearchIndexingService {
                 path.subUnitId(), path.majorUnitName(), path.middleUnitName(), path.subUnitName());
         UUID key = UUID.nameUUIDFromBytes(("problem-search:" + questionId).getBytes(StandardCharsets.UTF_8));
         return indexingPort.enqueue(new SearchIndexingCommand(key, questionId, versionId, scope,
-                question.getSourceRef(), snapshot, Set.of()));
+                question.getSourceRef(), snapshot, Set.of(), assetStorageKeys));
     }
 }

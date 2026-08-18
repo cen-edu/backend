@@ -52,7 +52,8 @@ public class ProblemSearchBackfillService {
                     && question.getQuestionType() != QuestionType.ESSAY) {
                 var normalized = normalizer.normalize(result.snapshot());
                 boolean valid = validator == null || validator.violations(normalized).isEmpty();
-                if (valid && indexingService.enqueueImported(question.getId(), normalized)) enqueued++;
+                if (valid && indexingService.enqueueImported(question.getId(), normalized,
+                        result.assetStorageKeys())) enqueued++;
                 else rejected++;
             } else {
                 rejected++;

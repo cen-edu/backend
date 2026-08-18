@@ -41,7 +41,15 @@ public class ProblemSearchIndexWorker {
     /** 이미 원자적으로 선점한 한 작업을 READY, SKIPPED, RETRY_WAIT 또는 FAILED로 끝낸다. */
     public void runOne(ProblemSearchIndexJdbcRepository.ClaimedSearchIndexTask task) {
         try {
-            SearchCorpusEligibility eligibility = eligibilityService.evaluate(task.command().snapshot(), java.util.Map.of());
+            var assetStorageKeys = task.command().assetStorageKeys();
+            if (assetStorageKeys.isEmpty() && task.command().snapshot().assets() != null) {
+                assetStorageKeys = task.command().snapshot().assets().stream()
+                        .filter(asset -> asset != null && asset.assetKey() != null)
+                        .collect(java.util.stream.Collectors.toMap(
+                                asset -> asset.assetKey(), asset -> "legacy-search-reference"));
+            }
+            SearchCorpusEligibility eligibility = eligibilityService.evaluate(task.command().snapshot(),
+                    assetStorageKeys);
             if (eligibility == SearchCorpusEligibility.WAITING_FOR_ASSETS) {
                 repository.markRetry(task.taskId(), task.attemptCount(), Instant.now().plus(properties.indexing().retryDelay()), "ASSETS_NOT_READY"); return;
             }
