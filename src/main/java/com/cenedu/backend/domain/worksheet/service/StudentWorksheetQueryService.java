@@ -23,6 +23,7 @@ import com.cenedu.backend.domain.worksheet.dto.response.StudentAssignmentListRes
 import com.cenedu.backend.domain.worksheet.dto.response.StudentAssignmentResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentChoiceResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentContentBlockResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentResultConceptResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentSegmentResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentStepResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentWorksheetDetailResponse;
@@ -30,6 +31,7 @@ import com.cenedu.backend.domain.worksheet.dto.response.StudentWorksheetItemResp
 import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignmentStudent;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetItem;
 import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.domain.worksheet.entity.enums.SupportMode;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetOrigin;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType;
 import com.cenedu.backend.domain.worksheet.repository.WorksheetAssignmentStudentRepository;
@@ -200,9 +202,14 @@ public class StudentWorksheetQueryService {
                         unit, question.getQuestionType(), savedByAnswerUnitId.get(unit.getId())))
                 .toList();
 
+        // 개념 사이드바는 concept 지원 문항에서만 뜬다 — 나머지에 실으면 문항 수만큼 페이로드가 는다.
+        StudentResultConceptResponse concept = item.getSupportMode() == SupportMode.CONCEPT_GUIDE
+                ? LearningGuideParser.parse(objectMapper, question)
+                : null;
+
         return StudentWorksheetItemResponse.from(
                 item, question, contentBlocks, choices, steps, answerUnits,
-                assetsByQuestionId.getOrDefault(questionId, List.of()));
+                assetsByQuestionId.getOrDefault(questionId, List.of()), concept);
     }
 
     /** custom_stage의 distinct 집합을 표시 순서대로. items가 이미 displayOrder로 정렬돼 있다. */
