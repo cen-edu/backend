@@ -27,6 +27,9 @@ import tools.jackson.databind.ObjectMapper;
  * <p>학생 답안을 프롬프트 문장에 이어 붙이지 않고 <b>JSON 값으로</b> 넘긴다. 붙여 쓰면 학생이 쓴
  * 문장과 우리가 쓴 지시가 같은 평면에 놓여 구분이 사라진다.
  *
+ * <p>모델은 기본값과 같지만 {@link LlmUseCase#ANALYSIS_REPORT} 로 부른다. 문항마다 문장 세 개를
+ * 한 번에 받아 출력이 길어서, 응답 상한을 따로 잡지 않으면 문항이 많은 학습지에서 JSON 이 잘린다.
+ *
  * <p>seed 를 고정하지 않는다. 검증기와 달리 문장 생성은 같은 입력에 같은 답이 나올 필요가 없고,
  * 재생성이 조금씩 다른 표현을 내는 편이 교사에게 자연스럽다.
  */
@@ -56,7 +59,7 @@ public class AnalysisReportGenerator implements AnalysisReportGenerationPort {
                 AnalysisReportPrompts.systemPrompt(),
                 List.of(ChatMessage.user(AnalysisReportPrompts.userPrompt(requestJson))),
                 null,
-                LlmUseCase.DEFAULT);
+                LlmUseCase.ANALYSIS_REPORT);
 
         // 출력 길이가 한도에 닿으면 JSON 이 잘려 파싱이 깨진다. 한도를 올릴지 판단할 근거로 남긴다.
         log.info("분석 문장 생성 호출 — assignmentStudentId={}, 문항 {}건, "
@@ -72,7 +75,7 @@ public class AnalysisReportGenerator implements AnalysisReportGenerationPort {
                 text(root, "overallObservation"),
                 itemMessages(root),
                 AnalysisReportPrompts.VERSION,
-                properties.model(),
+                properties.optionsFor(LlmUseCase.ANALYSIS_REPORT).model(),
                 schemaVersion(root));
     }
 
