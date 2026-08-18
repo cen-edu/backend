@@ -1,11 +1,15 @@
 package com.cenedu.backend.domain.member.service;
 
+import java.time.Year;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import com.cenedu.backend.domain.member.dto.request.ClassStudentCandidateListRequest;
@@ -14,6 +18,7 @@ import com.cenedu.backend.domain.member.dto.request.SchoolClassDeleteRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassListRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassOrderUpdateRequest;
 import com.cenedu.backend.domain.member.dto.request.SchoolClassUpdateRequest;
+import com.cenedu.backend.domain.member.dto.response.AcademicContextResponse;
 import com.cenedu.backend.domain.member.dto.response.ClassStudentCandidateResponse;
 import com.cenedu.backend.domain.member.dto.response.SchoolClassDetailResponse;
 import com.cenedu.backend.domain.member.dto.response.SchoolClassResponse;
@@ -39,10 +44,61 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class SchoolClassService {
 
+    private static final List<AcademicContextResponse.SemesterOption> SEMESTER_OPTIONS = List.of(
+            new AcademicContextResponse.SemesterOption(1, "1학기"),
+            new AcademicContextResponse.SemesterOption(2, "2학기")
+    );
+
     private final MemberAccountRepository memberAccountRepository;
     private final MemberStudentProfileRepository studentProfileRepository;
     private final MemberSchoolClassRepository schoolClassRepository;
     private final MemberClassEnrollmentRepository enrollmentRepository;
+
+    /** 교사가 담당하는 활성 반을 학년도·학년·반 계층과 독립 학기 옵션으로 반환한다. */
+    public AcademicContextResponse getAcademicContexts(long teacherId) {
+        getRequiredTeacher(teacherId);
+        List<MemberSchoolClass> schoolClasses = schoolClassRepository
+                .findAllByHomeroomTeacherIdAndDeletedAtIsNullOrderByDisplayOrderAscIdAsc(teacherId);
+
+        Map<Short, Map<Short, List<MemberSchoolClass>>> classesByAcademicYearAndGrade =
+                new TreeMap<>(Comparator.reverseOrder());
+        for (MemberSchoolClass schoolClass : schoolClasses) {
+            classesByAcademicYearAndGrade
+                    .computeIfAbsent(
+                            schoolClass.getAcademicYear(),
+                            ignored -> new TreeMap<>())
+                    .computeIfAbsent(schoolClass.getGrade(), ignored -> new ArrayList<>())
+                    .add(schoolClass);
+        }
+
+        List<AcademicContextResponse.AcademicYearOption> academicYears =
+                classesByAcademicYearAndGrade.entrySet().stream()
+                        .map(yearEntry -> new AcademicContextResponse.AcademicYearOption(
+                                yearEntry.getKey(),
+                                yearEntry.getValue().entrySet().stream()
+                                        .map(gradeEntry -> new AcademicContextResponse.GradeOption(
+                                                gradeEntry.getKey(),
+                                                gradeEntry.getValue().stream()
+                                                        .sorted(Comparator
+                                                                .comparingInt(MemberSchoolClass::getDisplayOrder)
+                                                                .thenComparing(MemberSchoolClass::getId))
+                                                        .map(schoolClass ->
+                                                                new AcademicContextResponse.ClassOption(
+                                                                        schoolClass.getId(),
+                                                                        schoolClass.getName(),
+                                                                        schoolClass.getDisplayOrder()))
+                                                        .toList()))
+                                        .toList()))
+                        .toList();
+
+        Integer defaultAcademicYear = resolveDefaultAcademicYear(
+                classesByAcademicYearAndGrade);
+        return new AcademicContextResponse(
+                academicYears,
+                SEMESTER_OPTIONS,
+                new AcademicContextResponse.Defaults(defaultAcademicYear, null, null, null)
+        );
+    }
 
     /** 인증된 교사를 담임으로 지정하고 교사의 마지막 순서에 반을 생성한다. */
     @Transactional
@@ -257,6 +313,20 @@ public class SchoolClassService {
             throw new BusinessException(ErrorCode.MEMBER_TEACHER_REQUIRED);
         }
         return teacher;
+    }
+
+    /** 현재 학년도에 담당 반이 없으면 가장 최근 담당 학년도를 기본값으로 반환한다. */
+    private Integer resolveDefaultAcademicYear(
+            Map<Short, Map<Short, List<MemberSchoolClass>>> classesByAcademicYearAndGrade
+    ) {
+        if (classesByAcademicYearAndGrade.isEmpty()) {
+            return null;
+        }
+        short currentYear = (short) Year.now().getValue();
+        if (classesByAcademicYearAndGrade.containsKey(currentYear)) {
+            return (int) currentYear;
+        }
+        return (int) classesByAcademicYearAndGrade.keySet().iterator().next();
     }
 
     /** 활성 반을 조회하고 요청 교사의 소유인지 검증한다. */

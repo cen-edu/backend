@@ -17,7 +17,7 @@ public record AnalysisStudentListResponse(
             Long studentId,
             String studentName,
             AnalysisStatus analysisStatus,
-            BigDecimal accuracyRate
+            BigDecimal performanceRate
     ) {
     }
 }
