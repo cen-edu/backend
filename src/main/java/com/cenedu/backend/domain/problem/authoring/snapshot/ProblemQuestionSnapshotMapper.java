@@ -56,10 +56,15 @@ public class ProblemQuestionSnapshotMapper {
         List<SnapshotChoice> choices = detail.choices().stream()
                 .map(choice -> new SnapshotChoice("C" + choice.displayOrder(), choice.displayOrder(), choice.content())).toList();
         List<SnapshotStep> steps = detail.steps().stream().map(this::step).toList();
-        List<SnapshotAnswerUnit> units = detail.answerUnits().stream().map(unit -> new SnapshotAnswerUnit(
-                unit.unitKey(), unit.stepId() == null ? null : "S" + findStepOrder(detail.steps(), unit.stepId()),
-                unit.displayOrder(), unit.answer(), unit.answer(), unit.compareMethod(),
-                unit.diagnosticType(), unit.displayUnit())).toList();
+        List<SnapshotAnswerUnit> units = detail.answerUnits().stream().map(unit -> {
+            String normalized = unit.compareMethod() == com.cenedu.backend.global.common.enums.CompareMethod.CHOICE
+                    || unit.compareMethod() == com.cenedu.backend.global.common.enums.CompareMethod.RUBRIC
+                    ? null : unit.answer();
+            return new SnapshotAnswerUnit(unit.unitKey(),
+                    unit.stepId() == null ? null : "S" + findStepOrder(detail.steps(), unit.stepId()),
+                    unit.displayOrder(), unit.answer(), normalized, unit.compareMethod(),
+                    unit.diagnosticType(), unit.displayUnit());
+        }).toList();
         SnapshotLearningGuide guide = guide(detail.learningGuide());
         return new QuestionSnapshotV1(1, base.metadata(), blocks, assets, choices, steps, units,
                 detail.explanation(), guide, List.of());
