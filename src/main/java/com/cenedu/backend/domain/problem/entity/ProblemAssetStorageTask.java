@@ -33,6 +33,7 @@ public class ProblemAssetStorageTask extends BaseTimeEntity {
     @Column(nullable = false) private int attemptCount;
     private LocalDateTime nextAttemptAt;
     @Column(length = 100) private String lastErrorCode;
+    private LocalDateTime sourceDeletedAt;
 
     private ProblemAssetStorageTask(ProblemAsset asset, String sourceLocalPath, String targetStorageKey,
                                     String expectedChecksum, String contentType) {
@@ -62,4 +63,7 @@ public class ProblemAssetStorageTask extends BaseTimeEntity {
 
     /** 재시도 소진으로 영구 실패를 기록한다. */
     public void fail(String code) { status = ProblemAssetStorageStatus.FAILED; lastErrorCode = code; asset.markFailed(false); }
+
+    /** 보존기간이 지난 영구 실패 작업의 로컬 원본이 정리됐음을 기록한다. */
+    public void markSourceDeleted(LocalDateTime deletedAt) { sourceDeletedAt = deletedAt; }
 }

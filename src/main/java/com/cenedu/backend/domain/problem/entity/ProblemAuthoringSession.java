@@ -255,6 +255,26 @@ public class ProblemAuthoringSession extends BaseTimeEntity {
         finalizedAt = LocalDateTime.now();
     }
 
+    /** 최종화 전 Session을 취소해 임시 자산 정리 대상으로 닫는다. */
+    public void cancelDraft() {
+        requireDraft();
+        lifecycleStatus = AuthoringLifecycleStatus.CANCELLED;
+        pendingVersionId = null;
+        pendingInstructions = null;
+        interactionStatus = AuthoringInteractionStatus.IDLE;
+        clearActiveExecution();
+    }
+
+    /** TTL이 지난 DRAFT Session을 만료 상태로 닫는다. */
+    public void expireDraft() {
+        requireDraft();
+        lifecycleStatus = AuthoringLifecycleStatus.EXPIRED;
+        pendingVersionId = null;
+        pendingInstructions = null;
+        interactionStatus = AuthoringInteractionStatus.IDLE;
+        clearActiveExecution();
+    }
+
     private void requirePendingVersion(Long versionId) {
         if (operationStatus != AuthoringOperationStatus.VERIFYING
                 || pendingVersionId == null

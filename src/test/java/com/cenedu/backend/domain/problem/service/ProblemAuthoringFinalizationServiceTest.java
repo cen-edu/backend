@@ -1,5 +1,6 @@
 package com.cenedu.backend.domain.problem.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
@@ -53,5 +54,23 @@ class ProblemAuthoringFinalizationServiceTest {
                 .extracting("errorCode").isEqualTo(ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_VERIFIED);
         verifyNoInteractions(questionRepository, choiceRepository, stepRepository,
                 answerUnitRepository, rubricRepository, assetRepository, mapper);
+    }
+
+    @Test
+    void 모든_자산_READY일_때만_배포_가능하다() {
+        when(assetRepository.findStorageStatusesByQuestionId(10L)).thenReturn(List.of());
+        when(assetRepository.findStorageStatusesByQuestionId(11L)).thenReturn(List.of(
+                com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus.READY,
+                com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus.PENDING));
+        when(assetRepository.findStorageStatusesByQuestionId(12L)).thenReturn(List.of(
+                com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus.READY,
+                com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus.FAILED));
+
+        assertThat(service.resolveDeploymentStatus(10L))
+                .isEqualTo(com.cenedu.backend.domain.problem.dto.response.ProblemDeploymentStatus.READY);
+        assertThat(service.resolveDeploymentStatus(11L))
+                .isEqualTo(com.cenedu.backend.domain.problem.dto.response.ProblemDeploymentStatus.WAITING_FOR_ASSETS);
+        assertThat(service.resolveDeploymentStatus(12L))
+                .isEqualTo(com.cenedu.backend.domain.problem.dto.response.ProblemDeploymentStatus.BLOCKED_BY_ASSET_FAILURE);
     }
 }

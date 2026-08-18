@@ -3,6 +3,7 @@ package com.cenedu.backend.domain.problem.repository;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDateTime;
 
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringSession;
 import jakarta.persistence.LockModeType;
@@ -42,4 +43,9 @@ public interface ProblemAuthoringSessionRepository
 
     // 채점·검증 조회측이 최종 questionId로 저장 당시 S1 Version을 찾는다.
     Optional<ProblemAuthoringSession> findByFinalizedQuestionId(Long finalizedQuestionId);
+
+    // TTL이 지난 DRAFT Session을 오래된 순서로 정리한다.
+    List<ProblemAuthoringSession> findByLifecycleStatusAndUpdatedAtBeforeOrderByUpdatedAtAsc(
+            com.cenedu.backend.domain.problem.entity.enums.AuthoringLifecycleStatus lifecycleStatus,
+            LocalDateTime cutoff);
 }

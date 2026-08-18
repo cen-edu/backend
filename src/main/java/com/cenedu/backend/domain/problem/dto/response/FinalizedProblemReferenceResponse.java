@@ -7,6 +7,14 @@ public record FinalizedProblemReferenceResponse(
         Long sessionId,
         Long versionId,
         Long questionId,
-        QuestionType questionType
+        QuestionType questionType,
+        ProblemDeploymentStatus deploymentStatus,
+        boolean deployable
 ) {
+    public FinalizedProblemReferenceResponse(Long sessionId, Long versionId, Long questionId,
+                                             QuestionType questionType,
+                                             ProblemDeploymentStatus deploymentStatus) {
+        this(sessionId, versionId, questionId, questionType, deploymentStatus,
+                deploymentStatus.isDeployable());
+    }
 }

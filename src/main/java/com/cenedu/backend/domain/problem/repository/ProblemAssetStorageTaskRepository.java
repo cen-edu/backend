@@ -19,4 +19,8 @@ public interface ProblemAssetStorageTaskRepository extends JpaRepository<Problem
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select task from ProblemAssetStorageTask task where task.id = :id")
     Optional<ProblemAssetStorageTask> findByIdForUpdate(@Param("id") Long id);
+
+    /** 보존기간이 지났고 로컬 원본이 아직 남은 영구 실패 작업을 조회한다. */
+    @Query("select task from ProblemAssetStorageTask task where task.status = 'FAILED' and task.sourceDeletedAt is null and task.updatedAt <= :cutoff order by task.id")
+    List<ProblemAssetStorageTask> findFailedForSourceCleanup(@Param("cutoff") LocalDateTime cutoff);
 }

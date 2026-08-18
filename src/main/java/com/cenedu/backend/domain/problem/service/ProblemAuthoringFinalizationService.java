@@ -9,6 +9,7 @@ import com.cenedu.backend.domain.problem.authoring.asset.DraftAssetManifest;
 import com.cenedu.backend.domain.problem.authoring.asset.GeneratedAssetPlan;
 import com.cenedu.backend.domain.problem.authoring.asset.GeneratedAssetStorageKeyFactory;
 import com.cenedu.backend.domain.problem.dto.response.FinalizedProblemReferenceResponse;
+import com.cenedu.backend.domain.problem.dto.response.ProblemDeploymentStatus;
 import com.cenedu.backend.domain.problem.entity.*;
 import com.cenedu.backend.domain.problem.entity.enums.*;
 import com.cenedu.backend.domain.problem.repository.*;
@@ -82,7 +83,8 @@ public class ProblemAuthoringFinalizationService {
             ProblemAuthoringVersion version = versionRepository.findById(session.getCurrentVersionId())
                     .orElseThrow(() -> new BusinessException(ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
             return new FinalizedProblemReferenceResponse(session.getId(), version.getId(),
-                    session.getFinalizedQuestionId(), questionType(version));
+                    session.getFinalizedQuestionId(), questionType(version),
+                    resolveDeploymentStatus(session.getFinalizedQuestionId()));
         }
         if (session.getCurrentVersionId() == null || session.getPendingVersionId() != null
                 || session.getOperationStatus() != AuthoringOperationStatus.IDLE) {
@@ -132,7 +134,20 @@ public class ProblemAuthoringFinalizationService {
         }
         if (questionId == null) throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_DATA_INVALID);
         session.finalizeAs(questionId, version.getVerificationStatus());
-        return new FinalizedProblemReferenceResponse(session.getId(), version.getId(), questionId, questionType(version));
+        return new FinalizedProblemReferenceResponse(session.getId(), version.getId(), questionId,
+                questionType(version), resolveDeploymentStatus(questionId));
+    }
+
+    /** 최종 문항 자산 전체를 기준으로 Worksheet 공개 배포 상태를 계산한다. */
+    ProblemDeploymentStatus resolveDeploymentStatus(Long questionId) {
+        List<ProblemAssetStorageStatus> statuses = assetRepository.findStorageStatusesByQuestionId(questionId);
+        if (statuses.stream().anyMatch(status -> status == ProblemAssetStorageStatus.FAILED)) {
+            return ProblemDeploymentStatus.BLOCKED_BY_ASSET_FAILURE;
+        }
+        if (statuses.stream().allMatch(status -> status == ProblemAssetStorageStatus.READY)) {
+            return ProblemDeploymentStatus.READY;
+        }
+        return ProblemDeploymentStatus.WAITING_FOR_ASSETS;
     }
 
     private QuestionType questionType(ProblemAuthoringVersion version) {
