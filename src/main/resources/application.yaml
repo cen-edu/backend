@@ -27,6 +27,23 @@ server:
   port: ${SERVER_PORT:8080}
 
 app:
+  problem:
+    rag:
+      enabled: ${PROBLEM_RAG_ENABLED:false}
+      policy-version: A_DENSE_MMR_V1
+      candidate-limit: 40
+      standard-selection-limit: 3
+      personalized-selection-limit: 4
+      default-lambda: 0.70
+      application-lambda: 0.55
+      search-timeout: 2s
+      indexing:
+        enabled: ${PROBLEM_RAG_INDEXING_ENABLED:false}
+        batch-size: 20
+        max-attempts: 3
+        retry-delay: 30s
+        worker-delay: 5s
+        backfill-delay: 60s
   storage:
     s3:
       enabled: ${S3_ENABLED:false}
