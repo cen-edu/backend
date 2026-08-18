@@ -1489,6 +1489,22 @@ git commit -m "test : 문제 RAG fallback과 패키지 경계 고정"
 
 ### Task 11: Targeted PostgreSQL API Integration and Gated Real-Provider API Test
 
+#### Embedding content policy (full problem-bank backfill)
+
+The full problem-bank backfill uses an answer-safe derived document. It includes the
+curriculum path, achievement standard, question type, difficulty, visible prompt,
+solution strategy, solution summary, and presentation mode. It must not include raw
+answers, answer units, choice correctness, full explanation text, rubric scoring
+guidance, teacher prompts, or storage paths. A learning guide may contribute only the
+answer-free concept/strategy summary fields. This keeps retrieval useful for concept
+and solution-structure similarity without leaking answer-bearing content into the
+generation few-shot path.
+
+Before a full backfill, record the source count, pending/ready/failed counts, and
+embedding model/dimensions. A full backfill is idempotent and may be resumed from the
+last question ID. Retrieval quality is evaluated with representative queries after
+the index is populated; cost is driven by input tokens, not vector dimensionality.
+
 **Files:**
 - Create: `src/test/java/com/cenedu/backend/domain/problem/controller/ProblemRagGenerationApiIntegrationTest.java`
 - Create: `src/test/java/com/cenedu/backend/domain/problem/controller/ProblemRagGenerationApiLiveTest.java`
