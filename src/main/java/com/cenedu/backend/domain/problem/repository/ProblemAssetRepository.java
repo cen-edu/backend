@@ -27,4 +27,9 @@ public interface ProblemAssetRepository
     );
     /** 문항의 지정된 이미지 키에 대응하는 자산을 반환한다. */
     Optional<ProblemAsset> findByQuestionIdAndAssetKey(Long questionId, String assetKey);
+
+    /** 문항에 속한 모든 자산의 저장 상태를 반환한다. */
+    @Query("select asset.storageStatus from ProblemAsset asset where asset.question.id = :questionId")
+    List<com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus> findStorageStatusesByQuestionId(
+            @Param("questionId") Long questionId);
 }

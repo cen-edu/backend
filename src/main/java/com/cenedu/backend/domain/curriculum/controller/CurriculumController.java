@@ -23,7 +23,7 @@ public class CurriculumController {
     @GetMapping("/units")
     public ApiResponse<List<CurriculumUnitResponse>> getUnits(
         @RequestParam short grade,
-        @RequestParam short semester,
+        @RequestParam String semester,
         @AuthenticationPrincipal AuthenticatedUser user
     ) {
         List<CurriculumUnitResponse> response =

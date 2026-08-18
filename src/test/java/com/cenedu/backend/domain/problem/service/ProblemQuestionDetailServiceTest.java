@@ -14,6 +14,7 @@ import com.cenedu.backend.domain.problem.dto.response.ProblemAssetResponse;
 import com.cenedu.backend.domain.problem.entity.ProblemAsset;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.entity.enums.AssetRole;
+import com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus;
 import com.cenedu.backend.domain.problem.repository.ProblemAssetRepository;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
@@ -60,9 +61,9 @@ class ProblemQuestionDetailServiceTest {
         ProblemAsset present = asset(1L, "F2", "questions/30/present_F2.png");
         when(problemAssetRepository.findAllByQuestionIds(List.of(1L))).thenReturn(List.of(missing, present));
         when(problemAssetUrlServiceProvider.getIfAvailable()).thenReturn(problemAssetUrlService);
-        when(problemAssetUrlService.createUrl("questions/30/missing_F1.png"))
+        when(problemAssetUrlService.createUrl(missing))
                 .thenThrow(new BusinessException(ErrorCode.IMAGE_NOT_FOUND));
-        when(problemAssetUrlService.createUrl("questions/30/present_F2.png"))
+        when(problemAssetUrlService.createUrl(present))
                 .thenReturn("https://example.com/present");
 
         Map<Long, List<ProblemAssetResponse>> assets =
@@ -81,7 +82,7 @@ class ProblemQuestionDetailServiceTest {
         ProblemAsset broken = asset(1L, "F1", "questions/30/broken_F1.png");
         when(problemAssetRepository.findAllByQuestionIds(List.of(1L))).thenReturn(List.of(broken));
         when(problemAssetUrlServiceProvider.getIfAvailable()).thenReturn(problemAssetUrlService);
-        when(problemAssetUrlService.createUrl("questions/30/broken_F1.png"))
+        when(problemAssetUrlService.createUrl(broken))
                 .thenThrow(new BusinessException(ErrorCode.IMAGE_STORAGE_FAILED));
 
         assertThatThrownBy(() -> problemQuestionDetailService.getAssetsByQuestionIds(List.of(1L)))
@@ -119,6 +120,7 @@ class ProblemQuestionDetailServiceTest {
         lenient().when(asset.getAssetKey()).thenReturn(assetKey);
         lenient().when(asset.getStorageKey()).thenReturn(storageKey);
         lenient().when(asset.getRole()).thenReturn(AssetRole.FIGURE);
+        lenient().when(asset.getStorageStatus()).thenReturn(ProblemAssetStorageStatus.READY);
         return asset;
     }
 }

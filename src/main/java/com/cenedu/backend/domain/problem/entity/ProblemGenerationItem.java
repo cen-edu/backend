@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationSlotSource;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationItemStatus;
 import com.cenedu.backend.global.common.BaseTimeEntity;
 import jakarta.persistence.Column;
@@ -58,16 +59,23 @@ public class ProblemGenerationItem extends BaseTimeEntity {
     private Long sessionId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "generation_purpose", nullable = false, length = 60, updatable = false)
+    @Column(name = "generation_purpose", length = 60, updatable = false)
     private GenerationPurpose generationPurpose;
 
     @Column(name = "command_schema_version", nullable = false, updatable = false)
     private int commandSchemaVersion;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "generation_command", nullable = false, columnDefinition = "jsonb",
+    @Column(name = "generation_command", columnDefinition = "jsonb",
             updatable = false)
     private String generationCommand;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "slot_source", nullable = false, length = 20, updatable = false)
+    private GenerationSlotSource slotSource;
+
+    @Column(name = "source_question_id", updatable = false)
+    private Long sourceQuestionId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
@@ -95,6 +103,7 @@ public class ProblemGenerationItem extends BaseTimeEntity {
         this.generationPurpose = generationPurpose;
         this.commandSchemaVersion = commandSchemaVersion;
         this.generationCommand = generationCommand;
+        this.slotSource = GenerationSlotSource.AI_GENERATION;
         this.status = GenerationItemStatus.QUEUED;
         this.retryCount = 0;
     }
@@ -107,6 +116,18 @@ public class ProblemGenerationItem extends BaseTimeEntity {
                                                String generationCommand) {
         return new ProblemGenerationItem(jobId, itemOrder, requestId, sessionId,
                 generationPurpose, commandSchemaVersion, generationCommand);
+    }
+
+    /** 문제은행 문항을 재사용하는 즉시 완료 슬롯을 생성한다. */
+    public static ProblemGenerationItem createBankReuse(Long jobId, int itemOrder, UUID requestId,
+                                                        Long sessionId, Long sourceQuestionId) {
+        ProblemGenerationItem item = new ProblemGenerationItem(jobId, itemOrder, requestId,
+            sessionId, null, 0, null);
+        item.slotSource = GenerationSlotSource.BANK_REUSE;
+        item.sourceQuestionId = sourceQuestionId;
+        item.status = GenerationItemStatus.SUCCEEDED;
+        item.completedAt = LocalDateTime.now();
+        return item;
     }
 
     /** Worker가 실행권을 얻은 Item을 생성 중으로 바꾼다. */

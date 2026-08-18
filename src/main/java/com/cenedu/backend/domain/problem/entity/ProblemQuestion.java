@@ -125,7 +125,8 @@ public class ProblemQuestion {
                             String topicCode, short difficulty, QuestionType questionType,
                             QuestionPresentation presentation, String contentBlocks,
                             String promptText, String explanation, String learningGuide,
-                            String hintText, VerificationStatus verificationStatus) {
+                            String hintText, VerificationStatus verificationStatus,
+                            EvaluationArea evaluationArea) {
         this.sourceType = sourceType;
         this.sourceRef = sourceRef;
         this.sourceDatasetCode = sourceDatasetCode;
@@ -141,6 +142,7 @@ public class ProblemQuestion {
         this.learningGuide = learningGuide;
         this.hintText = hintText;
         this.verificationStatus = verificationStatus;
+        this.evaluationArea = evaluationArea;
         this.verificationAttempts = 0;
         this.createdAt = OffsetDateTime.now();
     }
@@ -156,6 +158,16 @@ public class ProblemQuestion {
                                          VerificationStatus verificationStatus) {
         return new ProblemQuestion(sourceType, sourceRef, sourceDatasetCode, derivedFrom, subUnitId,
                 topicCode, difficulty, questionType, presentation, contentBlocks, promptText,
-                explanation, learningGuide, hintText, verificationStatus);
+                explanation, learningGuide, hintText, verificationStatus, null);
+    }
+
+    /** 작성 Snapshot의 평가 영역까지 보존해 문항을 생성한다. */
+    public static ProblemQuestion createAuthored(QuestionSourceType sourceType, ProblemQuestion derivedFrom,
+            Long subUnitId, String topicCode, short difficulty, EvaluationArea evaluationArea,
+            QuestionType questionType, QuestionPresentation presentation, String contentBlocks,
+            String promptText, String explanation, String learningGuide, VerificationStatus verificationStatus) {
+        return new ProblemQuestion(sourceType, null, null, derivedFrom, subUnitId, topicCode, difficulty,
+                questionType, presentation, contentBlocks, promptText, explanation, learningGuide,
+                null, verificationStatus, evaluationArea);
     }
 }

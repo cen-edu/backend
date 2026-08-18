@@ -7,6 +7,10 @@ import org.springframework.stereotype.Service;
 
 import com.cenedu.backend.infra.storage.config.S3Properties;
 import com.cenedu.backend.infra.storage.service.ImageStorageService;
+import com.cenedu.backend.domain.problem.entity.ProblemAsset;
+import com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus;
+import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 
@@ -32,5 +36,13 @@ public class ProblemAssetUrlService {
             storageKey,
             URL_EXPIRATION
         );
+    }
+
+    /** READY 상태의 문제 자산만 S3 조회 URL로 변환한다. */
+    public String createUrl(ProblemAsset asset) {
+        if (asset == null || asset.getStorageStatus() != ProblemAssetStorageStatus.READY) {
+            throw new BusinessException(ErrorCode.PROBLEM_ASSET_NOT_READY);
+        }
+        return createUrl(asset.getStorageKey());
     }
 }

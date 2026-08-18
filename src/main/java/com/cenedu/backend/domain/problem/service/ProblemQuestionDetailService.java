@@ -243,8 +243,13 @@ public class ProblemQuestionDetailService {
             return null;
         }
 
+        if (asset.getStorageStatus()
+                != com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus.READY) {
+            return null;
+        }
+
         try {
-            return urlService.createUrl(asset.getStorageKey());
+            return urlService.createUrl(asset);
         } catch (BusinessException exception) {
             if (exception.getErrorCode() != ErrorCode.IMAGE_NOT_FOUND) {
                 throw exception;

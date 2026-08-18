@@ -93,7 +93,8 @@ class ProblemCandidateProcessingServiceTest {
                 new ProblemAuthoringJsonCodec(new ObjectMapper()),
                 verificationProvider,
                 assetProvider,
-                transactionManager);
+                transactionManager,
+                new ProblemAiConcurrencyLimiter(4, 30));
     }
 
     @Test
