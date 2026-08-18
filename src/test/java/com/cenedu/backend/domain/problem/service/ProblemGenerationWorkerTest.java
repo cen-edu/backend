@@ -45,7 +45,8 @@ class ProblemGenerationWorkerTest {
         generationPort = mock(ProblemGenerationPort.class);
         ObjectProvider<ProblemGenerationPort> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(generationPort);
-        worker = new ProblemGenerationWorker(jobService, candidateService, provider);
+        worker = new ProblemGenerationWorker(jobService, candidateService, provider,
+                new ProblemAiConcurrencyLimiter(4, 30));
         ProblemGenerationCommand command = new ProblemGenerationCommand(
                 UUID.randomUUID(),
                 GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
@@ -87,6 +88,19 @@ class ProblemGenerationWorkerTest {
 
         verify(generationPort, times(3)).generate(any());
         verify(jobService).fail(workItem, "GENERATION_FAILED");
+    }
+
+    @Test
+    @DisplayName("검증 기술 오류는 새 후보를 생성하지 않고 Item을 실패로 종료한다")
+    void verificationErrorDoesNotRegenerate() {
+        when(generationPort.generate(any())).thenReturn(candidate());
+        when(candidateService.process(any()))
+                .thenReturn(result(VerificationOverallStatus.ERROR, false));
+
+        worker.execute(1L);
+
+        verify(generationPort, times(1)).generate(any());
+        verify(jobService).fail(workItem, "VERIFICATION_ERROR");
     }
 
     @Test
