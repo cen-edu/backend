@@ -21,6 +21,8 @@ import com.cenedu.backend.domain.problem.dto.response.ProblemStepResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemStepSegmentResponse;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotMetadata;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
+import com.cenedu.backend.domain.problem.entity.ProblemRubricItem;
+import com.cenedu.backend.domain.problem.authoring.model.SnapshotRubricItem;
 import org.springframework.stereotype.Component;
 
 /** 문제 Entity의 영속화 필드만 S1 스냅샷 계약으로 변환하는 경계 Mapper다. */
@@ -91,5 +93,13 @@ public class ProblemQuestionSnapshotMapper {
 
     private SnapshotLearningGuide guide(ProblemLearningGuideResponse guide) {
         return guide == null ? null : new SnapshotLearningGuide(guide.conceptTitle(), guide.summary(), guide.keyPoints());
+    }
+
+    /** 서술형 채점 기준을 버전 간 안정적인 R 논리 키로 변환한다. */
+    public List<SnapshotRubricItem> rubrics(List<ProblemRubricItem> rubricItems) {
+        return rubricItems == null ? List.of() : rubricItems.stream()
+                .map(item -> new SnapshotRubricItem("R" + item.getDisplayOrder(),
+                        item.getDisplayOrder(), item.getLabel(), item.getWeight()))
+                .toList();
     }
 }
