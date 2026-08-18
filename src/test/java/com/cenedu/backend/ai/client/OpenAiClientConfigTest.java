@@ -3,6 +3,7 @@ package com.cenedu.backend.ai.client;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.util.Map;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,7 @@ class OpenAiClientConfigTest {
     @DisplayName("설정한 모델·추론 강도·토큰 한도를 OpenAiChatOptions 에 그대로 싣는다")
     void buildsOpenAiChatOptionsFromProperties() {
         OpenAiProperties properties = new OpenAiProperties(
-                "test-key", "gpt-5-mini", "minimal", 3000, Duration.ofSeconds(60), 2);
+                "test-key", "gpt-5-mini", "minimal", 3000, Duration.ofSeconds(60), 2, Map.of());
 
         OpenAiChatOptions options = new OpenAiClientConfig().openAiChatOptions(properties);
 
