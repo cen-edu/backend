@@ -26,6 +26,7 @@ class ProblemAuthoringFinalizationServiceTest {
     @Mock private ProblemAnswerUnitRepository answerUnitRepository;
     @Mock private ProblemRubricItemRepository rubricRepository;
     @Mock private ProblemAssetRepository assetRepository;
+    @Mock private ProblemAssetStorageTaskRepository storageTaskRepository;
     @Mock private ProblemSnapshotEntityMapper mapper;
     private ProblemAuthoringFinalizationService service;
 
@@ -33,7 +34,7 @@ class ProblemAuthoringFinalizationServiceTest {
     void setUp() {
         service = new ProblemAuthoringFinalizationService(sessionRepository, versionRepository,
                 questionRepository, choiceRepository, stepRepository, answerUnitRepository,
-                rubricRepository, assetRepository, mapper, new ObjectMapper());
+                rubricRepository, assetRepository, storageTaskRepository, mapper, new ObjectMapper());
     }
 
     @Test

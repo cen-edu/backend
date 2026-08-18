@@ -4,6 +4,10 @@ import java.util.List;
 import java.util.Map;
 
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
+import com.cenedu.backend.domain.problem.authoring.asset.DraftAssetArtifact;
+import com.cenedu.backend.domain.problem.authoring.asset.DraftAssetManifest;
+import com.cenedu.backend.domain.problem.authoring.asset.GeneratedAssetPlan;
+import com.cenedu.backend.domain.problem.authoring.asset.GeneratedAssetStorageKeyFactory;
 import com.cenedu.backend.domain.problem.dto.response.FinalizedProblemReferenceResponse;
 import com.cenedu.backend.domain.problem.entity.*;
 import com.cenedu.backend.domain.problem.entity.enums.*;
@@ -26,6 +30,7 @@ public class ProblemAuthoringFinalizationService {
     private final ProblemAnswerUnitRepository answerUnitRepository;
     private final ProblemRubricItemRepository rubricRepository;
     private final ProblemAssetRepository assetRepository;
+    private final ProblemAssetStorageTaskRepository storageTaskRepository;
     private final ProblemSnapshotEntityMapper mapper;
     private final ObjectMapper objectMapper;
 
@@ -33,11 +38,13 @@ public class ProblemAuthoringFinalizationService {
             ProblemAuthoringVersionRepository versionRepository, ProblemQuestionRepository questionRepository,
             ProblemChoiceRepository choiceRepository, ProblemStepRepository stepRepository,
             ProblemAnswerUnitRepository answerUnitRepository, ProblemRubricItemRepository rubricRepository,
-            ProblemAssetRepository assetRepository, ProblemSnapshotEntityMapper mapper, ObjectMapper objectMapper) {
+            ProblemAssetRepository assetRepository, ProblemAssetStorageTaskRepository storageTaskRepository,
+            ProblemSnapshotEntityMapper mapper, ObjectMapper objectMapper) {
         this.sessionRepository = sessionRepository; this.versionRepository = versionRepository;
         this.questionRepository = questionRepository; this.choiceRepository = choiceRepository;
         this.stepRepository = stepRepository; this.answerUnitRepository = answerUnitRepository;
         this.rubricRepository = rubricRepository; this.assetRepository = assetRepository;
+        this.storageTaskRepository = storageTaskRepository;
         this.mapper = mapper; this.objectMapper = objectMapper;
     }
 
@@ -91,12 +98,32 @@ public class ProblemAuthoringFinalizationService {
             questionId = version.getSourceQuestionId();
         } else {
             QuestionSnapshotV1 snapshot = read(version.getSnapshot(), QuestionSnapshotV1.class);
-            Map<String, String> keys = readMap(version.getAssetManifest());
+            DraftAssetManifest draftManifest = read(version.getAssetManifest(), DraftAssetManifest.class);
+            Map<String, String> keys = draftManifest.artifacts().stream()
+                    .collect(java.util.stream.Collectors.toMap(DraftAssetArtifact::assetKey,
+                            DraftAssetArtifact::draftStorageKey));
             ProblemQuestionPersistenceBundle bundle = mapper.map(snapshot, keys);
             ProblemQuestion question = questionRepository.save(bundle.question());
             choiceRepository.saveAll(bundle.choices()); stepRepository.saveAll(bundle.steps());
             answerUnitRepository.saveAll(bundle.answerUnits()); rubricRepository.saveAll(bundle.rubricItems());
-            assetRepository.saveAll(bundle.assets());
+            DraftAssetManifest manifest = draftManifest;
+            Map<String, DraftAssetArtifact> artifacts = manifest.artifacts().stream()
+                    .collect(java.util.stream.Collectors.toMap(DraftAssetArtifact::assetKey, a -> a));
+            Map<String, GeneratedAssetPlan> plans = manifest.plans().stream()
+                    .collect(java.util.stream.Collectors.toMap(GeneratedAssetPlan::assetKey, p -> p));
+            for (ProblemAsset asset : bundle.assets()) {
+                DraftAssetArtifact artifact = artifacts.get(asset.getAssetKey());
+                GeneratedAssetPlan plan = plans.get(asset.getAssetKey());
+                if (artifact == null || plan == null || artifact.checksum() == null) {
+                    throw new BusinessException(ErrorCode.PROBLEM_ASSET_NOT_READY);
+                }
+                String finalKey = GeneratedAssetStorageKeyFactory.finalKey(question.getId(),
+                        snapshot.metadata().questionType(), asset.getAssetKey(), artifact.checksum(), plan.outputFormat());
+                asset.replaceImage(finalKey, nonNull(artifact.widthPx()), nonNull(artifact.heightPx()));
+                asset.markPending();
+                assetRepository.save(asset);
+                storageTaskRepository.save(ProblemAssetStorageTask.create(asset, artifact.draftStorageKey(), finalKey));
+            }
             questionId = question.getId();
         }
         if (questionId == null) throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_DATA_INVALID);
@@ -107,14 +134,9 @@ public class ProblemAuthoringFinalizationService {
     private QuestionType questionType(ProblemAuthoringVersion version) {
         return read(version.getSnapshot(), QuestionSnapshotV1.class).metadata().questionType();
     }
+    private int nonNull(Integer value) { return value == null ? 0 : value; }
     private <T> T read(String json, Class<T> type) {
         try { return objectMapper.readValue(json, type); }
-        catch (Exception e) { throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_DATA_INVALID); }
-    }
-    @SuppressWarnings("unchecked")
-    private Map<String, String> readMap(String json) {
-        if (json == null || json.isBlank()) return Map.of();
-        try { return objectMapper.readValue(json, Map.class); }
         catch (Exception e) { throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_DATA_INVALID); }
     }
 }

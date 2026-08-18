@@ -226,7 +226,7 @@ public class ProblemQuestionDetailService {
             return null;
         }
 
-        return urlService.createUrl(asset.getStorageKey());
+        return urlService.createUrl(asset);
     }
 
     // 문항 본문의 JSON 배열을 화면 표시용 블록 목록으로 변환한다.

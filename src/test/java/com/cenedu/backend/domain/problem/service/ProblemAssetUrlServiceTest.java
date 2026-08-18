@@ -8,6 +8,9 @@ import java.time.Duration;
 
 import com.cenedu.backend.infra.storage.config.S3Properties;
 import com.cenedu.backend.infra.storage.service.ImageStorageService;
+import com.cenedu.backend.domain.problem.entity.ProblemAsset;
+import com.cenedu.backend.domain.problem.entity.enums.AssetRole;
+import com.cenedu.backend.global.common.BusinessException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -59,5 +62,17 @@ class ProblemAssetUrlServiceTest {
             storageKey,
             Duration.ofHours(1)
         );
+    }
+
+    @Test
+    @DisplayName("S3 업로드 전 자산은 URL을 발급하지 않는다")
+    void rejectsNonReadyAsset() {
+        ProblemAsset asset = ProblemAsset.createPending(null, "F1", AssetRole.FIGURE, (short) 0,
+                "questions/generated/short-input/1/F1-hash.svg", 0, 0, "그림");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> problemAssetUrlService.createUrl(asset))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(com.cenedu.backend.global.common.ErrorCode.PROBLEM_ASSET_NOT_READY);
     }
 }
