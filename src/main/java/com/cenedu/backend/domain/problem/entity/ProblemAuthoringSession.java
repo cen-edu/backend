@@ -104,6 +104,15 @@ public class ProblemAuthoringSession extends BaseTimeEntity {
         return new ProblemAuthoringSession(ownerTeacherId, AuthoringOperationStatus.GENERATING);
     }
 
+    /** 문제은행에서 만든 최초 Version을 검증 완료 상태의 현재 Version으로 연결한다. */
+    public void initializeCurrentVersion(Long versionId) {
+        if (lifecycleStatus != AuthoringLifecycleStatus.DRAFT || currentVersionId != null) {
+            throw new IllegalStateException("최초 Version을 연결할 수 없는 Session입니다.");
+        }
+        currentVersionId = versionId;
+        operationStatus = AuthoringOperationStatus.IDLE;
+    }
+
     /** 기존 문제 수정 또는 복원 대화를 받을 수 있는 IDLE DRAFT Session을 만든다. */
     public static ProblemAuthoringSession createIdle(Long ownerTeacherId) {
         return new ProblemAuthoringSession(ownerTeacherId, AuthoringOperationStatus.IDLE);
