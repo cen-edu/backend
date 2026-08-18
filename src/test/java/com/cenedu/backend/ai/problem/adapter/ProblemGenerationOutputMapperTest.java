@@ -89,8 +89,9 @@ class ProblemGenerationOutputMapperTest {
     }
 
     private ProblemGenerationCommand command(UUID requestId, QuestionType type) {
-        return new ProblemGenerationCommand(requestId, GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
+        return new ProblemGenerationCommand(requestId, null, GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
                 new GenerationSpecification(type, "mid", null, List.of()),
-                new CurriculumContext(1L, 1, 1, "대단원", "중단원", "소단원"), List.of(), List.of());
+                new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L,
+                        "대단원", "중단원", "소단원"), List.of(), List.of());
     }
 }

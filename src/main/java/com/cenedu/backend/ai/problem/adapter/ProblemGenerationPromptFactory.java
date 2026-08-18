@@ -11,7 +11,7 @@ public class ProblemGenerationPromptFactory {
     /** 서버가 기대하는 S1 JSON 계약과 생성 조건을 프롬프트로 만든다. */
     public String create(ProblemGenerationCommand command) {
         var spec = command.specification();
-        var curriculum = command.curriculumContext();
+        var curriculum = command.curriculum();
         String references = command.references() == null ? "없음" : command.references().stream()
                 .map(GenerationReference::sourceQuestionId).map(String::valueOf).reduce((a, b) -> a + ", " + b)
                 .orElse("없음");

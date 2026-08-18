@@ -8,7 +8,7 @@ import java.util.Map;
 import com.cenedu.backend.ai.agent.ChatMessage;
 import com.cenedu.backend.ai.client.LlmClient;
 import com.cenedu.backend.ai.client.LlmUseCase;
-import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
@@ -81,7 +81,7 @@ public class VerificationLlmClient {
     public List<OriginalDefect> inspectOriginal(
             QuestionSnapshotV1 snapshot,
             boolean includeRubric,
-            CurriculumContext expectedCurriculum
+            CurriculumScope expectedCurriculum
     ) {
         JsonNode root = call(
                 VerificationPrompts.contentIntegritySystemPrompt(includeRubric),

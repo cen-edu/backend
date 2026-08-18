@@ -52,6 +52,15 @@ public class CurriculumUnit {
     @Column(name = "grade", nullable = false)
     private short grade;
 
+    @Column(name = "curriculum_revision", nullable = false, length = 20)
+    private String curriculumRevision = "2022_REVISED";
+
+    @Column(name = "school_level", nullable = false, length = 20)
+    private String schoolLevel = "MIDDLE";
+
+    @Column(name = "achievement_standard_id", length = 40)
+    private String achievementStandardId;
+
     /** 계층 조회와 학기 필터링을 위해 모든 계층에 동일한 학기를 저장한다. */
     @Column(name = "semester")
     private Short semester;

@@ -54,7 +54,7 @@ public class ProblemGenerationPlanningService {
             int shortage = requirement.count() - reusableCount;
             for (int i = 0; i < shortage; i++) {
                 ProblemGenerationCommand command = new ProblemGenerationCommand(UUID.randomUUID(),
-                    requirement.purpose(), requirement.specification(), requirement.curriculumContext(),
+                    null, requirement.purpose(), requirement.specification(), requirement.curriculum(),
                     requirement.references(), requirement.conceptEvidence());
                 slots.add(new ProblemGenerationSlotPlan(index++, GenerationSlotSource.AI_GENERATION,
                     null, command));

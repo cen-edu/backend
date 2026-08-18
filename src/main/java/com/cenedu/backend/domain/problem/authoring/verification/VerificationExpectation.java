@@ -2,7 +2,7 @@ package com.cenedu.backend.domain.problem.authoring.verification;
 
 import java.util.List;
 
-import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.entity.enums.DiagnosticType;
 import com.cenedu.backend.global.common.enums.EvaluationArea;
 import com.cenedu.backend.global.common.enums.QuestionType;
@@ -11,7 +11,7 @@ import com.cenedu.backend.global.common.enums.QuestionType;
 public record VerificationExpectation(
         QuestionType expectedQuestionType,
         String expectedDifficulty,
-        CurriculumContext expectedCurriculum,
+        CurriculumScope expectedCurriculum,
         EvaluationArea targetEvaluationArea,
         List<DiagnosticType> targetDiagnosticTypes,
         List<String> requiredAssetKeys

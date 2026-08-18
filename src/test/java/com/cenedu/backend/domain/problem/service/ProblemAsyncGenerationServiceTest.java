@@ -67,7 +67,8 @@ class ProblemAsyncGenerationServiceTest {
         AsyncProblemGenerationRequest request = new AsyncProblemGenerationRequest(
                 clientRequestId, List.of(new ProblemGenerationItemRequest(30L, (short) 2, 2)));
         CurriculumPathResponse path = new CurriculumPathResponse(
-                1L, "대단원", 2L, "중단원", 30L, "소단원");
+                1L, "대단원", 2L, "중단원", 30L, "소단원",
+                "2022_REVISED", "MIDDLE", (short) 1, (short) 1, null);
         ProblemGenerationPlan plan = mock(ProblemGenerationPlan.class);
         ProblemGenerationJobResult job = new ProblemGenerationJobResult(
                 10L, GenerationJobStatus.RUNNING,

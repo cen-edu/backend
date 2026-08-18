@@ -109,8 +109,8 @@ public class ProblemGenerationWorker {
         if (attempt == 0) return command;
         UUID attemptRequestId = UUID.nameUUIDFromBytes(
                 (command.requestId() + ":attempt:" + attempt).getBytes(StandardCharsets.UTF_8));
-        return new ProblemGenerationCommand(attemptRequestId, command.purpose(), command.specification(),
-                command.curriculumContext(), command.references(), command.conceptEvidence());
+        return new ProblemGenerationCommand(attemptRequestId, command.retrievalRequestId(), command.purpose(),
+                command.specification(), command.curriculum(), command.references(), command.conceptEvidence());
     }
 
     private String safeMessage(RuntimeException exception) {
@@ -130,7 +130,7 @@ public class ProblemGenerationWorker {
         VerificationExpectation expectation = new VerificationExpectation(
                 command.specification().questionType(),
                 command.specification().difficulty(),
-                command.curriculumContext(),
+                command.curriculum(),
                 command.specification().targetEvaluationArea(),
                 command.specification().targetDiagnosticTypes(),
                 requiredAssetKeys);

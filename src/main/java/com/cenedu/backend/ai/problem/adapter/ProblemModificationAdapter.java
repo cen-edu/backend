@@ -56,6 +56,7 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
             ProblemCandidateDraft mapped = outputMapper.map(
                     new com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand(
                             command.requestId(),
+                            null,
                             com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose.PERSONALIZED_APPLICATION,
                             new com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification(
                                     requested != null && requested.questionType() != null
@@ -63,8 +64,9 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
                                     requested != null && requested.difficulty() != null
                                             ? requested.difficulty() : command.baseSnapshot().metadata().difficulty(),
                                     command.baseSnapshot().metadata().evaluationArea(), List.of()),
-                            new com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext(
-                                    command.baseSnapshot().metadata().subUnitId(), null, null, null, null, null),
+                            new com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope(
+                                "2022_REVISED", "MIDDLE", 1, null, null,
+                                command.baseSnapshot().metadata().subUnitId(), "대단원", "중단원", "소단원"),
                             List.of(), List.of()), output);
             var mergedSnapshot = snapshotMerger.merge(command.plan(), command.baseSnapshot(), mapped.snapshot());
             ProblemCandidateDraft candidate = new ProblemCandidateDraft(command.requestId(), mergedSnapshot,
