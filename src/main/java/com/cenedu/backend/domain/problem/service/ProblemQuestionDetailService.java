@@ -226,6 +226,11 @@ public class ProblemQuestionDetailService {
             return null;
         }
 
+        if (asset.getStorageStatus()
+                != com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus.READY) {
+            return null;
+        }
+
         return urlService.createUrl(asset);
     }
 

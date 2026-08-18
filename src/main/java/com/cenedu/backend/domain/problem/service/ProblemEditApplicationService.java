@@ -23,15 +23,18 @@ public class ProblemEditApplicationService {
     private final ProblemAuthoringJsonCodec jsonCodec;
     private final ProblemEditConversationService conversationService;
     private final ProblemEditAgentGateway gateway;
+    private final ProblemModificationExecutionCoordinator executionCoordinator;
 
     public ProblemEditApplicationService(ProblemAuthoringSessionRepository sessionRepository,
             ProblemAuthoringVersionRepository versionRepository, ProblemAuthoringJsonCodec jsonCodec,
-            ProblemEditConversationService conversationService, ProblemEditAgentGateway gateway) {
+            ProblemEditConversationService conversationService, ProblemEditAgentGateway gateway,
+            ProblemModificationExecutionCoordinator executionCoordinator) {
         this.sessionRepository = sessionRepository;
         this.versionRepository = versionRepository;
         this.jsonCodec = jsonCodec;
         this.conversationService = conversationService;
         this.gateway = gateway;
+        this.executionCoordinator = executionCoordinator;
     }
 
     /** 수정 요청을 해석하고 확인 요청일 때만 구조화 명령을 Session에 저장한다. */
@@ -47,9 +50,10 @@ public class ProblemEditApplicationService {
             session = sessionRepository.findByIdAndOwnerTeacherId(sessionId, teacherId).orElseThrow();
         }
         List<ProblemEditInstruction> accumulated = accumulated(session);
+        QuestionSnapshotV1 baseSnapshot = jsonCodec.read(version.getSnapshot(), QuestionSnapshotV1.class);
         ProblemEditAgentPayload payload = new ProblemEditAgentPayload(1, sessionId, baseVersionId,
                 session.getInteractionStatus(), request.selectedTarget(),
-                jsonCodec.read(version.getSnapshot(), QuestionSnapshotV1.class), accumulated);
+                baseSnapshot, accumulated);
         ProblemEditConversationResult result = gateway.handle(teacherId, request.userInput(),
                 request.history() == null ? List.of() : request.history(), payload);
         if (result.action() == EditConversationAction.REQUEST_CONFIRMATION) {
@@ -60,6 +64,20 @@ public class ProblemEditApplicationService {
                     null, null, ReplacementSourcePolicy.NONE));
         } else if (result.action() == EditConversationAction.CANCEL) {
             conversationService.cancel(teacherId, sessionId);
+        } else if (result.action() == EditConversationAction.CONFIRM_EXECUTION) {
+            if (session.getPendingInstructions() == null) {
+                throw new BusinessException(ErrorCode.PROBLEM_EDIT_COMMAND_STALE);
+            }
+            PendingProblemEditCommand pending = jsonCodec.read(
+                    session.getPendingInstructions(), PendingProblemEditCommand.class);
+            ProblemEditExecutionPlan plan = conversationService.confirm(teacherId,
+                    new ConfirmedProblemEditCommand(pending.requestId(), UUID.randomUUID(),
+                            pending.sessionId(), pending.baseVersionId(), pending.instructions(),
+                            pending.requestedSpecification(), pending.restoreReference(),
+                            pending.replacementSourcePolicy()));
+            if (plan.action() != EditAction.RESTORE) {
+                executionCoordinator.execute(teacherId, plan, baseSnapshot);
+            }
         }
         return ProblemEditTurnResponse.from(result);
     }

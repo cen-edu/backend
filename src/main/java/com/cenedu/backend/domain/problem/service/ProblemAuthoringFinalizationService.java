@@ -102,7 +102,10 @@ public class ProblemAuthoringFinalizationService {
             Map<String, String> keys = draftManifest.artifacts().stream()
                     .collect(java.util.stream.Collectors.toMap(DraftAssetArtifact::assetKey,
                             DraftAssetArtifact::draftStorageKey));
-            ProblemQuestionPersistenceBundle bundle = mapper.map(snapshot, keys);
+            ProblemQuestion derivedFrom = snapshot.metadata().derivedFromQuestionId() == null ? null
+                    : questionRepository.findById(snapshot.metadata().derivedFromQuestionId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.PROBLEM_AUTHORING_DATA_INVALID));
+            ProblemQuestionPersistenceBundle bundle = mapper.map(snapshot, keys, derivedFrom);
             ProblemQuestion question = questionRepository.save(bundle.question());
             choiceRepository.saveAll(bundle.choices()); stepRepository.saveAll(bundle.steps());
             answerUnitRepository.saveAll(bundle.answerUnits()); rubricRepository.saveAll(bundle.rubricItems());
@@ -122,7 +125,8 @@ public class ProblemAuthoringFinalizationService {
                 asset.replaceImage(finalKey, nonNull(artifact.widthPx()), nonNull(artifact.heightPx()));
                 asset.markPending();
                 assetRepository.save(asset);
-                storageTaskRepository.save(ProblemAssetStorageTask.create(asset, artifact.draftStorageKey(), finalKey));
+                storageTaskRepository.save(ProblemAssetStorageTask.create(asset, artifact.draftStorageKey(), finalKey,
+                        artifact.checksum(), artifact.contentType()));
             }
             questionId = question.getId();
         }

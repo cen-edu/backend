@@ -104,7 +104,8 @@ public class ProblemQuestionSnapshotMapper {
                         unit.getCompareMethod(), unit.getDiagnosticType(), unit.getDisplayUnit())).toList();
         List<ProblemAssetResponse> assets = source.assets().stream()
                 .map(asset -> new ProblemAssetResponse(asset.getAssetKey(), asset.getRole(),
-                        asset.getDisplayOrder(), null, asset.getWidthPx(), asset.getHeightPx(), asset.getAltText())).toList();
+                        asset.getDisplayOrder(), null, asset.getWidthPx(), asset.getHeightPx(), asset.getAltText(),
+                        asset.getStorageStatus())).toList();
         ProblemLearningGuideResponse guide = readGuide(question.getLearningGuide());
         ProblemQuestionDetailResponse detail = new ProblemQuestionDetailResponse(question.getId(), null,
                 question.getDifficulty(), question.getQuestionType(), question.getPresentation(), blocks,

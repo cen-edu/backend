@@ -24,6 +24,13 @@ public class ProblemSnapshotEntityMapper {
     /** Snapshot을 저장 가능한 본체·하위 Entity 묶음으로 변환한다. */
     public ProblemQuestionPersistenceBundle map(QuestionSnapshotV1 snapshot,
                                                 Map<String, String> finalAssetKeys) {
+        return map(snapshot, finalAssetKeys, null);
+    }
+
+    /** 파생 원문 Entity를 포함해 Snapshot을 영속화 묶음으로 변환한다. */
+    public ProblemQuestionPersistenceBundle map(QuestionSnapshotV1 snapshot,
+                                                Map<String, String> finalAssetKeys,
+                                                ProblemQuestion derivedFrom) {
         requireValid(snapshot);
         SnapshotMetadata metadata = snapshot.metadata();
         String contentBlocks = write(snapshot.contentBlocks());
@@ -31,10 +38,10 @@ public class ProblemSnapshotEntityMapper {
         String promptText = snapshot.contentBlocks().stream()
                 .map(SnapshotContentBlock::text).filter(java.util.Objects::nonNull)
                 .collect(Collectors.joining("\n"));
-        ProblemQuestion question = ProblemQuestion.create(QuestionSourceType.GENERATED, null, null, null,
-                metadata.subUnitId(), metadata.topicCode(), difficulty(metadata.difficulty()), metadata.questionType(),
-                metadata.presentation(), contentBlocks, promptText, snapshot.explanation(), learningGuide, null,
-                VerificationStatus.PASSED);
+        ProblemQuestion question = ProblemQuestion.createAuthored(QuestionSourceType.GENERATED, derivedFrom,
+                metadata.subUnitId(), metadata.topicCode(), difficulty(metadata.difficulty()), metadata.evaluationArea(),
+                metadata.questionType(), metadata.presentation(), contentBlocks, promptText,
+                snapshot.explanation(), learningGuide, VerificationStatus.PASSED);
 
         List<ProblemChoice> choices = snapshot.choices().stream()
                 .map(c -> ProblemChoice.create(question, (short) c.displayOrder(), c.content())).toList();
@@ -46,7 +53,8 @@ public class ProblemSnapshotEntityMapper {
         }).toList();
         List<ProblemAnswerUnit> answers = snapshot.answerUnits().stream().map(a ->
                 ProblemAnswerUnit.create(question, stepsByKey.get(a.stepKey()), a.unitKey(), a.displayOrder(), null,
-                        a.answerRaw(), a.answerNormalized(), a.compareMethod(), a.diagnosticType(), a.displayUnit()))
+                        persistentAnswerRaw(a, snapshot.choices()), a.answerNormalized(),
+                        a.compareMethod(), a.diagnosticType(), a.displayUnit()))
                 .toList();
         List<ProblemRubricItem> rubrics = snapshot.rubricItems().stream()
                 .map(r -> ProblemRubricItem.create(question, r.displayOrder(), r.criterion(), (short) r.weightPercent(), null, null))
@@ -66,6 +74,16 @@ public class ProblemSnapshotEntityMapper {
 
     private short difficulty(String value) {
         return switch (value) { case "low" -> 1; case "mid" -> 2; case "high" -> 3; default -> throw new IllegalArgumentException("지원하지 않는 난이도입니다."); };
+    }
+
+    private String persistentAnswerRaw(SnapshotAnswerUnit answer, List<SnapshotChoice> choices) {
+        if (answer.compareMethod() != CompareMethod.CHOICE) return answer.answerRaw();
+        for (int index = 0; index < choices.size(); index++) {
+            if (java.util.Objects.equals(choices.get(index).choiceKey(), answer.answerRaw())) {
+                return String.valueOf(index + 1);
+            }
+        }
+        throw new IllegalArgumentException("객관식 정답이 보기를 참조하지 않습니다: " + answer.answerRaw());
     }
 
     private String requiredAssetKey(Map<String, String> keys, String assetKey) {

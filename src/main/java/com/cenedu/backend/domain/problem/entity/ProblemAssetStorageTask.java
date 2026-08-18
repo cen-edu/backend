@@ -24,24 +24,35 @@ public class ProblemAssetStorageTask extends BaseTimeEntity {
     private String sourceLocalPath;
     @Column(name = "target_storage_key", nullable = false, unique = true, length = 255)
     private String targetStorageKey;
+    @Column(name = "expected_checksum", nullable = false, length = 64)
+    private String expectedChecksum;
+    @Column(name = "content_type", nullable = false, length = 100)
+    private String contentType;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20)
     private ProblemAssetStorageStatus status;
     @Column(nullable = false) private int attemptCount;
     private LocalDateTime nextAttemptAt;
     @Column(length = 100) private String lastErrorCode;
 
-    private ProblemAssetStorageTask(ProblemAsset asset, String sourceLocalPath, String targetStorageKey) {
+    private ProblemAssetStorageTask(ProblemAsset asset, String sourceLocalPath, String targetStorageKey,
+                                    String expectedChecksum, String contentType) {
         this.asset = asset; this.sourceLocalPath = sourceLocalPath; this.targetStorageKey = targetStorageKey;
+        this.expectedChecksum = expectedChecksum; this.contentType = contentType;
         this.status = ProblemAssetStorageStatus.PENDING; this.attemptCount = 0;
     }
 
     /** 최종화 transaction 안에서 업로드 대기 작업을 만든다. */
-    public static ProblemAssetStorageTask create(ProblemAsset asset, String sourceLocalPath, String targetStorageKey) {
-        return new ProblemAssetStorageTask(asset, sourceLocalPath, targetStorageKey);
+    public static ProblemAssetStorageTask create(ProblemAsset asset, String sourceLocalPath, String targetStorageKey,
+                                                 String expectedChecksum, String contentType) {
+        return new ProblemAssetStorageTask(asset, sourceLocalPath, targetStorageKey,
+                expectedChecksum, contentType);
     }
 
     /** 업로드 선점을 기록한다. */
-    public void start() { status = ProblemAssetStorageStatus.PROCESSING; attemptCount++; }
+    public void start(LocalDateTime leaseUntil) {
+        status = ProblemAssetStorageStatus.PROCESSING; attemptCount++; nextAttemptAt = leaseUntil;
+        asset.markProcessing();
+    }
 
     /** 업로드 성공을 기록한다. */
     public void complete() { status = ProblemAssetStorageStatus.READY; nextAttemptAt = null; lastErrorCode = null; asset.markReady(); }

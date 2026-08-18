@@ -2,9 +2,13 @@ package com.cenedu.backend.domain.problem.service;
 
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 /** 서버 재시작·일시 장애 뒤 대기 중인 자산 작업을 복구한다. */
 @Component
+@EnableScheduling
+@ConditionalOnProperty(prefix = "app.storage.s3", name = "enabled", havingValue = "true")
 public class ProblemAssetStorageRecoveryScheduler {
     private final ProblemAssetStorageWorker worker;
     public ProblemAssetStorageRecoveryScheduler(ProblemAssetStorageWorker worker) { this.worker = worker; }
