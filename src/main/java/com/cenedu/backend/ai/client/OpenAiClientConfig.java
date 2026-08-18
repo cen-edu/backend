@@ -1,6 +1,7 @@
 package com.cenedu.backend.ai.client;
 
 import com.openai.client.OpenAIClient;
+import com.cenedu.backend.ai.embedding.EmbeddingProperties;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +23,7 @@ import org.springframework.context.annotation.Configuration;
  * {@code ai/client} 밖의 파일이라 고치지 않는다.
  */
 @Configuration
-@EnableConfigurationProperties(OpenAiProperties.class)
+@EnableConfigurationProperties({OpenAiProperties.class, EmbeddingProperties.class})
 public class OpenAiClientConfig {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiClientConfig.class);
