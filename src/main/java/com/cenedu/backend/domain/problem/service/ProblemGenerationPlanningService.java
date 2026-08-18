@@ -90,7 +90,8 @@ public class ProblemGenerationPlanningService {
     private ProblemGenerationCommand createGenerationCommand(ProblemGenerationRequirement requirement,
                                                               Set<Long> excludedQuestionIds) {
         boolean enabled = ragProperties != null && ragProperties.enabled();
-        ProblemReferenceRetrievalPort port = retrievalPort == null ? null : retrievalPort.getIfAvailable();
+        ProblemReferenceRetrievalPort port = !enabled || retrievalPort == null
+                ? null : retrievalPort.getIfAvailable();
         UUID retrievalRequestId = enabled && port != null ? UUID.randomUUID() : null;
         List<GenerationReference> references = new ArrayList<>(requirement.references());
         if (retrievalRequestId != null) {
