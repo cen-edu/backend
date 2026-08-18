@@ -26,8 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
  * 최종 보고에 남긴다({@code application.yaml}에 영구히 켜두지 않는다).
  */
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-student-worksheet-controller-test-secret-32b",
-        "app.jwt.access-token-expiration=1h"
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
+        "app.jwt.access-token-expiration=1h",
+        // .env 의 S3_ENABLED 가 테스트까지 새어들어온다. 켜두면 presign 이 실제 버킷에
+        // headObject 를 날려 테스트가 네트워크와 실제 객체 존재에 묶인다.
+        "app.storage.s3.enabled=false"
 })
 @AutoConfigureMockMvc
 @Import(PostgresTestcontainer.class)
@@ -67,6 +70,7 @@ class StudentWorksheetControllerTest {
                   {"blockId":"T2","blockKind":"TABLE","displayOrder":2,"text":"","markup":"<table><tr><td>1</td></tr></table>"}
                 ]
                 """);
+        insertAsset(choiceQuestionId, "F1", 0, "questions/30/test_F1.png", 240, 188, "부채꼴 그림");
         long choiceId1 = insertChoice(choiceQuestionId, 1, "1");
         insertChoice(choiceQuestionId, 2, "4");
         insertAnswerUnit(choiceQuestionId, null, "MAIN", 0, "CHOICE", String.valueOf(choiceId1));
@@ -133,8 +137,15 @@ class StudentWorksheetControllerTest {
                 .andExpect(jsonPath("$.data.items[0].format").value("choice"))
                 .andExpect(jsonPath("$.data.items[0].contentBlocks[0].blockKind").value("TEXT"))
                 .andExpect(jsonPath("$.data.items[0].contentBlocks[1].blockKind").value("FIGURE"))
-                .andExpect(jsonPath("$.data.items[0].contentBlocks[1].imageUrl")
-                        .value("/api/images/problems/" + choiceQuestionId + "/assets/F1"))
+                .andExpect(jsonPath("$.data.items[0].contentBlocks[1].assetRef").value("F1"))
+                // 이미지 주소는 블록이 아니라 문항 단위 assets[] 에 있고 assetKey 로 맞춘다.
+                .andExpect(jsonPath("$.data.items[0].contentBlocks[1].imageUrl").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].assets[0].assetKey").value("F1"))
+                .andExpect(jsonPath("$.data.items[0].assets[0].widthPx").value(240))
+                .andExpect(jsonPath("$.data.items[0].assets[0].heightPx").value(188))
+                .andExpect(jsonPath("$.data.items[0].assets[0].altText").value("부채꼴 그림"))
+                // S3 를 끈 컨텍스트라 url 은 null 이다(빈 부재 시 null 반환 경로).
+                .andExpect(jsonPath("$.data.items[0].assets[0].url").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].contentBlocks[2].blockKind").value("TABLE"))
                 .andExpect(jsonPath("$.data.items[0].contentBlocks[2].markup").exists())
                 .andExpect(jsonPath("$.data.items[0].choices").isArray())
@@ -271,6 +282,16 @@ class StudentWorksheetControllerTest {
                 VALUES ('IMPORTED', ?, 1, ?, 'TEXT_ONLY', ?::jsonb, '검색용 원문 — 화면 표시 금지')
                 RETURNING id
                 """, Long.class, subUnitId, questionType, contentBlocks);
+    }
+
+    private void insertAsset(long questionId, String assetKey, int displayOrder,
+                             String storageKey, int widthPx, int heightPx, String altText) {
+        jdbcTemplate.update("""
+                INSERT INTO problem_asset(
+                    question_id, asset_key, role, display_order,
+                    storage_key, width_px, height_px, alt_text)
+                VALUES (?, ?, 'FIGURE', ?, ?, ?, ?, ?)
+                """, questionId, assetKey, displayOrder, storageKey, widthPx, heightPx, altText);
     }
 
     private long insertChoice(long questionId, int displayOrder, String content) {

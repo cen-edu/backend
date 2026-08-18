@@ -53,14 +53,6 @@ final class StudentResponseFormatter {
     }
 
     /**
-     * 문항 이미지 URL 조립. 경로가 아직 확정 전이다(명세 10-①). 규칙을 여기 한 곳에만 둬서
-     * 경로가 바뀌면 이 메서드만 고치면 되게 한다.
-     */
-    static String assembleImageUrl(long questionId, String assetKey) {
-        return "/api/images/problems/%d/assets/%s".formatted(questionId, assetKey);
-    }
-
-    /**
      * 답안 칸의 입력 방식. {@code submission_answer}가 아니라 {@code problem_question.question_type}
      * 으로 결정한다(6-3절 저장 규칙과 같은 축) — 아직 답이 없는 칸도 렌더링해야 하기 때문이다.
      */

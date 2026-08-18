@@ -19,21 +19,16 @@ public record GradingContentBlockResponse(
         int displayOrder,
         String text,
         String assetRef,
-        String imageUrl,
         String markup
 ) {
 
-    public static GradingContentBlockResponse from(ProblemContentBlockResponse block, long questionId) {
-        String imageUrl = block.assetRef() == null
-                ? null
-                : "/api/images/problems/%d/assets/%s".formatted(questionId, block.assetRef());
+    public static GradingContentBlockResponse from(ProblemContentBlockResponse block) {
         return new GradingContentBlockResponse(
                 block.blockId(),
                 block.blockKind(),
                 block.displayOrder(),
                 block.text(),
                 block.assetRef(),
-                imageUrl,
                 block.markup());
     }
 }

@@ -21,7 +21,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-student-detail-repository-secret-32-bytes",
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
         "app.jwt.access-token-expiration=1h"
 })
 @Import(PostgresTestcontainer.class)

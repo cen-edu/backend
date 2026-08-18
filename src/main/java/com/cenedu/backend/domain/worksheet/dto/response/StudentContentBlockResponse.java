@@ -8,7 +8,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
  * 발문 렌더링 블록 하나. {@code prompt_text}는 절대 담지 않는다 — 정본은 {@code content_blocks}다.
  *
  * <p>{@link ProblemContentBlockResponse}(problem 도메인, 정답·설명 없이 이미 안전한 형태)를 그대로
- * 파싱 대상으로 재사용하고, 여기서는 {@code imageUrl} 조립만 더한다.
+ * 재사용한다. 이미지는 {@code assetRef}로 가리키기만 하고 URL은 담지 않는다 — 실제 주소는
+ * 문항 단위 {@code assets[]}에 있고 {@code assetKey}로 맞춘다.
  */
 public record StudentContentBlockResponse(
         String blockId,
@@ -19,21 +20,16 @@ public record StudentContentBlockResponse(
         int displayOrder,
         String text,
         String assetRef,
-        String imageUrl,
         String markup
 ) {
 
-    public static StudentContentBlockResponse from(ProblemContentBlockResponse block, long questionId) {
-        String imageUrl = block.assetRef() == null
-                ? null
-                : StudentResponseFormatter.assembleImageUrl(questionId, block.assetRef());
+    public static StudentContentBlockResponse from(ProblemContentBlockResponse block) {
         return new StudentContentBlockResponse(
                 block.blockId(),
                 block.blockKind(),
                 block.displayOrder(),
                 block.text(),
                 block.assetRef(),
-                imageUrl,
                 block.markup()
         );
     }

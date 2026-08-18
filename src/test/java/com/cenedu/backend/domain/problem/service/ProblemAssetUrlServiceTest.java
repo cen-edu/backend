@@ -42,14 +42,14 @@ class ProblemAssetUrlServiceTest {
     }
 
     @Test
-    @DisplayName("storage key를 문항 버킷의 1시간 presigned URL로 변환한다")
+    @DisplayName("storage key를 문항 버킷의 6시간 presigned URL로 변환한다")
     void createsProblemAssetUrl() {
         String storageKey =
             "questions/110/M1_2_06_11319_11635_F1.png";
         when(imageStorageService.createGetUrl(
             "problem-bucket",
             storageKey,
-            Duration.ofHours(1)
+            Duration.ofHours(6)
         )).thenReturn("https://example.com/question-image");
 
         String url = problemAssetUrlService.createUrl(storageKey);
@@ -60,7 +60,7 @@ class ProblemAssetUrlServiceTest {
         verify(imageStorageService).createGetUrl(
             "problem-bucket",
             storageKey,
-            Duration.ofHours(1)
+            Duration.ofHours(6)
         );
     }
 

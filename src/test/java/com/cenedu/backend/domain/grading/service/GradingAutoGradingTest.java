@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 완료 시점이 스레드 스케줄에 달려 있어 테스트가 간헐적으로 깨진다.
  */
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-grading-auto-test-secret-32byte-long",
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
         "app.jwt.access-token-expiration=1h"
 })
 @Import(PostgresTestcontainer.class)

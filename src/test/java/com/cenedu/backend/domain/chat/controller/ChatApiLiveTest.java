@@ -40,7 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code 등식과 좌변, 우변, 양변}(84)이다.
  */
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-chat-live-test-secret-32-bytes-long",
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
         "app.jwt.access-token-expiration=1h"
 })
 @AutoConfigureMockMvc
