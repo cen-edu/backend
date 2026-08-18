@@ -28,7 +28,7 @@ public class ProblemReferenceJdbcRepository {
                       AND curriculum_revision = :curriculumRevision AND school_level = :schoolLevel AND grade = :grade
                       AND ((:achievementStandardId IS NOT NULL AND achievement_standard_id = :achievementStandardId)
                         OR (:achievementStandardId IS NULL AND sub_unit_id = :subUnitId))
-                      AND difficulty BETWEEN :minimumDifficulty AND :maximumDifficulty
+                      AND difficulty IN (:allowedDifficulties)
                       AND (:allowCrossType OR question_type = :questionType)
                 """ + exclusion + """
                     ORDER BY embedding <=> CAST(:queryVector AS vector) LIMIT :candidateLimit)
@@ -39,8 +39,8 @@ public class ProblemReferenceJdbcRepository {
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("queryVector", queryVectorLiteral)
                 .addValue("curriculumRevision", query.curriculum().curriculumRevision()).addValue("schoolLevel", query.curriculum().schoolLevel())
                 .addValue("grade", query.curriculum().grade()).addValue("achievementStandardId", query.curriculum().achievementStandardId())
-                .addValue("subUnitId", query.curriculum().subUnitId()).addValue("minimumDifficulty", Math.max(1, difficulty - 1))
-                .addValue("maximumDifficulty", Math.min(3, difficulty + 1)).addValue("allowCrossType", query.purpose().name().equals("PERSONALIZED_APPLICATION"))
+                .addValue("subUnitId", query.curriculum().subUnitId()).addValue("allowedDifficulties", List.of("low", "mid", "high"))
+                .addValue("allowCrossType", query.purpose().name().equals("PERSONALIZED_APPLICATION"))
                 .addValue("questionType", query.questionType().name()).addValue("candidateLimit", query.candidateLimit());
         if (hasExcluded) params.addValue("excludedQuestionIds", query.excludedQuestionIds());
         return jdbc.query(sql, params, (rs, row) -> {
