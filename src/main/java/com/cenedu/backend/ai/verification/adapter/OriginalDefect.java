@@ -7,7 +7,7 @@ package com.cenedu.backend.ai.verification.adapter;
  * {@link ContentIntegrityChecker} 가 정한다. 심각도는 우리 정책이라 모델에 맡기지 않는다 —
  * 모델이 심각도를 정하면 같은 결함이 호출마다 다른 무게로 조율측에 나간다.
  *
- * @param type     STRUCTURE · LEAKAGE · EXPLANATION · RUBRIC
+ * @param type     STRUCTURE · LEAKAGE · EXPLANATION · CURRICULUM · RUBRIC
  * @param kind     LEAKAGE 는 ANSWER_VALUE · SOLUTION_DIRECTION, RUBRIC 은 4축. 나머지는 빈 문자열
  * @param location 필드 경로·인덱스. <b>정답 값이 아니다</b>
  * @param detail   한 줄 설명
@@ -17,6 +17,7 @@ public record OriginalDefect(String type, String kind, String location, String d
     static final String TYPE_STRUCTURE = "STRUCTURE";
     static final String TYPE_LEAKAGE = "LEAKAGE";
     static final String TYPE_EXPLANATION = "EXPLANATION";
+    static final String TYPE_CURRICULUM = "CURRICULUM";
     static final String TYPE_RUBRIC = "RUBRIC";
 
     /** learningGuide 가 정답 값을 그대로 담은 경우. */

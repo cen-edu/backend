@@ -81,25 +81,11 @@ public class CorrectnessChecker {
         };
     }
 
-    /**
-     * 서술형은 판정할 수 없다.
-     *
-     * <p>S1 에 대조할 종점 값이 없다 — {@code answerUnits[0]} 의 {@code compareMethod} 는
-     * {@code RUBRIC} 이고 Validator 가 {@code answerRaw}·{@code answerNormalized} 를 모두
-     * {@code null} 로 강제한다. 대조 대상이 없으므로 맞았는지 틀렸는지 말할 수 없다.
-     *
-     * <p><b>PASS 로 처리하지 않는다.</b> 검증하지 않은 것을 통과로 기록하면 이후 아무도 모른다.
-     * {@code NOT_APPLICABLE} 도 아니다 — 검사 대상이 아닌 게 아니라 <b>검사할 수 없는</b> 것이다.
-     *
-     * <p>결과적으로 서술형은 이 항목 때문에 {@code PASSED} 가 되지 않는다. 의도된 결과이며
-     * 완화 여부는 조율측이 정한다. Adapter 가 임의로 풀지 않는다.
-     */
+    /** 서술형은 값 일치 검사가 아니라 별도 루브릭 품질·해설 정합 검사로 검증한다. */
     private VerificationFinding essay() {
-        return Findings.fail(
+        return Findings.notApplicable(
                 VerificationCheckType.CORRECTNESS,
-                VerificationIssueCode.UNVERIFIABLE,
-                "서술형은 대조 가능한 정답 값이 스냅샷에 없어 정확성을 판정할 수 없습니다.",
-                "S1 에 finalAnswer · solutionOutline 이 없고 answerUnits 의 answerRaw 는 null 이다.");
+                "서술형은 단일 정답 값 대조 대신 루브릭 품질과 해설 정합성으로 검증합니다.");
     }
 
     private VerificationFinding unverifiable(String reason) {

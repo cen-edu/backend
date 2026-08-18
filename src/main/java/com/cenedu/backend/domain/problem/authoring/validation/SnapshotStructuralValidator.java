@@ -53,6 +53,8 @@ public class SnapshotStructuralValidator {
     private static final Set<String> SAFE_TABLE_TAGS = Set.of(
             "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot",
             "tr", "th", "td", "br", "span", "div");
+    private static final Set<String> PLACEHOLDER_TEXTS = Set.of(
+            "발문", "문제", "문제 내용", "정답을 구하시오", "풀이하시오");
 
     /** 위반이 하나라도 있으면 모든 위반을 담은 예외를 던진다. */
     public void validate(QuestionSnapshotV1 snapshot) {
@@ -204,6 +206,10 @@ public class SnapshotStructuralValidator {
             switch (block.blockKind()) {
                 case TEXT -> {
                     requireNonBlank(block.text(), path + ".text", violations);
+                    if (!isBlank(block.text())
+                            && PLACEHOLDER_TEXTS.contains(block.text().trim())) {
+                        violations.add(path + ".text: 실제 문제 대신 자리표시자를 사용할 수 없습니다.");
+                    }
                     requireNull(block.assetRef(), path + ".assetRef", violations);
                     requireNull(block.markup(), path + ".markup", violations);
                 }

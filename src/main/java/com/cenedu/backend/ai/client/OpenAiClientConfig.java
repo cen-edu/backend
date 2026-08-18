@@ -56,14 +56,24 @@ public class OpenAiClientConfig {
      */
     @Bean
     public OpenAiChatOptions openAiChatOptions(OpenAiProperties properties) {
-        return OpenAiChatOptions.builder()
+        OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
                 .model(properties.model())
-                .reasoningEffort(properties.reasoningEffort())
                 .maxCompletionTokens(Math.toIntExact(properties.maxCompletionTokens()))
                 .apiKey(properties.apiKey())
                 .timeout(properties.timeout())
-                .maxRetries(properties.maxRetries())
-                .build();
+                .maxRetries(properties.maxRetries());
+        if (supportsReasoningEffort(properties.model())) {
+            builder.reasoningEffort(properties.reasoningEffort());
+        }
+        return builder.build();
+    }
+
+    /** reasoning_effort를 지원하는 모델에만 해당 요청 필드를 보낸다. */
+    static boolean supportsReasoningEffort(String model) {
+        if (model == null) return false;
+        String normalized = model.toLowerCase(java.util.Locale.ROOT);
+        return normalized.startsWith("gpt-5") || normalized.startsWith("o1")
+                || normalized.startsWith("o3") || normalized.startsWith("o4");
     }
 
     /**
