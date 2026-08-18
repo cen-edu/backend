@@ -206,6 +206,10 @@ public class StudentResultQueryService {
      * <p>{@code steps}는 <b>문항 형식</b>이 가른다. 학습지 유형이 아니다 —
      * {@code problem_step} 행을 가지는 형식이 빈칸형뿐이고(실측), 종합평가에도 빈칸형 문항이
      * 들어간다. 유형으로 가르면 그 문항들이 모범 풀이를 잃는다.
+     *
+     * <p><b>명세({@code api_student.md} 8.4)는 "종합평가 → steps null"로 유형을 축으로 삼는다.
+     * 여기서 다르게 둔 것은 의도이며 팀이 확정했다</b> — 배포된 종합평가 빈칸형 문항이 단계별
+     * 서술을 잃기 때문이다. 명세와 맞추려고 되돌리지 않는다.
      */
     private StudentResultExplanationResponse buildExplanation(
             ProblemQuestion question,
