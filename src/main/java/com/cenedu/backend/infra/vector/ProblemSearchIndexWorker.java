@@ -11,9 +11,12 @@ import com.cenedu.backend.domain.problem.service.SearchCorpusEligibility;
 import java.time.Duration;
 import java.time.Instant;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Component
 public class ProblemSearchIndexWorker {
+    private static final Logger log = LoggerFactory.getLogger(ProblemSearchIndexWorker.class);
     private final ProblemSearchIndexJdbcRepository repository;
     private final ProblemSearchDocumentFactory documentFactory;
     private final EmbeddingClient embeddingClient;
@@ -59,6 +62,9 @@ public class ProblemSearchIndexWorker {
         } catch (IllegalArgumentException exception) {
             repository.markFailed(task.taskId(), task.attemptCount(), "EMBEDDING_DIMENSION_INVALID");
         } catch (RuntimeException exception) {
+            log.warn("검색 인덱싱 실패 — taskId={}, questionId={}, errorType={}, message={}",
+                    task.taskId(), task.questionId(), exception.getClass().getSimpleName(),
+                    exception.getMessage());
             repository.markFailed(task.taskId(), task.attemptCount(), "INDEXING_FAILED");
         }
     }
