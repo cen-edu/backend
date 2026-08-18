@@ -30,13 +30,32 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** 멱등 Job과 문항별 Item을 생성하고 독립 실행·재시도·집계를 관리한다. */
 @Service
-@RequiredArgsConstructor
 public class ProblemGenerationJobService {
 
     private final ProblemGenerationJobRepository jobRepository;
     private final ProblemGenerationItemRepository itemRepository;
     private final ProblemAuthoringSessionRepository sessionRepository;
     private final ProblemAuthoringJsonCodec jsonCodec;
+    private final ProblemAuthoringVersionService versionService;
+
+    public ProblemGenerationJobService(ProblemGenerationJobRepository jobRepository,
+                                       ProblemGenerationItemRepository itemRepository,
+                                       ProblemAuthoringSessionRepository sessionRepository,
+                                       ProblemAuthoringJsonCodec jsonCodec) {
+        this(jobRepository, itemRepository, sessionRepository, jsonCodec, null);
+    }
+
+    public ProblemGenerationJobService(ProblemGenerationJobRepository jobRepository,
+                                       ProblemGenerationItemRepository itemRepository,
+                                       ProblemAuthoringSessionRepository sessionRepository,
+                                       ProblemAuthoringJsonCodec jsonCodec,
+                                       ProblemAuthoringVersionService versionService) {
+        this.jobRepository = jobRepository;
+        this.itemRepository = itemRepository;
+        this.sessionRepository = sessionRepository;
+        this.jsonCodec = jsonCodec;
+        this.versionService = versionService;
+    }
 
     /** 문제은행 재사용과 AI 생성 슬롯을 하나의 멱등 Job으로 저장한다. */
     @Transactional
@@ -152,6 +171,10 @@ public class ProblemGenerationJobService {
                 itemRepository.save(ProblemGenerationItem.createBankReuse(
                         job.getId(), slot.slotIndex(), java.util.UUID.randomUUID(),
                         session.getId(), slot.sourceQuestionId()));
+                if (slot.sourceSnapshot() != null && versionService != null) {
+                    versionService.saveBankReuse(ownerTeacherId, session.getId(),
+                            slot.sourceQuestionId(), jsonCodec.write(slot.sourceSnapshot()), "{}");
+                }
             } else {
                 hasAi = true;
                 ProblemGenerationCommand command = slot.generationCommand();
