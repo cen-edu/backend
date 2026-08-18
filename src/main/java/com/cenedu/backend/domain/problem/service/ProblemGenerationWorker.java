@@ -36,7 +36,10 @@ public class ProblemGenerationWorker {
 
     /** 선점한 Item을 생성·검증하고 의미 실패 시 최대 두 번 같은 명령으로 재생성한다. */
     public void execute(Long itemId) {
-        ProblemGenerationWorkItem workItem = jobService.claim(itemId);
+        ProblemGenerationWorkItem workItem = jobService.tryClaim(itemId).orElse(null);
+        if (workItem == null) {
+            return;
+        }
         while (true) {
             ProblemCandidateDraft candidate;
             try {

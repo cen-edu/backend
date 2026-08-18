@@ -2,6 +2,7 @@ package com.cenedu.backend.domain.problem.service;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
@@ -69,18 +70,21 @@ public class ProblemGenerationJobService {
                 .orElseGet(() -> createNew(ownerTeacherId, batch));
     }
 
-    /** Worker 하나가 Item을 선점하고 재시작 가능한 전체 명령을 가져간다. */
+    /** 멱등 재요청이 동시에 와도 QUEUED Item을 한 Worker만 원자적으로 선점한다. */
     @Transactional
-    public ProblemGenerationWorkItem claim(Long itemId) {
+    public Optional<ProblemGenerationWorkItem> tryClaim(Long itemId) {
         ProblemGenerationItem item = getItemForUpdate(itemId);
+        if (item.getStatus() != GenerationItemStatus.QUEUED) {
+            return Optional.empty();
+        }
         ProblemGenerationJob job = getJobForUpdate(item.getJobId());
         item.startGeneration();
         if (job.getStatus() == GenerationJobStatus.QUEUED) {
             job.start();
         }
-        return new ProblemGenerationWorkItem(
+        return Optional.of(new ProblemGenerationWorkItem(
                 item.getId(), job.getId(), job.getOwnerTeacherId(), item.getSessionId(),
-                jsonCodec.read(item.getGenerationCommand(), ProblemGenerationCommand.class));
+                jsonCodec.read(item.getGenerationCommand(), ProblemGenerationCommand.class)));
     }
 
     /** 후보 생성 후 Item을 의미 검증 중으로 전이한다. */

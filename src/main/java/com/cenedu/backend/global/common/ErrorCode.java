@@ -58,6 +58,15 @@ public enum ErrorCode {
             HttpStatus.BAD_REQUEST, "중복된 학생 ID를 반에 배정할 수 없습니다."),
     MEMBER_SCHOOL_CLASS_IDS_DUPLICATED(
             HttpStatus.BAD_REQUEST, "중복된 반 ID를 삭제할 수 없습니다."),
+    MEMBER_STUDENT_BULK_FILE_REQUIRED(HttpStatus.BAD_REQUEST, "CSV 파일은 필수입니다."),
+    MEMBER_STUDENT_BULK_INVALID_FORMAT(HttpStatus.BAD_REQUEST, "CSV 파일만 업로드할 수 있습니다."),
+    MEMBER_STUDENT_BULK_FILE_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "CSV 파일은 1MB 이하만 업로드할 수 있습니다."),
+    MEMBER_STUDENT_BULK_EMPTY(HttpStatus.BAD_REQUEST, "등록할 학생이 없습니다."),
+    MEMBER_STUDENT_BULK_HEADER_INVALID(
+            HttpStatus.BAD_REQUEST, "CSV 헤더는 '학생 이름,학년'이어야 합니다."),
+    MEMBER_STUDENT_BULK_TOO_MANY(HttpStatus.BAD_REQUEST, "학생은 한 번에 최대 500명까지 등록할 수 있습니다."),
+    MEMBER_STUDENT_BULK_VALIDATION_FAILED(HttpStatus.BAD_REQUEST, "CSV 내용을 확인해 주세요."),
+    MEMBER_STUDENT_BULK_PARSE_FAILED(HttpStatus.BAD_REQUEST, "CSV 파일을 읽을 수 없습니다."),
 
     // ===== worksheet (배세빈) =====
     WORKSHEET_NOT_FOUND(HttpStatus.NOT_FOUND, "학습지를 찾을 수 없습니다."),

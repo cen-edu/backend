@@ -48,13 +48,16 @@ class AnalysisClassQueryServiceTest {
     void returnsGeneralLearningOverviewFields() {
         when(repository.findAssignmentAccess(101L)).thenReturn(Optional.of(
                 access(WorksheetType.GENERAL_LEARNING)));
-        when(repository.findOverview(101L)).thenReturn(new ClassAnalysisOverviewRow(
+        when(repository.findOverview(101L, WorksheetType.GENERAL_LEARNING))
+                .thenReturn(new ClassAnalysisOverviewRow(
                 8, 1, 2, new BigDecimal("64.3"), 120000L, 3, 2));
 
         ClassAnalysisOverviewResponse response = service.getOverview(7L, 101L);
 
         assertThat(response.summary().averageSolvingDurationMs()).isNull();
         assertThat(response.summary().weaknessSubcategoryCount()).isEqualTo(3);
+        assertThat(response.summary().classPerformanceRate())
+                .isEqualByComparingTo("64.3");
     }
 
     @Test
@@ -62,21 +65,25 @@ class AnalysisClassQueryServiceTest {
     void returnsComprehensiveOverviewFields() {
         when(repository.findAssignmentAccess(101L)).thenReturn(Optional.of(
                 access(WorksheetType.COMPREHENSIVE_ASSESSMENT)));
-        when(repository.findOverview(101L)).thenReturn(new ClassAnalysisOverviewRow(
+        when(repository.findOverview(101L, WorksheetType.COMPREHENSIVE_ASSESSMENT))
+                .thenReturn(new ClassAnalysisOverviewRow(
                 8, 1, 2, new BigDecimal("64.3"), 120000L, 3, 2));
 
         ClassAnalysisOverviewResponse response = service.getOverview(7L, 101L);
 
         assertThat(response.summary().averageSolvingDurationMs()).isEqualTo(120000L);
         assertThat(response.summary().weaknessSubcategoryCount()).isNull();
+        assertThat(response.summary().classPerformanceRate())
+                .isEqualByComparingTo("64.3");
     }
 
     @Test
-    @DisplayName("학생 목록의 정답률과 채점 문항 수로 분석 상태를 만든다")
+    @DisplayName("학생 목록의 성취율과 채점 문항 수로 분석 상태를 만든다")
     void classifiesStudentRows() {
         when(repository.findAssignmentAccess(101L)).thenReturn(Optional.of(
                 access(WorksheetType.GENERAL_LEARNING)));
-        when(repository.findStudents(101L)).thenReturn(List.of(
+        when(repository.findStudents(101L, WorksheetType.GENERAL_LEARNING))
+                .thenReturn(List.of(
                 new AnalysisStudentRow(11L, "김민수", 2, new BigDecimal("50.0")),
                 new AnalysisStudentRow(12L, "박지수", 0, null)));
 
@@ -85,7 +92,9 @@ class AnalysisClassQueryServiceTest {
         assertThat(response.students())
                 .extracting(AnalysisStudentListResponse.StudentItem::analysisStatus)
                 .containsExactly(AnalysisStatus.INTENSIVE, AnalysisStatus.INSUFFICIENT_DATA);
-        verify(repository).findStudents(101L);
+        assertThat(response.students().getFirst().performanceRate())
+                .isEqualByComparingTo("50.0");
+        verify(repository).findStudents(101L, WorksheetType.GENERAL_LEARNING);
     }
 
     private AnalysisAssignmentAccessRow access(WorksheetType worksheetType) {
