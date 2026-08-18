@@ -95,7 +95,7 @@ class AnalysisClassQueryRepositoryTest {
         insertAnswer(assignmentStudentOneId, questions.get(0).answerUnitId(), "GRADED",
                 "30.00");
         insertAnswer(assignmentStudentOneId, questions.get(1).answerUnitId(), "GRADED",
-                "0.00");
+                "15.00");
         insertAnswer(assignmentStudentOneId, questions.get(2).answerUnitId(), "NOT_GRADED",
                 null);
 
@@ -116,22 +116,34 @@ class AnalysisClassQueryRepositoryTest {
     }
 
     @Test
-    @DisplayName("학급 요약은 채점 완료 문항만 정답률과 풀이시간에 반영한다")
-    void aggregatesOverviewFromGradedItems() {
-        ClassAnalysisOverviewRow row = repository.findOverview(assignmentId);
+    @DisplayName("종합평가 학급 요약은 채점 완료 문항의 배점으로 성취율을 계산한다")
+    void aggregatesComprehensiveOverviewWithScoreRate() {
+        ClassAnalysisOverviewRow row = repository.findOverview(
+                assignmentId, WorksheetType.COMPREHENSIVE_ASSESSMENT);
 
         assertThat(row.participantCount()).isEqualTo(1);
         assertThat(row.gradingPendingStudentCount()).isEqualTo(1);
         assertThat(row.gradingPendingAnswerCount()).isEqualTo(1);
-        assertThat(row.classAccuracyRate()).isEqualByComparingTo("50.0");
+        assertThat(row.classPerformanceRate()).isEqualByComparingTo("75.0");
         assertThat(row.averageSolvingDurationMs()).isEqualTo(30000L);
+        assertThat(row.weaknessStudentCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("학습평가 학급 요약은 완전 정답 문항 비율로 성취율을 계산한다")
+    void aggregatesGeneralLearningOverviewWithAccuracyRate() {
+        ClassAnalysisOverviewRow row = repository.findOverview(
+                assignmentId, WorksheetType.GENERAL_LEARNING);
+
+        assertThat(row.classPerformanceRate()).isEqualByComparingTo("50.0");
         assertThat(row.weaknessStudentCount()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("학생 목록은 미응시 학생도 포함하고 정답률이 없으면 null을 반환한다")
-    void includesStudentsWithoutGradedItems() {
-        List<AnalysisStudentRow> rows = repository.findStudents(assignmentId);
+    @DisplayName("종합평가 학생 목록은 부분점수를 포함한 득점률을 반환한다")
+    void returnsScoreRateForComprehensiveAssessmentStudents() {
+        List<AnalysisStudentRow> rows = repository.findStudents(
+                assignmentId, WorksheetType.COMPREHENSIVE_ASSESSMENT);
 
         assertThat(rows).hasSize(2);
         AnalysisStudentRow first = rows.stream()
@@ -143,9 +155,22 @@ class AnalysisClassQueryRepositoryTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(first.gradedItemCount()).isEqualTo(2);
-        assertThat(first.accuracyRate()).isEqualByComparingTo("50.0");
+        assertThat(first.performanceRate()).isEqualByComparingTo("75.0");
         assertThat(second.gradedItemCount()).isZero();
-        assertThat(second.accuracyRate()).isNull();
+        assertThat(second.performanceRate()).isNull();
+    }
+
+    @Test
+    @DisplayName("학습평가 학생 목록은 완전 정답 문항 비율을 반환한다")
+    void returnsAccuracyRateForGeneralLearningStudents() {
+        List<AnalysisStudentRow> rows = repository.findStudents(
+                assignmentId, WorksheetType.GENERAL_LEARNING);
+
+        AnalysisStudentRow student = rows.stream()
+                .filter(row -> row.studentName().equals("김민수"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(student.performanceRate()).isEqualByComparingTo("50.0");
     }
 
     private long insertAccount(String role, String loginId, String name) {

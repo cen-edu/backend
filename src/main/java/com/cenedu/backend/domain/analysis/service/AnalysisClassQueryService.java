@@ -51,7 +51,8 @@ public class AnalysisClassQueryService {
     /** 선택한 학습지의 학급 상단 분석 문맥과 집계 카드를 반환한다. */
     public ClassAnalysisOverviewResponse getOverview(long teacherId, long assignmentId) {
         AnalysisAssignmentAccessRow access = getAuthorizedAssignment(teacherId, assignmentId);
-        ClassAnalysisOverviewRow row = repository.findOverview(assignmentId);
+        ClassAnalysisOverviewRow row = repository.findOverview(
+                assignmentId, access.worksheetType());
         boolean comprehensive = access.worksheetType()
                 == WorksheetType.COMPREHENSIVE_ASSESSMENT;
 
@@ -65,23 +66,25 @@ public class AnalysisClassQueryService {
                         row.participantCount(),
                         row.gradingPendingStudentCount(),
                         row.gradingPendingAnswerCount(),
-                        row.classAccuracyRate(),
+                        row.classPerformanceRate(),
                         comprehensive ? row.averageSolvingDurationMs() : null,
                         comprehensive ? null : row.weaknessSubcategoryCount(),
                         row.weaknessStudentCount()));
     }
 
-    /** 선택한 학습지의 학생별 정답률과 분석 상태를 이름순으로 반환한다. */
+    /** 선택한 학습지의 학생별 성취율과 분석 상태를 이름순으로 반환한다. */
     public AnalysisStudentListResponse getStudents(long teacherId, long assignmentId) {
-        getAuthorizedAssignment(teacherId, assignmentId);
+        AnalysisAssignmentAccessRow access = getAuthorizedAssignment(
+                teacherId, assignmentId);
         List<AnalysisStudentListResponse.StudentItem> students = repository
-                .findStudents(assignmentId)
+                .findStudents(assignmentId, access.worksheetType())
                 .stream()
                 .map(row -> new AnalysisStudentListResponse.StudentItem(
                         row.studentId(),
                         row.studentName(),
-                        statusClassifier.classify(row.gradedItemCount(), row.accuracyRate()),
-                        row.accuracyRate()))
+                        statusClassifier.classify(
+                                row.gradedItemCount(), row.performanceRate()),
+                        row.performanceRate()))
                 .toList();
         return new AnalysisStudentListResponse(students);
     }
