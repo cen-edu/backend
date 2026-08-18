@@ -50,7 +50,24 @@ public class ProblemAuthoringFinalizationService {
                 || sessions.stream().anyMatch(s -> !Long.valueOf(ownerTeacherId).equals(s.getOwnerTeacherId()))) {
             throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_SESSION_NOT_FOUND);
         }
-        return sessions.stream().map(session -> finalizeOne(session)).toList();
+        // 저장 전에 전체 Session의 상태를 먼저 확인해 부분 최종화를 막는다.
+        sessions.forEach(this::validateReadyForFinalization);
+        return sessions.stream().map(this::finalizeOne).toList();
+    }
+
+    /** 하나라도 실행 중이거나 검증 전이면 전체 최종화를 중단한다. */
+    private void validateReadyForFinalization(ProblemAuthoringSession session) {
+        if (session.getLifecycleStatus() == AuthoringLifecycleStatus.FINALIZED) return;
+        if (session.getCurrentVersionId() == null || session.getPendingVersionId() != null
+                || session.getOperationStatus() != AuthoringOperationStatus.IDLE) {
+            throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_VERIFIED);
+        }
+        ProblemAuthoringVersion version = versionRepository.findByIdAndSessionId(
+                session.getCurrentVersionId(), session.getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
+        if (version.getVerificationStatus() != AuthoringVerificationStatus.PASSED) {
+            throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_VERIFIED);
+        }
     }
 
     private FinalizedProblemReferenceResponse finalizeOne(ProblemAuthoringSession session) {
