@@ -2,6 +2,7 @@ package com.cenedu.backend.domain.analysis.controller;
 
 import com.cenedu.backend.domain.analysis.dto.response.LearningAssessmentAchievementResponse;
 import com.cenedu.backend.domain.analysis.dto.response.LearningAssessmentInsightsResponse;
+import com.cenedu.backend.domain.analysis.dto.response.StudentLearningAssessmentPerformanceResponse;
 import com.cenedu.backend.domain.analysis.service.LearningAssessmentQueryService;
 import com.cenedu.backend.global.common.ApiResponse;
 import com.cenedu.backend.global.security.AuthenticatedUser;
@@ -19,6 +20,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class LearningAssessmentAnalysisController {
 
     private final LearningAssessmentQueryService queryService;
+
+    @GetMapping("/students/{studentId}/learning-assessment-performance")
+    public ApiResponse<StudentLearningAssessmentPerformanceResponse> getStudentPerformance(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long assignmentId,
+            @PathVariable long studentId
+    ) {
+        return ApiResponse.success(queryService.getStudentPerformance(
+                user.memberId(), assignmentId, studentId));
+    }
 
     @GetMapping("/learning-assessment-insights")
     public ApiResponse<LearningAssessmentInsightsResponse> getInsights(

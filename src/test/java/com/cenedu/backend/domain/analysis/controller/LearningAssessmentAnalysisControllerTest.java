@@ -9,6 +9,7 @@ import java.util.List;
 
 import com.cenedu.backend.domain.analysis.dto.response.LearningAssessmentAchievementResponse;
 import com.cenedu.backend.domain.analysis.dto.response.LearningAssessmentInsightsResponse;
+import com.cenedu.backend.domain.analysis.dto.response.StudentLearningAssessmentPerformanceResponse;
 import com.cenedu.backend.domain.analysis.service.LearningAssessmentQueryService;
 import com.cenedu.backend.global.common.enums.UserRole;
 import com.cenedu.backend.global.security.JwtProvider;
@@ -92,6 +93,35 @@ class LearningAssessmentAnalysisControllerTest {
                 .andExpect(jsonPath("$.data.subcategories").isArray())
                 .andExpect(jsonPath("$.data.students").isArray())
                 .andExpect(jsonPath("$.data.subcategoryRanking").isArray());
+    }
+
+    @Test
+    @DisplayName("교사 JWT로 학습평가 학생 성취를 조회한다")
+    void getsStudentPerformance() throws Exception {
+        when(queryService.getStudentPerformance(7L, 101L, 11L)).thenReturn(
+                new StudentLearningAssessmentPerformanceResponse(
+                        List.of(), List.of(), List.of()));
+
+        mockMvc.perform(get("/api/teacher/analysis/assignments/101/students/11/"
+                        + "learning-assessment-performance")
+                        .header("Authorization", "Bearer " + teacherToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.evaluationAreas").isArray())
+                .andExpect(jsonPath("$.data.difficultyBands").isArray())
+                .andExpect(jsonPath("$.data.subcategoryResults").isArray());
+    }
+
+    @Test
+    @DisplayName("학생 JWT로 학습평가 학생 성취를 호출하면 403을 반환한다")
+    void rejectsStudentJwtOnStudentPerformance() throws Exception {
+        String token = jwtProvider.issueAccessToken(11L, UserRole.STUDENT).value();
+
+        mockMvc.perform(get("/api/teacher/analysis/assignments/101/students/11/"
+                        + "learning-assessment-performance")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
     }
 
     private String teacherToken() {
