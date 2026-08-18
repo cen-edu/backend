@@ -49,8 +49,11 @@ public class OpenAiLlmClient implements LlmClient {
     }
 
     @Override
-    public LlmResponse complete(String systemPrompt, List<ChatMessage> messages, Long seed) {
-        Prompt prompt = buildPrompt(systemPrompt, messages, seed);
+    public LlmResponse complete(
+            String systemPrompt, List<ChatMessage> messages, Long seed, LlmUseCase useCase
+    ) {
+        LlmModelOptions options = properties.optionsFor(useCase);
+        Prompt prompt = buildPrompt(systemPrompt, messages, seed, useCase, options);
 
         long startedAt = System.nanoTime();
         ChatResponse response;
@@ -58,7 +61,8 @@ public class OpenAiLlmClient implements LlmClient {
             response = chatModel.call(prompt);
         } catch (OpenAIException e) {
             // 재시도는 SDK 가 max-retries 만큼 이미 끝낸 뒤다. 여기 오면 최종 실패다.
-            log.warn("LLM 호출 실패 — model={}, elapsedMs={}", properties.model(), elapsedMs(startedAt), e);
+            log.warn("LLM 호출 실패 — useCase={}, model={}, elapsedMs={}",
+                    useCase, options.model(), elapsedMs(startedAt), e);
             throw new BusinessException(
                     ErrorCode.AI_CLIENT_CALL_FAILED,
                     "LLM 호출에 실패했습니다: " + e.getMessage());
@@ -87,10 +91,10 @@ public class OpenAiLlmClient implements LlmClient {
 
         // 프롬프트 본문과 응답 본문은 남기지 않는다. 학생 입력과 시험 문항이 로그로 나가면
         // 정답 유출 정책이 무너진다. 길이만으로도 대부분의 추적은 된다.
-        log.info("LLM 호출 — model={}, elapsedMs={}, promptTokens={}, completionTokens={},"
+        log.info("LLM 호출 — useCase={}, model={}, elapsedMs={}, promptTokens={}, completionTokens={},"
                         + " reasoningTokens={}, finishReason={}, responseLength={}",
-                response.getMetadata().getModel(), elapsedMs, promptTokens, completionTokens, reasoningTokens,
-                finishReason, text != null ? text.length() : 0);
+                useCase, response.getMetadata().getModel(), elapsedMs, promptTokens, completionTokens,
+                reasoningTokens, finishReason, text != null ? text.length() : 0);
 
         if (text == null || text.isBlank()) {
             // 빈 문자열을 정상 응답으로 흘리면 챗봇이 빈 말풍선을 띄우고 원인을 못 찾는다.
@@ -98,13 +102,19 @@ public class OpenAiLlmClient implements LlmClient {
             throw new BusinessException(ErrorCode.AI_CLIENT_EMPTY_RESPONSE,
                     "LLM 응답 텍스트가 비어 있습니다 — finishReason=%s, completionTokens=%d, reasoningTokens=%d, maxCompletionTokens=%d"
                             .formatted(finishReason, completionTokens, reasoningTokens,
-                                    properties.maxCompletionTokens()));
+                                    options.maxCompletionTokens()));
         }
 
         return new LlmResponse(text, promptTokens, completionTokens, reasoningTokens);
     }
 
-    private Prompt buildPrompt(String systemPrompt, List<ChatMessage> messages, Long seed) {
+    private Prompt buildPrompt(
+            String systemPrompt,
+            List<ChatMessage> messages,
+            Long seed,
+            LlmUseCase useCase,
+            LlmModelOptions options
+    ) {
         List<Message> springMessages = new ArrayList<>();
 
         if (systemPrompt != null && !systemPrompt.isBlank()) {
@@ -117,22 +127,26 @@ public class OpenAiLlmClient implements LlmClient {
             }
         }
 
-        if (seed == null) {
+        boolean defaultUseCase = useCase == null || useCase == LlmUseCase.DEFAULT;
+        if (seed == null && defaultUseCase) {
             // 옵션을 싣지 않는다. 모델 빈의 기본 옵션이 그대로 쓰인다.
+            // 기존 호출부(개념 챗봇 답변 생성)가 지나는 경로이므로 동작을 바꾸지 않는다.
             return new Prompt(springMessages);
         }
 
         // 모델 파라미터를 여기서 다시 적는다. 런타임 옵션을 실어 보내면 기본 옵션 중
         // model 만 복사되고 reasoningEffort · maxCompletionTokens 는 요청에서 사라진다
         // (task_17 §5 실측). 안 적으면 seed 를 주는 호출만 상한도 추론 강도도 없이 나간다.
-        return new Prompt(springMessages, OpenAiChatOptions.builder()
-                .model(properties.model())
-                .reasoningEffort(properties.reasoningEffort())
-                .maxCompletionTokens(Math.toIntExact(properties.maxCompletionTokens()))
-                // Spring AI 의 seed 는 Integer 다. LlmClient 가 Long 을 받는 것은 호출부
-                // 편의이고, 범위를 넘는 값은 조용히 잘리지 않고 여기서 예외로 드러나야 한다.
-                .seed(Math.toIntExact(seed))
-                .build());
+        OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
+                .model(options.model())
+                .reasoningEffort(options.reasoningEffort())
+                .maxCompletionTokens(Math.toIntExact(options.maxCompletionTokens()));
+        if (seed != null) {
+            // Spring AI 의 seed 는 Integer 다. LlmClient 가 Long 을 받는 것은 호출부
+            // 편의이고, 범위를 넘는 값은 조용히 잘리지 않고 여기서 예외로 드러나야 한다.
+            builder.seed(Math.toIntExact(seed));
+        }
+        return new Prompt(springMessages, builder.build());
     }
 
     private static long elapsedMs(long startedAt) {

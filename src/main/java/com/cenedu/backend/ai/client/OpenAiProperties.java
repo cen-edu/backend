@@ -1,6 +1,7 @@
 package com.cenedu.backend.ai.client;
 
 import java.time.Duration;
+import java.util.Map;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -16,6 +17,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                            낮게 잡으면 {@code content} 가 빈 문자열로 잘려 돌아온다.
  * @param timeout             한 번의 호출이 기다리는 최대 시간
  * @param maxRetries          SDK 가 재시도하는 횟수. 무한 재시도를 막는 값이다.
+ * @param useCases            목적별 모델 설정. 비어 있으면 모든 호출이 위 기본값을 쓴다.
  */
 @ConfigurationProperties(prefix = "app.ai.client")
 public record OpenAiProperties(
@@ -24,6 +26,30 @@ public record OpenAiProperties(
         String reasoningEffort,
         long maxCompletionTokens,
         Duration timeout,
-        int maxRetries
+        int maxRetries,
+        Map<LlmUseCase, LlmModelOptions> useCases
 ) {
+
+    public OpenAiProperties {
+        // EnumMap 으로 감싸지 않는다. 빈 Map 을 넘기면 키 타입을 못 정해 예외가 난다.
+        useCases = useCases == null || useCases.isEmpty() ? Map.of() : Map.copyOf(useCases);
+    }
+
+    /**
+     * 요청에 실을 모델 설정을 확정한다. useCase 설정에 빠진 값은 기본값으로 채운다.
+     *
+     * <p>세 값을 모두 채워 돌려주는 것이 이 메서드의 요점이다. 부분만 돌려주면 호출부가
+     * 나머지를 안 싣고, 그 호출만 상한도 추론 강도도 없이 나간다.
+     */
+    public LlmModelOptions optionsFor(LlmUseCase useCase) {
+        LlmModelOptions configured = useCase == null ? null : useCases.get(useCase);
+        if (configured == null) {
+            return new LlmModelOptions(model, reasoningEffort, maxCompletionTokens);
+        }
+        return new LlmModelOptions(
+                configured.model() != null ? configured.model() : model,
+                configured.reasoningEffort() != null ? configured.reasoningEffort() : reasoningEffort,
+                configured.maxCompletionTokens() != null
+                        ? configured.maxCompletionTokens() : maxCompletionTokens);
+    }
 }

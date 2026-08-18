@@ -28,6 +28,7 @@ import com.cenedu.backend.ai.chat.agent.ConceptChatResult.MoveState;
 import com.cenedu.backend.ai.chat.agent.prompt.ConceptChatPrompts;
 import com.cenedu.backend.ai.client.LlmClient;
 import com.cenedu.backend.ai.client.LlmResponse;
+import com.cenedu.backend.ai.client.LlmUseCase;
 import com.cenedu.backend.domain.chat.dto.response.ConceptContext;
 import com.cenedu.backend.domain.chat.dto.response.ConceptLanding;
 import com.cenedu.backend.domain.chat.dto.response.ConceptView;
@@ -699,7 +700,9 @@ class ConceptChatEngineTest {
         }
 
         @Override
-        public LlmResponse complete(String systemPrompt, List<ChatMessage> chatMessages, Long seed) {
+        public LlmResponse complete(
+                String systemPrompt, List<ChatMessage> chatMessages, Long seed, LlmUseCase useCase
+        ) {
             systemPrompts.add(systemPrompt);
             messages.add(List.copyOf(chatMessages));
             seeds.add(seed);

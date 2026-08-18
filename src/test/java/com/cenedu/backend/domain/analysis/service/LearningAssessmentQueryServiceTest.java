@@ -10,6 +10,7 @@ import java.util.List;
 
 import com.cenedu.backend.domain.analysis.dto.response.LearningAssessmentAchievementResponse;
 import com.cenedu.backend.domain.analysis.dto.response.LearningAssessmentInsightsResponse;
+import com.cenedu.backend.domain.analysis.dto.response.StudentLearningAssessmentPerformanceResponse;
 import com.cenedu.backend.domain.analysis.entity.enums.DifficultyBand;
 import com.cenedu.backend.domain.analysis.repository.LearningAssessmentQueryRepository;
 import com.cenedu.backend.domain.analysis.repository.row.AnalysisAssignmentAccessRow;
@@ -18,6 +19,8 @@ import com.cenedu.backend.domain.analysis.repository.row.LearningAssessmentPrior
 import com.cenedu.backend.domain.analysis.repository.row.LearningStudentSubcategoryRow;
 import com.cenedu.backend.domain.analysis.repository.row.LearningSubcategoryColumnRow;
 import com.cenedu.backend.domain.analysis.repository.row.LearningSubcategoryWeaknessRow;
+import com.cenedu.backend.domain.analysis.repository.row.StudentLearningGroupComparisonRow;
+import com.cenedu.backend.domain.analysis.repository.row.StudentLearningSubcategoryRow;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
@@ -110,6 +113,78 @@ class LearningAssessmentQueryServiceTest {
                 .isEqualTo(1);
     }
 
+    @Test
+    @DisplayName("배정되지 않은 학생의 성취를 조회하면 거부한다")
+    void rejectsUnassignedStudent() {
+        allowLearningAssessment();
+        when(repository.existsAssignmentStudent(101L, 11L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.getStudentPerformance(7L, 101L, 11L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).getErrorCode())
+                .isEqualTo(ErrorCode.ANALYSIS_STUDENT_NOT_ASSIGNED);
+    }
+
+    @Test
+    @DisplayName("학생 성취는 빈 영역과 난이도까지 화면 순서로 채워 반환한다")
+    void fillsAllStudentComparisonGroups() {
+        allowLearningAssessment();
+        when(repository.existsAssignmentStudent(101L, 11L)).thenReturn(true);
+        when(repository.findStudentGroupComparisons(101L, 11L)).thenReturn(List.of(
+                comparison(
+                        StudentLearningGroupComparisonRow.GroupDimension.EVALUATION_AREA,
+                        "CALCULATION", 2, 2, "50.0", 4, "75.0"),
+                comparison(
+                        StudentLearningGroupComparisonRow.GroupDimension.DIFFICULTY,
+                        "LOW", 1, 0, null, 2, "50.0")));
+        when(repository.findStudentSubcategoryDetails(101L, 11L)).thenReturn(List.of(
+                new StudentLearningSubcategoryRow(31L, "소인수분해", 1, 2)));
+
+        StudentLearningAssessmentPerformanceResponse response =
+                service.getStudentPerformance(7L, 101L, 11L);
+
+        assertThat(response.evaluationAreas()).hasSize(4);
+        assertThat(response.evaluationAreas().get(1).evaluationArea())
+                .isEqualTo(EvaluationArea.CALCULATION);
+        assertThat(response.evaluationAreas().get(1).studentAccuracyRate())
+                .isEqualByComparingTo("50.0");
+        assertThat(response.evaluationAreas().get(1).classAccuracyRate())
+                .isEqualByComparingTo("75.0");
+        assertThat(response.evaluationAreas().get(1).referenceOnly()).isFalse();
+        assertThat(response.evaluationAreas().getFirst().referenceOnly()).isTrue();
+        assertThat(response.difficultyBands())
+                .extracting(StudentLearningAssessmentPerformanceResponse
+                        .DifficultyBandComparison::difficultyBand)
+                .containsExactly(
+                        DifficultyBand.LOW,
+                        DifficultyBand.MID,
+                        DifficultyBand.HIGH);
+        assertThat(response.subcategoryResults().getFirst().subcategoryName())
+                .isEqualTo("소인수분해");
+    }
+
+    @Test
+    @DisplayName("학생이 채점되지 않은 구간은 참고용으로 표시한다")
+    void marksReferenceOnlyWhenStudentHasNoGradedResult() {
+        allowLearningAssessment();
+        when(repository.existsAssignmentStudent(101L, 11L)).thenReturn(true);
+        when(repository.findStudentGroupComparisons(101L, 11L)).thenReturn(List.of(
+                comparison(
+                        StudentLearningGroupComparisonRow.GroupDimension.DIFFICULTY,
+                        "HIGH", 1, 0, null, 1, "100.0")));
+        when(repository.findStudentSubcategoryDetails(101L, 11L)).thenReturn(List.of());
+
+        StudentLearningAssessmentPerformanceResponse response =
+                service.getStudentPerformance(7L, 101L, 11L);
+
+        StudentLearningAssessmentPerformanceResponse.DifficultyBandComparison high =
+                response.difficultyBands().get(2);
+        assertThat(high.difficultyBand()).isEqualTo(DifficultyBand.HIGH);
+        assertThat(high.studentAccuracyRate()).isNull();
+        assertThat(high.classAccuracyRate()).isEqualByComparingTo("100.0");
+        assertThat(high.referenceOnly()).isTrue();
+    }
+
     private void allowLearningAssessment() {
         when(classQueryService.getAuthorizedAssignment(7L, 101L))
                 .thenReturn(access(WorksheetType.GENERAL_LEARNING));
@@ -118,6 +193,25 @@ class LearningAssessmentQueryServiceTest {
     private AnalysisAssignmentAccessRow access(WorksheetType type) {
         return new AnalysisAssignmentAccessRow(
                 101L, "학습평가", type, "1반", 7L, 7L);
+    }
+
+    private StudentLearningGroupComparisonRow comparison(
+            StudentLearningGroupComparisonRow.GroupDimension dimension,
+            String code,
+            int itemCount,
+            int studentGradedCount,
+            String studentRate,
+            int classGradedCount,
+            String classRate
+    ) {
+        return new StudentLearningGroupComparisonRow(
+                dimension,
+                code,
+                itemCount,
+                studentGradedCount,
+                studentRate == null ? null : new BigDecimal(studentRate),
+                classGradedCount,
+                classRate == null ? null : new BigDecimal(classRate));
     }
 
     private LearningAssessmentGroupAggregateRow aggregate(

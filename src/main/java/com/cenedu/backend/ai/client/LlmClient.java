@@ -42,5 +42,17 @@ public interface LlmClient {
      *
      * @param seed 고정할 시드. {@code null} 이면 지정하지 않는다(기존 동작)
      */
-    LlmResponse complete(String systemPrompt, List<ChatMessage> messages, Long seed);
+    default LlmResponse complete(String systemPrompt, List<ChatMessage> messages, Long seed) {
+        return complete(systemPrompt, messages, seed, LlmUseCase.DEFAULT);
+    }
+
+    /**
+     * 목적별 모델로 호출한다. 저작과 검증처럼 <b>같은 모델을 쓰면 안 되는</b> 경로가 대상이다.
+     *
+     * <p>모델 이름을 인자로 받지 않는다. 호출부가 모델명을 알면 코드에 박히고, 모델을 바꿀 때
+     * 설정이 아니라 코드를 열게 된다. 어떤 모델을 쓸지는 {@code app.ai.client.use-cases} 가 정한다.
+     *
+     * @param useCase 호출 목적. {@code null} 이면 {@link LlmUseCase#DEFAULT}
+     */
+    LlmResponse complete(String systemPrompt, List<ChatMessage> messages, Long seed, LlmUseCase useCase);
 }

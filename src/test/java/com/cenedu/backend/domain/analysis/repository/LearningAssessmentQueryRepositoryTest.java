@@ -9,6 +9,8 @@ import com.cenedu.backend.domain.analysis.repository.row.LearningAssessmentPrior
 import com.cenedu.backend.domain.analysis.repository.row.LearningStudentSubcategoryRow;
 import com.cenedu.backend.domain.analysis.repository.row.LearningSubcategoryColumnRow;
 import com.cenedu.backend.domain.analysis.repository.row.LearningSubcategoryWeaknessRow;
+import com.cenedu.backend.domain.analysis.repository.row.StudentLearningGroupComparisonRow;
+import com.cenedu.backend.domain.analysis.repository.row.StudentLearningSubcategoryRow;
 import com.cenedu.backend.support.PostgresTestcontainer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -169,6 +171,81 @@ class LearningAssessmentQueryRepositoryTest {
         assertThat(rows.getFirst().weakStudentCount()).isEqualTo(2);
         assertThat(rows.get(1).subcategoryId()).isEqualTo(secondSubcategoryId);
         assertThat(rows.get(1).weakStudentCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("배정된 학생만 분석 대상으로 확인한다")
+    void checksAssignmentStudent() {
+        assertThat(repository.existsAssignmentStudent(assignmentId, firstStudentId))
+                .isTrue();
+        assertThat(repository.existsAssignmentStudent(assignmentId, -1L)).isFalse();
+    }
+
+    @Test
+    @DisplayName("학생 성취 비교는 영역·난이도별로 학생과 학급 정답률을 함께 반환한다")
+    void comparesStudentAndClassByGroup() {
+        List<StudentLearningGroupComparisonRow> rows =
+                repository.findStudentGroupComparisons(assignmentId, firstStudentId);
+
+        StudentLearningGroupComparisonRow understanding = findComparison(
+                rows,
+                StudentLearningGroupComparisonRow.GroupDimension.EVALUATION_AREA,
+                "UNDERSTANDING");
+        assertThat(understanding.itemCount()).isEqualTo(1);
+        assertThat(understanding.studentGradedResultCount()).isEqualTo(1);
+        assertThat(understanding.studentAccuracyRate()).isEqualByComparingTo("100.0");
+        assertThat(understanding.classGradedResultCount()).isEqualTo(2);
+        assertThat(understanding.classAccuracyRate()).isEqualByComparingTo("50.0");
+
+        StudentLearningGroupComparisonRow mid = findComparison(
+                rows,
+                StudentLearningGroupComparisonRow.GroupDimension.DIFFICULTY,
+                "MID");
+        assertThat(mid.studentAccuracyRate()).isEqualByComparingTo("0.0");
+        assertThat(mid.classAccuracyRate()).isEqualByComparingTo("50.0");
+    }
+
+    @Test
+    @DisplayName("학생이 채점되지 않은 영역은 학생 정답률만 null로 반환한다")
+    void returnsNullStudentRateWhenNotGraded() {
+        List<StudentLearningGroupComparisonRow> rows =
+                repository.findStudentGroupComparisons(assignmentId, firstStudentId);
+
+        StudentLearningGroupComparisonRow reasoning = findComparison(
+                rows,
+                StudentLearningGroupComparisonRow.GroupDimension.EVALUATION_AREA,
+                "REASONING");
+        assertThat(reasoning.studentGradedResultCount()).isZero();
+        assertThat(reasoning.studentAccuracyRate()).isNull();
+        assertThat(reasoning.classGradedResultCount()).isEqualTo(1);
+        assertThat(reasoning.classAccuracyRate()).isEqualByComparingTo("100.0");
+    }
+
+    @Test
+    @DisplayName("소분류 결과는 선택 학생만 문항 순서대로 반환한다")
+    void returnsSubcategoryResultsOfSelectedStudent() {
+        List<StudentLearningSubcategoryRow> rows =
+                repository.findStudentSubcategoryDetails(assignmentId, firstStudentId);
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows).extracting(StudentLearningSubcategoryRow::subcategoryId)
+                .containsExactly(firstSubcategoryId, secondSubcategoryId);
+        assertThat(rows.getFirst().subcategoryName()).isEqualTo("소인수분해");
+        assertThat(rows.getFirst().correctCount()).isEqualTo(1);
+        assertThat(rows.getFirst().gradedCount()).isEqualTo(2);
+        assertThat(rows.get(1).correctCount()).isZero();
+        assertThat(rows.get(1).gradedCount()).isZero();
+    }
+
+    private StudentLearningGroupComparisonRow findComparison(
+            List<StudentLearningGroupComparisonRow> rows,
+            StudentLearningGroupComparisonRow.GroupDimension dimension,
+            String code
+    ) {
+        return rows.stream()
+                .filter(row -> row.dimension() == dimension && row.groupCode().equals(code))
+                .findFirst()
+                .orElseThrow();
     }
 
     private LearningAssessmentGroupAggregateRow findGroup(

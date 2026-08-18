@@ -3,6 +3,7 @@ package com.cenedu.backend.ai.client;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.List;
 
 import com.cenedu.backend.ai.agent.ChatMessage;
@@ -40,7 +41,8 @@ class OpenAiLlmClientLiveTest {
                 "minimal",
                 3000,
                 Duration.ofSeconds(60),
-                2);
+                2,
+                Map.of());
         OpenAiClientConfig config = new OpenAiClientConfig();
         openAIClient = config.openAIClient(properties);
         OpenAiChatOptions options = config.openAiChatOptions(properties);
