@@ -37,6 +37,9 @@ public record StudentWorksheetItemResponse(
                 allowableValues = {"retrace", "basic", "independent"})
         String customStage,
 
+        @Schema(description = "개념 정리. supportMode가 concept일 때만 값이 있다")
+        StudentResultConceptResponse concept,
+
         BigDecimal maxScore,
         List<StudentContentBlockResponse> contentBlocks,
         List<StudentChoiceResponse> choices,
@@ -52,7 +55,8 @@ public record StudentWorksheetItemResponse(
             List<StudentChoiceResponse> choices,
             List<StudentStepResponse> steps,
             List<StudentAnswerUnitResponse> answerUnits,
-            List<ProblemAssetResponse> assets
+            List<ProblemAssetResponse> assets,
+            StudentResultConceptResponse concept
     ) {
         QuestionType questionType = question.getQuestionType();
         return new StudentWorksheetItemResponse(
@@ -64,6 +68,7 @@ public record StudentWorksheetItemResponse(
                 question.getSubUnitId(),
                 WorksheetResponseFormatter.toApiSupportMode(item.getSupportMode()),
                 WorksheetResponseFormatter.toApiCustomStage(item.getCustomStage()),
+                concept,
                 item.getMaxScore(),
                 List.copyOf(contentBlocks),
                 questionType == QuestionType.MULTIPLE_CHOICE ? List.copyOf(choices) : null,
