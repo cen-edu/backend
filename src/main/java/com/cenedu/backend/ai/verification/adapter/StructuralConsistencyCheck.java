@@ -54,6 +54,6 @@ public class StructuralConsistencyCheck {
                 VerificationCheckType.ANSWER_CONSISTENCY,
                 VerificationIssueCode.ANSWER_INCONSISTENT,
                 "구조·참조 정합 위반이 " + violations.size() + "건 있습니다.",
-                evidence);
+                EvidencePrefix.of(EvidencePrefix.STRUCTURE, evidence));
     }
 }

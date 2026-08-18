@@ -72,7 +72,7 @@ public class AssetChecks {
                 VerificationCheckType.ASSET_CONSISTENCY,
                 VerificationIssueCode.ASSET_INCONSISTENT,
                 "준비되지 않은 자산이 " + notReady.size() + "건 있습니다.",
-                String.join(", ", notReady));
+                EvidencePrefix.of(EvidencePrefix.MANIFEST, String.join(", ", notReady)));
     }
 
     /**
@@ -104,6 +104,6 @@ public class AssetChecks {
                 issue.equals("LEAK")
                         ? "그림 설명에 그림에 보이지 않는 정보가 있습니다."
                         : "그림 설명이 발문과 어긋납니다.",
-                issue + ": " + judgement.detail());
+                EvidencePrefix.of(EvidencePrefix.ALTTEXT, issue, judgement.detail()));
     }
 }
