@@ -48,6 +48,12 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>{@code domain/problem}의 기존 배치 리포지토리({@link ProblemChoiceRepository} 등)를 그대로
  * 재사용한다 — {@code domain/problem} 파일은 하나도 만들거나 고치지 않는다.
+ *
+ * <p><b>TODO(배세빈, 도메인 경계 정리):</b> 이 직접 Repository·Entity 참조는 현재
+ * AGENTS.md 3절 1·2번과 맞지 않는다. Problem·Submission 도메인에 학생 화면용 배치 Response와
+ * public Service를 먼저 만든 뒤 그 경계로 교체한다. 새 S2 저작 문항 연동에서는 이 방식을
+ * 확대하지 않고 {@link com.cenedu.backend.domain.problem.service.ProblemSnapshotQueryService}를
+ * 사용한다.
  */
 @Service
 @RequiredArgsConstructor
