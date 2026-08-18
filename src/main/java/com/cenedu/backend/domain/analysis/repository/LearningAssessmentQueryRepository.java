@@ -8,6 +8,8 @@ import com.cenedu.backend.domain.analysis.repository.row.LearningAssessmentPrior
 import com.cenedu.backend.domain.analysis.repository.row.LearningStudentSubcategoryRow;
 import com.cenedu.backend.domain.analysis.repository.row.LearningSubcategoryColumnRow;
 import com.cenedu.backend.domain.analysis.repository.row.LearningSubcategoryWeaknessRow;
+import com.cenedu.backend.domain.analysis.repository.row.StudentLearningGroupComparisonRow;
+import com.cenedu.backend.domain.analysis.repository.row.StudentLearningSubcategoryRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -86,6 +88,145 @@ public class LearningAssessmentQueryRepository {
             """;
 
     private final JdbcClient jdbcClient;
+
+    /** 학생이 해당 학습평가 배정의 분석 대상인지 확인한다. */
+    public boolean existsAssignmentStudent(long assignmentId, long studentId) {
+        return jdbcClient.sql("""
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM worksheet_assignment_student
+                            WHERE assignment_id = :assignmentId
+                              AND student_id = :studentId
+                        )
+                        """)
+                .param("assignmentId", assignmentId)
+                .param("studentId", studentId)
+                .query(Boolean.class)
+                .single();
+    }
+
+    /** 선택 학생과 학급의 평가 영역·난이도별 문항 수와 완전정답률을 반환한다. */
+    public List<StudentLearningGroupComparisonRow> findStudentGroupComparisons(
+            long assignmentId,
+            long studentId
+    ) {
+        String sql = ITEM_RESULT_CTE + """
+                , classified_result AS (
+                    SELECT *,
+                           CASE difficulty
+                               WHEN 1 THEN 'LOW'
+                               WHEN 2 THEN 'MID'
+                               WHEN 3 THEN 'HIGH'
+                           END AS difficulty_band
+                    FROM item_result
+                )
+                SELECT 'EVALUATION_AREA' AS dimension,
+                       evaluation_area AS group_code,
+                       COUNT(DISTINCT worksheet_item_id) AS item_count,
+                       COUNT(*) FILTER (
+                           WHERE student_id = :studentId
+                             AND graded_unit_count = expected_unit_count
+                       ) AS student_graded_result_count,
+                       ROUND(
+                           100.0 * COUNT(*) FILTER (
+                               WHERE student_id = :studentId
+                                 AND is_correct
+                           )
+                           / NULLIF(COUNT(*) FILTER (
+                               WHERE student_id = :studentId
+                                 AND graded_unit_count = expected_unit_count
+                           ), 0),
+                           1
+                       ) AS student_accuracy_rate,
+                       COUNT(*) FILTER (
+                           WHERE graded_unit_count = expected_unit_count
+                       ) AS class_graded_result_count,
+                       ROUND(
+                           100.0 * COUNT(*) FILTER (WHERE is_correct)
+                           / NULLIF(COUNT(*) FILTER (
+                               WHERE graded_unit_count = expected_unit_count
+                           ), 0),
+                           1
+                       ) AS class_accuracy_rate
+                FROM classified_result
+                WHERE evaluation_area IS NOT NULL
+                GROUP BY evaluation_area
+                UNION ALL
+                SELECT 'DIFFICULTY' AS dimension,
+                       difficulty_band AS group_code,
+                       COUNT(DISTINCT worksheet_item_id) AS item_count,
+                       COUNT(*) FILTER (
+                           WHERE student_id = :studentId
+                             AND graded_unit_count = expected_unit_count
+                       ) AS student_graded_result_count,
+                       ROUND(
+                           100.0 * COUNT(*) FILTER (
+                               WHERE student_id = :studentId
+                                 AND is_correct
+                           )
+                           / NULLIF(COUNT(*) FILTER (
+                               WHERE student_id = :studentId
+                                 AND graded_unit_count = expected_unit_count
+                           ), 0),
+                           1
+                       ) AS student_accuracy_rate,
+                       COUNT(*) FILTER (
+                           WHERE graded_unit_count = expected_unit_count
+                       ) AS class_graded_result_count,
+                       ROUND(
+                           100.0 * COUNT(*) FILTER (WHERE is_correct)
+                           / NULLIF(COUNT(*) FILTER (
+                               WHERE graded_unit_count = expected_unit_count
+                           ), 0),
+                           1
+                       ) AS class_accuracy_rate
+                FROM classified_result
+                GROUP BY difficulty_band
+                ORDER BY dimension, group_code
+                """;
+        return jdbcClient.sql(sql)
+                .param("assignmentId", assignmentId)
+                .param("studentId", studentId)
+                .query((rs, rowNum) -> new StudentLearningGroupComparisonRow(
+                        StudentLearningGroupComparisonRow.GroupDimension.valueOf(
+                                rs.getString("dimension")),
+                        rs.getString("group_code"),
+                        rs.getInt("item_count"),
+                        rs.getInt("student_graded_result_count"),
+                        rs.getObject("student_accuracy_rate", BigDecimal.class),
+                        rs.getInt("class_graded_result_count"),
+                        rs.getObject("class_accuracy_rate", BigDecimal.class)))
+                .list();
+    }
+
+    /** 선택 학생의 소분류별 정답 수와 채점 완료 문항 수를 문항 순서대로 반환한다. */
+    public List<StudentLearningSubcategoryRow> findStudentSubcategoryDetails(
+            long assignmentId,
+            long studentId
+    ) {
+        String sql = ITEM_RESULT_CTE + """
+                SELECT sub_unit_id AS subcategory_id,
+                       subcategory_name,
+                       COUNT(*) FILTER (WHERE is_correct) AS correct_count,
+                       COUNT(*) FILTER (
+                           WHERE graded_unit_count = expected_unit_count
+                       ) AS graded_count,
+                       MIN(item_number) AS subcategory_order
+                FROM item_result
+                WHERE student_id = :studentId
+                GROUP BY sub_unit_id, subcategory_name
+                ORDER BY subcategory_order, sub_unit_id
+                """;
+        return jdbcClient.sql(sql)
+                .param("assignmentId", assignmentId)
+                .param("studentId", studentId)
+                .query((rs, rowNum) -> new StudentLearningSubcategoryRow(
+                        rs.getLong("subcategory_id"),
+                        rs.getString("subcategory_name"),
+                        rs.getInt("correct_count"),
+                        rs.getInt("graded_count")))
+                .list();
+    }
 
     /** 평가 영역과 상·중·하별 문항 수와 채점 완료 결과의 완전정답률을 반환한다. */
     public List<LearningAssessmentGroupAggregateRow> findGroupAggregates(long assignmentId) {
