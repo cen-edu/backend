@@ -440,6 +440,36 @@ class StudentResultControllerTest {
     }
 
     @Test
+    @DisplayName("max_score가 NULL인 문항은 만점을 1.00으로 보고, 전 칸을 맞히면 correct다")
+    void getResult_nullMaxScore_allUnitsCorrect_isCorrect() throws Exception {
+        long questionId = insertQuestion("STEP_FILL");
+        long stepId = insertStep(questionId, 0, "풀이 과정 1");
+        long unitB1 = insertAnswerUnit(questionId, stepId, "B1", 0, "VALUE", "18");
+        long unitB2 = insertAnswerUnit(questionId, stepId, "B2", 1, "VALUE", "9");
+
+        long worksheetId = insertWorksheet("GENERAL_LEARNING");
+        insertWorksheetItem(worksheetId, questionId, 1, (BigDecimal) null);
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+
+        // 배점이 없으므로 칸마다 만점이 1.00이다.
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB1, "18", new BigDecimal("1.00"));
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB2, "9", new BigDecimal("1.00"));
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].result").value("correct"))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].result").value("correct"))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[1].result").value("correct"))
+                .andExpect(jsonPath("$.data.items[0].score").value(2.0))
+                .andExpect(jsonPath("$.data.items[0].maxScore").value(2.0))
+                .andExpect(jsonPath("$.data.summary.correctCount").value(1))
+                .andExpect(jsonPath("$.data.summary.score").doesNotExist());
+    }
+
+    @Test
     @DisplayName("남의 assignmentStudentId로 결과를 조회하면 404 WORKSHEET_ASSIGNMENT_NOT_FOUND")
     void getResult_notOwned_returns404() throws Exception {
         long questionId = insertQuestion("MULTIPLE_CHOICE");
