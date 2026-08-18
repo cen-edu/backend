@@ -103,7 +103,11 @@ public class ProblemSearchIndexJdbcRepository {
     public void markFailed(long taskId, int attempts, String code) { jdbc.update("UPDATE problem_search_index_task SET status='FAILED',attempt_count=:attempts,last_error=:error,updated_at=CURRENT_TIMESTAMP WHERE id=:id", params(taskId, attempts, null, code)); }
 
     private void updateStatus(long id, String status, String error) { jdbc.update("UPDATE problem_search_index_task SET status=:status,last_error=:error,updated_at=CURRENT_TIMESTAMP WHERE id=:id", new MapSqlParameterSource().addValue("id", id).addValue("status", status).addValue("error", error)); }
-    private MapSqlParameterSource params(long id, int attempts, Instant next, String error) { return new MapSqlParameterSource().addValue("id", id).addValue("attempts", attempts).addValue("next", next).addValue("error", error); }
+    private MapSqlParameterSource params(long id, int attempts, Instant next, String error) {
+        return new MapSqlParameterSource().addValue("id", id).addValue("attempts", attempts)
+                .addValue("next", next == null ? null : Timestamp.from(next))
+                .addValue("error", error);
+    }
     private String write(Object value) { try { return objectMapper.writeValueAsString(value); } catch (Exception e) { throw new IllegalStateException(e); } }
 
     public record ClaimedSearchIndexTask(long taskId, long questionId, SearchIndexingCommand command, int attemptCount) {}
