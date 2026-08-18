@@ -70,6 +70,27 @@ final class Findings {
     }
 
     /**
+     * 심각도를 명시해서 낸다. <b>표를 우회하는 유일한 자리다.</b>
+     *
+     * <p>한 CheckType 안에서 항목별로 심각도가 갈리는 경우가 있다 — 개념 안내가 정답 값을 담으면
+     * 학생이 화면만 보고 답을 얻으므로 {@code ERROR} 지만, 풀이 방향만 지정한 것은 교사가 보고
+     * 판단할 문제라 {@code WARNING} 이다. 계약의 CheckType 이 10종뿐이라 둘이 같은 칸에 들어간다.
+     *
+     * <p>{@link #SEVERITY} 표는 그대로 <b>기본값</b>으로 남는다. 이 오버로드를 쓰는 곳이 늘어나면
+     * 표가 의미를 잃으므로, 늘리기 전에 CheckType 추가를 계약 소유자와 논의한다.
+     */
+    static VerificationFinding fail(
+            VerificationCheckType checkType,
+            VerificationIssueCode code,
+            String message,
+            String evidence,
+            VerificationSeverity severity
+    ) {
+        return new VerificationFinding(
+                checkType, VerificationFindingStatus.FAIL, severity, code, message, evidence);
+    }
+
+    /**
      * 검사 대상이 아닐 때. <b>Finding 을 생략하지 않는다</b> — 검사했으나 대상이 아닌 것과
      * 검사하지 않은 것은 다르고, 생략하면 조율측이 둘을 구분할 수 없다.
      */

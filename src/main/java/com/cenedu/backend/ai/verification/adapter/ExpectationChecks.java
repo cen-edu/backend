@@ -3,6 +3,7 @@ package com.cenedu.backend.ai.verification.adapter;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
@@ -30,6 +31,40 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ExpectationChecks {
+
+    /**
+     * 요청받은 문항 유형대로 나왔는지 본다.
+     *
+     * <p>CheckType 은 {@code ANSWER_CONSISTENCY} 다. 유형이 어긋나면 answerUnit 구성이 반드시
+     * 어긋나기 때문이다 — MULTIPLE_CHOICE 는 MAIN 하나에 choiceKey 이고 STEP_FILL 은 B1 부터
+     * 여러 개다. 유형 전용 CheckType 은 계약에 없고, 계약 타입은 늘리지 않는다.
+     *
+     * <p><b>기대 유형이 없으면 Finding 을 만들지 않는다.</b> {@code NOT_APPLICABLE} 을 내지 않는
+     * 이유는 이 CheckType 이 Validator 위임 결과도 담고 있어서다 — 유형 대조만 해당 없다고
+     * CheckType 전체를 비대상으로 내리면 구조 검사 결과가 함께 사라진다.
+     *
+     * @return 대조할 기대 유형이 없으면 {@link Optional#empty()}
+     */
+    public Optional<VerificationFinding> questionTypeMatch(
+            QuestionSnapshotV1 snapshot, VerificationExpectation expectation
+    ) {
+        QuestionType expected = expectation == null ? null : expectation.expectedQuestionType();
+        if (expected == null) {
+            return Optional.empty();
+        }
+        QuestionType actual = metadata(snapshot) == null ? null : metadata(snapshot).questionType();
+        if (expected == actual) {
+            return Optional.of(Findings.pass(VerificationCheckType.ANSWER_CONSISTENCY,
+                    "문항 유형이 요청한 조건과 일치합니다."));
+        }
+        // 교사가 고른 조건과 다른 문항이 학습지에 들어가면 안 된다.
+        return Optional.of(Findings.fail(
+                VerificationCheckType.ANSWER_CONSISTENCY,
+                VerificationIssueCode.ANSWER_INCONSISTENT,
+                "문항 유형이 요청한 조건과 다릅니다.",
+                EvidencePrefix.of(EvidencePrefix.TYPE_MISMATCH,
+                        "expected=" + expected + ", actual=" + actual)));
+    }
 
     /** 교육과정 범위 이탈은 교사에게 나가면 안 된다. 심각도는 {@link Findings} 표에서 ERROR 다. */
     public VerificationFinding curriculumAlignment(

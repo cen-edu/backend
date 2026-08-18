@@ -46,8 +46,9 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
     private final StructuralConsistencyCheck structuralConsistencyCheck;
     private final ExpectationChecks expectationChecks;
     private final EditScopeChecks editScopeChecks;
-    private final RubricQualityChecker rubricQualityChecker;
+    private final ContentIntegrityChecker contentIntegrityChecker;
     private final AssetChecks assetChecks;
+    private final FindingSanitizer findingSanitizer;
 
     public ProblemVerificationAdapter(
             BlindQuestionFactory blindQuestionFactory,
@@ -56,8 +57,9 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
             StructuralConsistencyCheck structuralConsistencyCheck,
             ExpectationChecks expectationChecks,
             EditScopeChecks editScopeChecks,
-            RubricQualityChecker rubricQualityChecker,
-            AssetChecks assetChecks
+            ContentIntegrityChecker contentIntegrityChecker,
+            AssetChecks assetChecks,
+            FindingSanitizer findingSanitizer
     ) {
         this.blindQuestionFactory = blindQuestionFactory;
         this.llmClient = llmClient;
@@ -65,8 +67,9 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
         this.structuralConsistencyCheck = structuralConsistencyCheck;
         this.expectationChecks = expectationChecks;
         this.editScopeChecks = editScopeChecks;
-        this.rubricQualityChecker = rubricQualityChecker;
+        this.contentIntegrityChecker = contentIntegrityChecker;
         this.assetChecks = assetChecks;
+        this.findingSanitizer = findingSanitizer;
     }
 
     @Override
@@ -86,6 +89,17 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
             log.warn("검증 중단 — requestId={}, scope={}, reason={}",
                     request.verificationRequestId(), scope, e.getMessage());
             findings = allChecksErrored(e.getMessage());
+        }
+
+        // 근거에서 정답을 걷어내고 길이를 자른다. overallStatus 산출 전에 하는 이유는 없다 —
+        // 정제는 status·severity 를 건드리지 않는다. 다만 보고서에 나가는 값은 전부 이 단계를 지난다.
+        FindingSanitizer.Result sanitized = findingSanitizer.sanitize(findings, snapshot);
+        findings = sanitized.findings();
+        if (!sanitized.redacted().isEmpty()) {
+            // 값은 남기지 않는다. 몇 건이 어느 항목에서 걸렸는지만 남긴다.
+            log.warn("검증 근거에서 정답을 제거 — requestId={}, count={}, checkTypes={}",
+                    request.verificationRequestId(), sanitized.redacted().size(),
+                    sanitized.redacted());
         }
 
         VerificationOverallStatus overallStatus = overallStatus(findings);
@@ -111,6 +125,10 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
         findings.add(isolate(VerificationCheckType.CORRECTNESS, () -> correctness(snapshot)));
         findings.add(isolate(VerificationCheckType.ANSWER_CONSISTENCY,
                 () -> structuralConsistencyCheck.check(snapshot)));
+        // 기대 유형이 없으면 Finding 을 만들지 않는다. 여기서 NOT_APPLICABLE 을 내면 같은
+        // CheckType 에 담긴 구조 검사 결과까지 비대상으로 보이게 된다.
+        expectationChecks.questionTypeMatch(snapshot, request.expectation())
+                .ifPresent(findings::add);
         findings.add(isolate(VerificationCheckType.CURRICULUM_ALIGNMENT,
                 () -> expectationChecks.curriculumAlignment(snapshot, request.expectation())));
         findings.add(isolate(VerificationCheckType.DIFFICULTY,
@@ -119,8 +137,11 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
                 () -> expectationChecks.evaluationArea(snapshot, request.expectation())));
         findings.add(isolate(VerificationCheckType.DIAGNOSTIC_TYPE,
                 () -> expectationChecks.diagnosticType(snapshot, request.expectation())));
-        findings.add(isolate(VerificationCheckType.RUBRIC_QUALITY,
-                () -> rubricQualityChecker.check(snapshot)));
+        // 원본 검사는 Finding 을 여러 건 낼 수 있다. RUBRIC_QUALITY 는 항상 1건 포함된다.
+        findings.addAll(isolateMany(
+                List.of(VerificationCheckType.ANSWER_CONSISTENCY,
+                        VerificationCheckType.RUBRIC_QUALITY),
+                () -> contentIntegrityChecker.check(snapshot)));
         findings.add(Findings.notApplicable(VerificationCheckType.ASSET_CONSISTENCY,
                 "CONTENT 범위에서는 자산을 판정하지 않습니다."));
         findings.add(isolate(VerificationCheckType.EDIT_REQUIREMENT,
@@ -183,6 +204,32 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
         } catch (RuntimeException e) {
             log.warn("검증 항목 실패 — checkType={}", checkType, e);
             return Findings.error(checkType, "검증 항목을 처리하지 못했습니다.", e.getMessage());
+        }
+    }
+
+    /**
+     * Finding 을 여러 건 내는 판정을 격리한다.
+     *
+     * <p>실패하면 <b>관련 CheckType 전부</b>에 ERROR 를 낸다. 한 호출로 여러 항목을 보는 구조라
+     * 하나만 ERROR 로 두면 나머지가 판정된 것처럼 보인다.
+     */
+    private List<VerificationFinding> isolateMany(
+            List<VerificationCheckType> checkTypes, Supplier<List<VerificationFinding>> check
+    ) {
+        try {
+            return check.get();
+        } catch (SolverResponseParseException e) {
+            log.warn("검증 응답 형식 위반 — checkTypes={}, reason={}", checkTypes, e.getMessage());
+            return checkTypes.stream()
+                    .map(checkType -> Findings.error(
+                            checkType, "검증 응답이 요구한 형식이 아닙니다.", e.getMessage()))
+                    .toList();
+        } catch (RuntimeException e) {
+            log.warn("검증 항목 실패 — checkTypes={}", checkTypes, e);
+            return checkTypes.stream()
+                    .map(checkType -> Findings.error(
+                            checkType, "검증 항목을 처리하지 못했습니다.", e.getMessage()))
+                    .toList();
         }
     }
 

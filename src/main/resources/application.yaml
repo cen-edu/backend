@@ -59,6 +59,11 @@ app:
           model: ${OPENAI_VERIFICATION_MODEL:gpt-5}
           reasoning-effort: ${OPENAI_VERIFICATION_REASONING_EFFORT:medium}
           max-completion-tokens: ${OPENAI_VERIFICATION_MAX_COMPLETION_TOKENS:6000}
+    verification:
+      content-check:
+        # 정답이 든 원본으로 해설 정합·개념 안내 누출을 본다. 끄면 문항당 LLM 호출이 절반이 된다.
+        # 골든셋 측정과 개발 반복에서만 끈다. 꺼도 서술형 루브릭 심사는 계속 돈다.
+        enabled: ${AI_VERIFICATION_CONTENT_CHECK_ENABLED:true}
   jwt:
     secret: ${JWT_SECRET}
     access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:1h}

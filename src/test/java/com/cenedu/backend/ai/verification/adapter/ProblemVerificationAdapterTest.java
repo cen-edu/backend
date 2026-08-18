@@ -32,6 +32,8 @@ import com.cenedu.backend.domain.problem.authoring.verification.VerificationOver
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationScope;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationSeverity;
 
+import com.cenedu.backend.global.common.enums.QuestionType;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -46,9 +48,9 @@ import tools.jackson.databind.ObjectMapper;
 class ProblemVerificationAdapterTest {
 
     private final FakeLlmClient fake = new FakeLlmClient();
-    private final ProblemVerificationAdapter adapter = adapter(fake);
+    private final ProblemVerificationAdapter adapter = adapter(fake, true);
 
-    private static ProblemVerificationAdapter adapter(FakeLlmClient fake) {
+    private static ProblemVerificationAdapter adapter(FakeLlmClient fake, boolean contentCheck) {
         VerificationLlmClient llmClient = new VerificationLlmClient(fake, new ObjectMapper());
         return new ProblemVerificationAdapter(
                 new BlindQuestionFactory(),
@@ -57,16 +59,18 @@ class ProblemVerificationAdapterTest {
                 new StructuralConsistencyCheck(new SnapshotStructuralValidator()),
                 new ExpectationChecks(),
                 new EditScopeChecks(),
-                new RubricQualityChecker(llmClient),
-                new AssetChecks(llmClient));
+                new ContentIntegrityChecker(llmClient, new ContentCheckProperties(contentCheck)),
+                new AssetChecks(llmClient),
+                new FindingSanitizer());
     }
 
     @Test
     @DisplayName("입력 verificationRequestId 를 그대로 되돌려준다 — 멱등성 전제다")
     void reportEchoesRequestId() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
@@ -78,8 +82,9 @@ class ProblemVerificationAdapterTest {
     @DisplayName("CONTENT 요청은 CheckType 10종 전부에 Finding 을 낸다 — 생략하지 않는다")
     void contentScopeReportsEveryCheckType() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
@@ -92,8 +97,9 @@ class ProblemVerificationAdapterTest {
     @DisplayName("CREATE 요청에서는 EDIT_REQUIREMENT · PROTECTED_SCOPE 가 NOT_APPLICABLE 이다")
     void createOperationMarksEditChecksNotApplicable() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
@@ -107,9 +113,11 @@ class ProblemVerificationAdapterTest {
     @DisplayName("Solver 프롬프트에 정답과 저작측 의도가 실리지 않는다")
     void solverPromptCarriesNoAnswers() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.stepFillSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(Map.of(
-                "B1", VerificationFixtures.STEP_FILL_B1_ANSWER,
-                "B2", VerificationFixtures.STEP_FILL_B2_ANSWER)));
+        fake.respondWith(
+                VerificationFixtures.solverResponse(Map.of(
+                        "B1", VerificationFixtures.STEP_FILL_B1_ANSWER,
+                        "B2", VerificationFixtures.STEP_FILL_B2_ANSWER)),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         adapter.verify(contentRequest(snapshot));
 
@@ -125,8 +133,9 @@ class ProblemVerificationAdapterTest {
     @DisplayName("검증 호출은 저작측과 다른 모델을 쓰도록 VERIFICATION useCase 로 나간다")
     void verificationCallsUseVerificationUseCase() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         adapter.verify(contentRequest(snapshot));
 
@@ -138,8 +147,9 @@ class ProblemVerificationAdapterTest {
     @DisplayName("Solver 답이 정답과 같으면 PASSED 다")
     void matchingAnswerPasses() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.multipleChoiceSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.MC_ANSWER_CHOICE_KEY));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.MC_ANSWER_CHOICE_KEY),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
@@ -152,7 +162,9 @@ class ProblemVerificationAdapterTest {
     @DisplayName("Solver 가 다른 보기를 고르면 FAILED + ANSWER_INCORRECT 다")
     void wrongChoiceFails() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.multipleChoiceSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse("MAIN", "C3"));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", "C3"),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
@@ -167,9 +179,11 @@ class ProblemVerificationAdapterTest {
     @DisplayName("STEP_FILL 은 한 칸만 틀려도 FAILED 이고 어느 칸인지 남는다")
     void oneWrongBlankFailsStepFill() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.stepFillSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(Map.of(
-                "B1", VerificationFixtures.STEP_FILL_B1_ANSWER,
-                "B2", "999")));
+        fake.respondWith(
+                VerificationFixtures.solverResponse(Map.of(
+                        "B1", VerificationFixtures.STEP_FILL_B1_ANSWER,
+                        "B2", "999")),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
@@ -185,7 +199,8 @@ class ProblemVerificationAdapterTest {
     @DisplayName("Solver 가 못 풀었다고 하면 UNVERIFIABLE 이다 — 틀렸다고 하지 않는다")
     void unsolvedIsUnverifiable() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith(VerificationFixtures.SOLVER_UNSOLVED);
+        fake.respondWith(
+                VerificationFixtures.SOLVER_UNSOLVED, VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
@@ -198,8 +213,9 @@ class ProblemVerificationAdapterTest {
     @DisplayName("WARNING 항목만 FAIL 이면 PASSED 를 유지한다")
     void warningDoesNotFailTheReport() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
         VerificationExpectation expectation = VerificationFixtures.withExpectedDifficulty(
                 VerificationFixtures.matchingExpectation(snapshot), "high");
 
@@ -216,8 +232,9 @@ class ProblemVerificationAdapterTest {
     @DisplayName("교육과정 이탈은 ERROR 심각도라 FAILED 를 만든다")
     void curriculumMismatchFailsTheReport() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
         VerificationExpectation expectation = VerificationFixtures.withExpectedSubUnitId(
                 VerificationFixtures.matchingExpectation(snapshot), 999L);
 
@@ -234,8 +251,8 @@ class ProblemVerificationAdapterTest {
     @DisplayName("서술형은 CORRECTNESS 가 UNVERIFIABLE 이라 항상 FAILED 다 — 의도된 결과다")
     void essayAlwaysFails() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.essaySnapshot();
-        // Solver 는 호출하지 않는다. 루브릭 심사만 부른다.
-        fake.respondWith(VerificationFixtures.RUBRIC_OK);
+        // Solver 는 호출하지 않는다. 원본 검사 한 번만 부른다(루브릭 절 포함).
+        fake.respondWith(VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
@@ -254,21 +271,23 @@ class ProblemVerificationAdapterTest {
     @DisplayName("서술형이 아니면 RUBRIC_QUALITY 는 NOT_APPLICABLE 이고 LLM 을 부르지 않는다")
     void rubricQualityIsEssayOnly() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
         assertThat(statusOf(report, VerificationCheckType.RUBRIC_QUALITY))
                 .isEqualTo(VerificationFindingStatus.NOT_APPLICABLE);
-        assertThat(fake.userPrompts).hasSize(1);
+        // Solver + 원본 검사 2회. 루브릭 전용 호출은 없다.
+        assertThat(fake.userPrompts).hasSize(2);
     }
 
     @Test
     @DisplayName("Solver 응답 형식 위반은 ERROR 이며 FAIL 이 아니다")
     void parseFailureIsErrorNotFail() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith("정답은 2^2 × 3^2 × 7 입니다.");
+        fake.respondWith("정답은 2^2 × 3^2 × 7 입니다.", VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
@@ -283,7 +302,7 @@ class ProblemVerificationAdapterTest {
     void processingErrorWinsOverFailed() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
         // CORRECTNESS 는 형식 위반으로 ERROR, CURRICULUM_ALIGNMENT 는 ERROR 심각도의 FAIL 이 된다.
-        fake.respondWith("JSON 이 아닌 응답");
+        fake.respondWith("JSON 이 아닌 응답", VerificationFixtures.CONTENT_CHECK_CLEAN);
         VerificationExpectation expectation = VerificationFixtures.withExpectedSubUnitId(
                 VerificationFixtures.matchingExpectation(snapshot), 999L);
 
@@ -304,8 +323,10 @@ class ProblemVerificationAdapterTest {
     @DisplayName("코드 펜스가 붙어 와도 파싱한다")
     void codeFenceIsStripped() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith("```json\n" + VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER) + "\n```");
+        fake.respondWith(
+                "```json\n" + VerificationFixtures.solverResponse(
+                        "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER) + "\n```",
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
 
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
@@ -319,13 +340,17 @@ class ProblemVerificationAdapterTest {
         QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
         FakeLlmClient failing = new FakeLlmClient().failWith(new IllegalStateException("provider down"));
 
-        ProblemVerificationReport report = adapter(failing).verify(contentRequest(snapshot));
+        ProblemVerificationReport report = adapter(failing, true).verify(contentRequest(snapshot));
 
         assertThat(statusOf(report, VerificationCheckType.CORRECTNESS))
                 .isEqualTo(VerificationFindingStatus.ERROR);
         assertThat(statusOf(report, VerificationCheckType.ANSWER_CONSISTENCY))
+                .as("코드 판정은 LLM 이 죽어도 결과를 낸다")
                 .isEqualTo(VerificationFindingStatus.PASS);
-        assertThat(report.findings()).hasSize(VerificationCheckType.values().length);
+        assertThat(report.findings())
+                .as("CheckType 10종이 모두 덮여야 한다")
+                .extracting(VerificationFinding::checkType)
+                .containsAll(List.of(VerificationCheckType.values()));
     }
 
     @Test
@@ -347,8 +372,9 @@ class ProblemVerificationAdapterTest {
     @DisplayName("수정 지시가 반영되지 않으면 EDIT_REQUIREMENT 가 FAIL 이다")
     void unappliedEditInstructionFails() {
         QuestionSnapshotV1 base = VerificationFixtures.shortInputSnapshot();
-        fake.respondWith(VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
         EditVerificationContext context = VerificationFixtures.editContext(
                 base,
                 List.of(new ProblemEditInstruction(EditTargetType.CONTENT_BLOCK, "CB1",
@@ -372,8 +398,9 @@ class ProblemVerificationAdapterTest {
         QuestionSnapshotV1 base = VerificationFixtures.shortInputSnapshot();
         QuestionSnapshotV1 candidate =
                 VerificationFixtures.withFirstBlockText(base, "252를 소인수분해하시오.");
-        fake.respondWith(VerificationFixtures.solverResponse(
-                "MAIN", VerificationFixtures.SHORT_INPUT_ANSWER));
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
         EditVerificationContext context = VerificationFixtures.editContext(
                 base,
                 List.of(new ProblemEditInstruction(EditTargetType.EXPLANATION, null,
@@ -455,6 +482,231 @@ class ProblemVerificationAdapterTest {
                 .satisfies(prompt -> assertThat(prompt)
                         .contains("a^2")
                         .contains("사분원"));
+    }
+
+    @Test
+    @DisplayName("전부 PASS · NOT_APPLICABLE 이면 PASSED 다")
+    void allPassOrNotApplicableIsPassed() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(report.findings())
+                .extracting(VerificationFinding::status)
+                .containsOnly(VerificationFindingStatus.PASS,
+                        VerificationFindingStatus.NOT_APPLICABLE);
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.PASSED);
+    }
+
+    @Test
+    @DisplayName("요청한 유형과 다르게 나오면 TYPE_MISMATCH 로 FAILED 다")
+    void questionTypeMismatchFails() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
+        VerificationExpectation expectation = VerificationFixtures.withExpectedQuestionType(
+                VerificationFixtures.matchingExpectation(snapshot), QuestionType.STEP_FILL);
+
+        ProblemVerificationReport report = adapter.verify(
+                VerificationFixtures.contentRequest(snapshot, expectation, null));
+
+        assertThat(consistencyFindings(report))
+                .anySatisfy(finding -> {
+                    assertThat(finding.status()).isEqualTo(VerificationFindingStatus.FAIL);
+                    assertThat(finding.evidence()).startsWith("TYPE_MISMATCH:");
+                    assertThat(finding.severity()).isEqualTo(VerificationSeverity.ERROR);
+                });
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("기대 유형이 없으면 유형 Finding 을 만들지 않는다 — 구조 검사 결과가 남아야 한다")
+    void missingExpectedQuestionTypeProducesNoFinding() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
+        VerificationExpectation expectation = VerificationFixtures.withExpectedQuestionType(
+                VerificationFixtures.matchingExpectation(snapshot), null);
+
+        ProblemVerificationReport report = adapter.verify(
+                VerificationFixtures.contentRequest(snapshot, expectation, null));
+
+        assertThat(consistencyFindings(report))
+                .singleElement()
+                .satisfies(finding -> {
+                    assertThat(finding.status()).isEqualTo(VerificationFindingStatus.PASS);
+                    // Validator 위임 결과다. NOT_APPLICABLE 로 덮이지 않아야 한다.
+                    assertThat(finding.message()).contains("논리 키 참조");
+                });
+    }
+
+    @Test
+    @DisplayName("개념 안내가 정답 값을 담으면 ERROR, 풀이 방향만 지정하면 WARNING 이다")
+    void leakageSeveritySplits() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.contentCheckResponse("LEAKAGE", "SOLUTION_DIRECTION",
+                        "learningGuide.keyPoints[0]", "풀이 순서를 지정합니다."));
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(consistencyFindings(report))
+                .anySatisfy(finding -> {
+                    assertThat(finding.evidence()).startsWith("LEAKAGE:");
+                    assertThat(finding.severity()).isEqualTo(VerificationSeverity.WARNING);
+                });
+        // WARNING 은 FAILED 를 만들지 않는다.
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.PASSED);
+    }
+
+    @Test
+    @DisplayName("정답 값 누출은 ERROR 이며 FAILED 를 만든다")
+    void answerValueLeakageIsError() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.contentCheckResponse("LEAKAGE", "ANSWER_VALUE",
+                        "learningGuide.keyPoints[0]", "최종 계산 결과를 포함합니다."));
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(consistencyFindings(report))
+                .anySatisfy(finding ->
+                        assertThat(finding.severity()).isEqualTo(VerificationSeverity.ERROR));
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("해설 모순은 EXPLANATION 접두어로 나간다")
+    void explanationDefectUsesPrefix() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.contentCheckResponse("EXPLANATION", "",
+                        "explanation", "결론이 정답과 반대입니다."));
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(consistencyFindings(report))
+                .anySatisfy(finding -> assertThat(finding.evidence())
+                        .startsWith("EXPLANATION:")
+                        .contains("explanation"));
+    }
+
+    @Test
+    @DisplayName("토글이 꺼지면 원본 검사를 하지 않고 Finding 도 만들지 않는다 — PASS 로도 안 낸다")
+    void disabledToggleSkipsContentCheck() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        FakeLlmClient offFake = new FakeLlmClient().respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER));
+
+        ProblemVerificationReport report =
+                adapter(offFake, false).verify(contentRequest(snapshot));
+
+        // Solver 1회뿐이다.
+        assertThat(offFake.userPrompts).hasSize(1);
+        // 구조 검사와 유형 대조는 코드 판정이라 그대로 남는다. 없어야 하는 것은 원본 검사 결과다.
+        assertThat(consistencyFindings(report))
+                .as("해설·누출 Finding 이 생기면 안 된다 — PASS 로도 안 된다")
+                .noneMatch(finding -> finding.evidence() != null
+                        && (finding.evidence().startsWith("EXPLANATION:")
+                                || finding.evidence().startsWith("LEAKAGE:")));
+        assertThat(consistencyFindings(report))
+                .extracting(VerificationFinding::message)
+                .noneMatch(message -> message.contains("해설") || message.contains("개념 안내"));
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.PASSED);
+    }
+
+    @Test
+    @DisplayName("토글이 꺼져도 서술형 루브릭은 돈다 — 호출 0회가 되지 않는다")
+    void disabledToggleStillRunsRubricForEssay() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.essaySnapshot();
+        FakeLlmClient offFake = new FakeLlmClient().respondWith(VerificationFixtures.RUBRIC_OK);
+
+        ProblemVerificationReport report =
+                adapter(offFake, false).verify(contentRequest(snapshot));
+
+        assertThat(offFake.userPrompts).hasSize(1);
+        assertThat(offFake.systemPrompts.getFirst())
+                .as("루브릭 전용 프롬프트여야 한다")
+                .contains("채점 기준");
+        assertThat(statusOf(report, VerificationCheckType.RUBRIC_QUALITY))
+                .isEqualTo(VerificationFindingStatus.PASS);
+    }
+
+    @Test
+    @DisplayName("원본 검사가 실패하면 관련 CheckType 전부 ERROR 다")
+    void contentCheckFailureErrorsBothCheckTypes() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                "findings 없는 응답");
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(consistencyFindings(report))
+                .anySatisfy(finding -> {
+                    assertThat(finding.status()).isEqualTo(VerificationFindingStatus.ERROR);
+                    assertThat(finding.code()).isEqualTo(VerificationIssueCode.PROVIDER_ERROR);
+                });
+        assertThat(statusOf(report, VerificationCheckType.RUBRIC_QUALITY))
+                .isEqualTo(VerificationFindingStatus.ERROR);
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.ERROR);
+    }
+
+    @Test
+    @DisplayName("원본 검사 프롬프트에는 정답과 해설이 들어간다 — Blind 로는 판정할 수 없다")
+    void contentCheckPromptCarriesTheOriginal() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
+
+        adapter.verify(contentRequest(snapshot));
+
+        assertThat(fake.userPrompts.get(1))
+                .contains("[정답]")
+                .contains("[해설]")
+                .contains("[개념 안내]")
+                .contains(VerificationFixtures.SHORT_INPUT_ANSWER);
+    }
+
+    @Test
+    @DisplayName("근거에 정답이 실려 오면 뭉갠 뒤 보고서에 담는다")
+    void answerInEvidenceIsRedactedBeforeReport() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.withAnswerRaw(
+                VerificationFixtures.shortInputSnapshot(), "420");
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", "420"),
+                VerificationFixtures.contentCheckResponse("LEAKAGE", "ANSWER_VALUE",
+                        "learningGuide", "정답 420 을 그대로 담고 있습니다."));
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(report.findings())
+                .as("어떤 Finding 에도 정답이 남아 있으면 안 된다")
+                .allSatisfy(finding -> {
+                    assertThat(finding.evidence() == null || !finding.evidence().contains("420"))
+                            .isTrue();
+                    assertThat(finding.message() == null || !finding.message().contains("420"))
+                            .isTrue();
+                });
+        assertThat(consistencyFindings(report))
+                .anySatisfy(finding ->
+                        assertThat(finding.evidence()).isEqualTo(FindingSanitizer.REDACTED));
+    }
+
+    private static List<VerificationFinding> consistencyFindings(ProblemVerificationReport report) {
+        return report.findings().stream()
+                .filter(finding ->
+                        finding.checkType() == VerificationCheckType.ANSWER_CONSISTENCY)
+                .toList();
     }
 
     private ProblemVerificationRequest contentRequest(QuestionSnapshotV1 snapshot) {

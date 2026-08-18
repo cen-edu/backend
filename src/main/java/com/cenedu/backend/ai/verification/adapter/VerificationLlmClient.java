@@ -1,5 +1,6 @@
 package com.cenedu.backend.ai.verification.adapter;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +68,41 @@ public class VerificationLlmClient {
             byUnitKey.put(unitKey, value);
         }
         return new SolverAnswer(true, byUnitKey, reason);
+    }
+
+    /**
+     * 정답이 든 원본으로 결함을 찾는다. 해설 정합 · learningGuide 누출 · (ESSAY 면) 루브릭을
+     * <b>한 번의 호출</b>로 본다.
+     *
+     * @param includeRubric ESSAY 일 때 true. 루브릭 절을 요구한다
+     * @return 결함 목록. 비어 있으면 결함 없음이다
+     */
+    public List<OriginalDefect> inspectOriginal(QuestionSnapshotV1 snapshot, boolean includeRubric) {
+        JsonNode root = call(
+                VerificationPrompts.contentIntegritySystemPrompt(includeRubric),
+                VerificationPrompts.contentIntegrityUserPrompt(snapshot));
+
+        JsonNode findings = root.path("findings");
+        if (findings.isMissingNode() || findings.isNull()) {
+            throw new SolverResponseParseException("원본 검사 응답에 findings 가 없습니다.");
+        }
+        if (!findings.isArray()) {
+            throw new SolverResponseParseException("원본 검사 응답의 findings 가 배열이 아닙니다.");
+        }
+
+        List<OriginalDefect> defects = new ArrayList<>();
+        for (JsonNode finding : findings) {
+            String type = finding.path("type").asString("").trim().toUpperCase();
+            if (type.isEmpty()) {
+                throw new SolverResponseParseException("원본 검사 결함에 type 이 없습니다.");
+            }
+            defects.add(new OriginalDefect(
+                    type,
+                    finding.path("kind").asString("").trim().toUpperCase(),
+                    finding.path("location").asString("").trim(),
+                    finding.path("detail").asString("").trim()));
+        }
+        return defects;
     }
 
     /** 서술형 채점 기준의 의미를 심사한다. 구조 검사는 저작측 Validator 가 이미 했다. */

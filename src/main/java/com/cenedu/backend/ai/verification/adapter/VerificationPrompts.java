@@ -3,6 +3,7 @@ package com.cenedu.backend.ai.verification.adapter;
 import java.util.List;
 
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
+import com.cenedu.backend.domain.problem.authoring.model.SnapshotLearningGuide;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotRubricItem;
 
 /**
@@ -40,6 +41,127 @@ final class VerificationPrompts {
 
     static String solverUserPrompt(String blindQuestionJson) {
         return "다음 문항을 풀어라.\n\n" + blindQuestionJson;
+    }
+
+    /**
+     * 원본 검사. 정답이 든 스냅샷을 보고 결함을 찾는다.
+     *
+     * <p>Solver 와 <b>다른 호출</b>이다. 같은 컨텍스트에 두면 Solver 가 정답을 보게 되고,
+     * 그 순간 독립 풀이가 아니게 된다.
+     *
+     * <p>루브릭 심사를 이 호출에 묶는다. 입력이 같은 원본이라 나눌 이유가 없고, 문항당 호출 수가
+     * 곧 학습지당 비용이다. 10문항이면 호출 하나 차이가 10회다.
+     *
+     * <p>구조 불변식은 프롬프트에 넣지 않는다. {@code SnapshotStructuralValidator} 가 코드로
+     * 판정하는 것을 모델에게 또 물으면 같은 위반이 Finding 두 개로 나간다.
+     *
+     * @param includeRubric ESSAY 일 때만 루브릭 절을 요구한다
+     */
+    static String contentIntegritySystemPrompt(boolean includeRubric) {
+        String rubricSection = includeRubric ? """
+
+                [RUBRIC] 서술형 채점 기준의 의미를 본다. 항목 수·가중치 합 같은 형식은 이미 검사되었다.
+                - OUT_OF_SCOPE: 문항 범위 밖을 요구한다. 어떤 답안도 채울 수 없어 만점이 불가능하다.
+                - UNCOVERED: 문항이 요구하는 요소가 어느 기준에도 없다. 빠뜨려도 만점이 된다.
+                - OVERLAPPING: 두 기준이 같은 것을 잰다. 실수 하나에 이중 감점이 된다.
+                - UNJUDGEABLE: 충족 여부를 가릴 수 없다. 채점자마다 결과가 달라진다.
+                kind 에 위 네 축 중 하나를 적는다.
+                """ : "";
+
+        return """
+                당신은 이미 만들어진 중학교 수학 문항을 심사한다. 문항에는 정답과 해설이 함께 주어진다.
+                결함을 찾는 것이 일이며, 문항을 다시 풀거나 고쳐 쓰지 않는다.
+
+                [EXPLANATION] 해설을 본다.
+                - 해설의 결론이 정답과 모순되는가.
+                - 해설이 스냅샷에 없는 값·조건을 끌어다 쓰는가.
+
+                [LEAKAGE] 개념 안내(learningGuide)를 본다. 학생이 문제를 푸는 동안 보는 화면이다.
+                - kind=ANSWER_VALUE: 정답 값이나 최종 계산 결과를 그대로 담았다.
+                - kind=SOLUTION_DIRECTION: 값은 없지만 어떤 순서로 풀라고 방향을 지정했다.
+                learningGuide 가 없으면 이 항목은 건너뛴다.
+                %s
+                규칙:
+                1. 결함 유형을 STRUCTURE / LEAKAGE / EXPLANATION / RUBRIC 중 하나로 분류한다.
+                2. location 에는 문제가 있는 위치(필드 경로·인덱스)만 적는다.
+                   정답 값·계산 결과를 그대로 옮겨 적지 않는다. detail 에도 적지 않는다.
+                   예: learningGuide.keyPoints[2] (O) / 정답 420 이 노출됨 (X)
+                3. 결함이 없으면 빈 배열을 반환한다. 없는 결함을 만들어내지 않는다.
+                   찾을 것이 없는 문항이 정상이다.
+
+                오직 아래 JSON 만 출력한다. 설명이나 코드 펜스를 덧붙이지 않는다.
+                {"findings": [{"type": "LEAKAGE", "kind": "ANSWER_VALUE", \
+                "location": "learningGuide.keyPoints[2]", "detail": "한 줄 설명"}]}
+                """.formatted(rubricSection);
+    }
+
+    /** 원본 검사에 넣는 입력. 정답·해설·개념 안내·채점 기준을 모두 담는다. */
+    static String contentIntegrityUserPrompt(QuestionSnapshotV1 snapshot) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("[유형] ").append(snapshot.metadata() == null
+                ? "알 수 없음" : snapshot.metadata().questionType()).append('\n');
+
+        builder.append("\n[발문]\n");
+        snapshot.contentBlocks().forEach(block -> {
+            if (block == null) {
+                return;
+            }
+            if (block.text() != null) {
+                builder.append(block.blockKey()).append(": ").append(block.text()).append('\n');
+            }
+            if (block.markup() != null) {
+                builder.append(block.blockKey()).append(" (표): ").append(block.markup()).append('\n');
+            }
+            if (block.assetRef() != null) {
+                builder.append(block.blockKey()).append(" (그림 ")
+                        .append(block.assetRef()).append(")\n");
+            }
+        });
+
+        if (!snapshot.choices().isEmpty()) {
+            builder.append("\n[보기]\n");
+            snapshot.choices().forEach(choice -> builder.append(choice.choiceKey())
+                    .append(": ").append(choice.content()).append('\n'));
+        }
+        if (!snapshot.steps().isEmpty()) {
+            builder.append("\n[풀이 단계]\n");
+            snapshot.steps().forEach(step -> builder.append(step.stepKey())
+                    .append(": ").append(step.label()).append('\n'));
+        }
+
+        builder.append("\n[정답]\n");
+        snapshot.answerUnits().forEach(unit -> {
+            if (unit == null) {
+                return;
+            }
+            builder.append(unit.unitKey()).append(" (").append(unit.compareMethod()).append("): ")
+                    .append(unit.answerRaw() == null ? "(없음)" : unit.answerRaw()).append('\n');
+        });
+
+        builder.append("\n[해설]\n").append(snapshot.explanation()).append('\n');
+
+        if (snapshot.learningGuide() != null) {
+            SnapshotLearningGuide guide = snapshot.learningGuide();
+            builder.append("\n[개념 안내]\n");
+            builder.append("제목: ").append(guide.conceptTitle()).append('\n');
+            builder.append("요약: ").append(guide.summary()).append('\n');
+            if (guide.keyPoints() != null) {
+                for (int index = 0; index < guide.keyPoints().size(); index++) {
+                    builder.append("keyPoints[").append(index).append("]: ")
+                            .append(guide.keyPoints().get(index)).append('\n');
+                }
+            }
+        } else {
+            builder.append("\n[개념 안내]\n(없음)\n");
+        }
+
+        if (!snapshot.rubricItems().isEmpty()) {
+            builder.append("\n[채점 기준]\n");
+            snapshot.rubricItems().forEach(rubric -> builder.append(rubric.rubricKey())
+                    .append(" (").append(rubric.weightPercent()).append("%): ")
+                    .append(rubric.criterion()).append('\n'));
+        }
+        return builder.toString();
     }
 
     static String rubricSystemPrompt() {
