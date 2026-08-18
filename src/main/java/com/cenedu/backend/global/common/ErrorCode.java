@@ -52,6 +52,8 @@ public enum ErrorCode {
     MEMBER_SCHOOL_CLASS_NOT_FOUND(HttpStatus.NOT_FOUND, "반을 찾을 수 없습니다."),
     MEMBER_SCHOOL_CLASS_NOT_OWNED(HttpStatus.FORBIDDEN, "담당하는 반에만 접근할 수 있습니다."),
     MEMBER_CLASS_GRADE_MISMATCH(HttpStatus.BAD_REQUEST, "반과 학생의 학년이 일치하지 않습니다."),
+    MEMBER_CLASS_STUDENT_ALREADY_ENROLLED(
+            HttpStatus.BAD_REQUEST, "이미 다른 반에 소속된 학생입니다."),
     MEMBER_SCHOOL_CLASS_ORDER_INVALID(
             HttpStatus.BAD_REQUEST, "현재 교사가 소유한 전체 활성 반의 순서를 전달해야 합니다."),
     MEMBER_CLASS_STUDENT_IDS_DUPLICATED(

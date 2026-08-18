@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 import com.cenedu.backend.domain.member.dto.request.ClassStudentCandidateListRequest;
@@ -109,6 +110,8 @@ public class SchoolClassService {
         List<MemberStudentProfile> studentProfiles = getOwnedStudentProfiles(
                 teacherId,
                 (short) request.grade(),
+                (short) request.academicYear(),
+                null,
                 studentIds
         );
         int displayOrder = nextDisplayOrder(teacherId);
@@ -211,8 +214,15 @@ public class SchoolClassService {
                     );
         }
 
+        Map<Long, MemberSchoolClass> enrolledClassesByStudentId = findActiveEnrollments(
+                teacherId,
+                profiles.stream().map(MemberStudentProfile::getUserId).toList()
+        ).stream().collect(toSchoolClassByStudentId());
+
         return profiles.stream()
-                .map(ClassStudentCandidateResponse::from)
+                .map(profile -> ClassStudentCandidateResponse.from(
+                        profile,
+                        enrolledClassesByStudentId.get(profile.getUserId())))
                 .toList();
     }
 
@@ -244,6 +254,8 @@ public class SchoolClassService {
         List<MemberStudentProfile> studentProfiles = getOwnedStudentProfiles(
                 teacherId,
                 (short) request.grade(),
+                (short) request.academicYear(),
+                classId,
                 studentIds
         );
 
@@ -270,6 +282,7 @@ public class SchoolClassService {
                 .map(classId -> getOwnedClass(teacherId, classId))
                 .toList();
         schoolClasses.forEach(MemberSchoolClass::delete);
+        enrollmentRepository.deleteAllBySchoolClassIdIn(classIds);
 
         List<MemberSchoolClass> remainingClasses = schoolClassRepository
                 .findAllByHomeroomTeacherIdAndDeletedAtIsNullOrderByDisplayOrderAscIdAsc(teacherId);
@@ -352,10 +365,18 @@ public class SchoolClassService {
         }
     }
 
-    /** 요청 학생 전체가 교사 소유의 활성 학생이고 반 학년과 일치하는지 검증한다. */
+    /**
+     * 요청 학생 전체가 교사 소유의 활성 학생이고, 반 학년과 일치하며, 같은 학년도의 다른 활성
+     * 반에 소속돼 있지 않은지 검증한다.
+     *
+     * <p>{@code excludeClassId}는 편집 중인 반이다. 그 반에 이미 들어 있는 학생은 충돌이 아니다.
+     * 생성 시에는 {@code null}을 넘긴다.
+     */
     private List<MemberStudentProfile> getOwnedStudentProfiles(
             long teacherId,
             short classGrade,
+            short academicYear,
+            Long excludeClassId,
             List<Long> studentIds
     ) {
         if (studentIds.isEmpty()) {
@@ -369,21 +390,61 @@ public class SchoolClassService {
                         MemberStudentProfile::getUserId,
                         profile -> profile
                 ));
+        Map<Long, MemberSchoolClass> conflictingClassesByStudentId =
+                findActiveEnrollments(teacherId, studentIds).stream()
+                        .filter(enrollment -> {
+                            MemberSchoolClass enrolledClass = enrollment.getSchoolClass();
+                            return enrolledClass.getAcademicYear() == academicYear
+                                    && !enrolledClass.getId().equals(excludeClassId);
+                        })
+                        .collect(toSchoolClassByStudentId());
 
         return studentIds.stream()
                 .map(studentId -> validateClassStudent(
                         teacherId,
                         classGrade,
-                        profilesByStudentId.get(studentId)
+                        profilesByStudentId.get(studentId),
+                        conflictingClassesByStudentId.get(studentId)
                 ))
                 .toList();
     }
 
-    /** 한 학생의 존재 여부와 역할, 소유 교사, 학년을 검증한다. */
+    /**
+     * 학생들이 소속된 교사 소유 활성 반의 배정을 <b>한 번의 조회</b>로 가져온다.
+     *
+     * <p>학생 1명당 조회하면 N+1이 되므로 호출부는 학생 ID 전체를 한 번에 넘긴다.
+     */
+    private List<MemberClassEnrollment> findActiveEnrollments(
+            long teacherId,
+            List<Long> studentIds
+    ) {
+        if (studentIds.isEmpty()) {
+            return List.of();
+        }
+        return enrollmentRepository.findAllActiveByTeacherIdAndStudentIdIn(teacherId, studentIds);
+    }
+
+    /**
+     * 배정을 학생 ID별 반으로 접는다.
+     *
+     * <p>학생이 여러 학년도의 반에 걸쳐 있으면 쿼리 정렬(학년도 내림차순)의 첫 반, 즉 가장 최근
+     * 학년도 반을 남긴다. 접기 전에 걸러야 하는 조건이 있으면 호출부가 먼저 걸러서 넘긴다.
+     */
+    private Collector<MemberClassEnrollment, ?, Map<Long, MemberSchoolClass>>
+    toSchoolClassByStudentId() {
+        return Collectors.toMap(
+                enrollment -> enrollment.getStudent().getId(),
+                MemberClassEnrollment::getSchoolClass,
+                (first, ignored) -> first
+        );
+    }
+
+    /** 한 학생의 존재 여부와 역할, 소유 교사, 학년, 다른 반 소속 여부를 검증한다. */
     private MemberStudentProfile validateClassStudent(
             long teacherId,
             short classGrade,
-            MemberStudentProfile profile
+            MemberStudentProfile profile,
+            MemberSchoolClass conflictingClass
     ) {
         if (profile == null || profile.getUser().deleted()) {
             throw new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_FOUND);
@@ -396,6 +457,9 @@ public class SchoolClassService {
         }
         if (profile.getGrade() != classGrade) {
             throw new BusinessException(ErrorCode.MEMBER_CLASS_GRADE_MISMATCH);
+        }
+        if (conflictingClass != null) {
+            throw new BusinessException(ErrorCode.MEMBER_CLASS_STUDENT_ALREADY_ENROLLED);
         }
         return profile;
     }
