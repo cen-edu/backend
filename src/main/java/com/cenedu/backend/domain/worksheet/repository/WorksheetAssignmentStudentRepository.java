@@ -51,6 +51,14 @@ public interface WorksheetAssignmentStudentRepository
     List<WorksheetAssignmentStudent> findByAssignment_IdIn(Collection<Long> assignmentIds);
 
     /**
+     * 이 배포가 확정됐는지. 확정은 제출자 행에만 {@code released_at}을 채우므로(교사 채점 10절)
+     * 미제출자 본인 행만 봐서는 알 수 없다 — 같은 배포의 형제 행으로 판정한다.
+     *
+     * <p>플래그 하나 때문에 배포의 전 행을 끌어와 메모리에서 세지 않는다.
+     */
+    boolean existsByAssignment_IdAndReleasedAtIsNotNull(long assignmentId);
+
+    /**
      * 확정 후 정정이 있었던 배포 ID. 답안의 {@code overridden_at}이 그 학생의
      * {@code released_at}보다 나중이면 정정으로 본다(명세 2.4).
      *

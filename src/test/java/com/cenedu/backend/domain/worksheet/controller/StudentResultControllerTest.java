@@ -99,7 +99,13 @@ class StudentResultControllerTest {
                 .andExpect(jsonPath("$.data.items[0].answerUnits[0].myAnswer").value("1"))
                 .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctAnswer").value("4"))
                 // 결과 화면은 released_at 확정 이후라 explanation을 내보낸다(단계 1의 상세 조회와 반대).
-                .andExpect(jsonPath("$.data.items[0].explanation").value("해설 원문"))
+                .andExpect(jsonPath("$.data.items[0].explanation.summary").value("해설 원문"))
+                .andExpect(jsonPath("$.data.items[0].explanation.answerText").value("4"))
+                // 객관식은 problem_step 행이 없어 모범 풀이가 없다.
+                .andExpect(jsonPath("$.data.items[0].explanation.steps").doesNotExist())
+                // learning_guide가 없는 문항이라 개념 정리도 없다 — 500이 나지 않는다.
+                .andExpect(jsonPath("$.data.items[0].explanation.concept").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].chatContext.subUnitId").value(subUnitId))
                 .andExpect(jsonPath("$.data.items[0].answerUnits[0].result").value("wrong"));
     }
 
@@ -123,9 +129,59 @@ class StudentResultControllerTest {
         mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].format").value("step"))
                 .andExpect(jsonPath("$.data.items[0].result").value("partial"))
                 .andExpect(jsonPath("$.data.items[0].score").value(1.0))
-                .andExpect(jsonPath("$.data.items[0].maxScore").value(2.0));
+                .andExpect(jsonPath("$.data.items[0].maxScore").value(2.0))
+                .andExpect(jsonPath("$.data.summary.totalCount").value(1))
+                .andExpect(jsonPath("$.data.summary.partialCount").value(1))
+                // 일반 학습은 배점이 없어 요약의 점수 축을 접는다. 문항 단위 점수는 위처럼 그대로다.
+                .andExpect(jsonPath("$.data.summary.score").doesNotExist())
+                .andExpect(jsonPath("$.data.summary.maxScore").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("종합평가는 summary.score가 저장된 total_score와 일치하고 최상위 점수 필드는 없다")
+    void getResult_assessment_summaryMatchesStoredTotalScore() throws Exception {
+        long choiceQuestionId = insertQuestion("MULTIPLE_CHOICE");
+        long wrongChoiceId = insertChoice(choiceQuestionId, 0, "1");
+        insertChoice(choiceQuestionId, 1, "4");
+        long choiceUnitId = insertAnswerUnit(choiceQuestionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long shortQuestionId = insertQuestion("SHORT_INPUT");
+        long shortUnitId = insertAnswerUnit(shortQuestionId, null, "MAIN", 0, "VALUE", "42");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, choiceQuestionId, 1, new BigDecimal("10.00"));
+        insertWorksheetItem(worksheetId, shortQuestionId, 2, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+
+        insertGradedChoiceAnswer(assignmentStudentId, choiceUnitId, wrongChoiceId, new BigDecimal("0.00"), "CHOICE");
+        insertGradedHandwritingAnswer(assignmentStudentId, shortUnitId, "42", new BigDecimal("10.00"));
+        // 교사 채점이 남긴 비정규화 총점. 응답의 합산값과 구조상 같아야 한다(5-2절).
+        jdbcTemplate.update(
+                "UPDATE worksheet_assignment_student SET total_score = 10.00 WHERE id = ?", assignmentStudentId);
+        BigDecimal storedTotalScore = jdbcTemplate.queryForObject(
+                "SELECT total_score FROM worksheet_assignment_student WHERE id = ?",
+                BigDecimal.class, assignmentStudentId);
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("submitted"))
+                // 최상위 점수는 summary로 옮겼다 — 두 곳에 같은 값을 두지 않는다.
+                .andExpect(jsonPath("$.data.totalScore").doesNotExist())
+                .andExpect(jsonPath("$.data.maxTotalScore").doesNotExist())
+                .andExpect(jsonPath("$.data.summary.totalCount").value(2))
+                .andExpect(jsonPath("$.data.summary.correctCount").value(1))
+                .andExpect(jsonPath("$.data.summary.partialCount").value(0))
+                .andExpect(jsonPath("$.data.summary.wrongCount").value(1))
+                .andExpect(jsonPath("$.data.summary.score").value(storedTotalScore.doubleValue()))
+                .andExpect(jsonPath("$.data.summary.maxScore").value(20.0))
+                .andExpect(jsonPath("$.data.items[0].format").value("choice"))
+                .andExpect(jsonPath("$.data.items[1].format").value("short"));
     }
 
     @Test
@@ -186,6 +242,7 @@ class StudentResultControllerTest {
         mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].format").value("essay"))
                 .andExpect(jsonPath("$.data.items[0].rubric").isArray())
                 .andExpect(jsonPath("$.data.items[0].rubric[0].satisfied").value(true))
                 .andExpect(jsonPath("$.data.items[0].rubric[1].satisfied").value(false))
@@ -219,6 +276,197 @@ class StudentResultControllerTest {
                 .andExpect(jsonPath("$.data.items[0].result").value("pending"))
                 .andExpect(jsonPath("$.data.items[0].rubric").isArray())
                 .andExpect(jsonPath("$.data.items[0].rubric").isEmpty());
+    }
+
+    @Test
+    @DisplayName("미제출 + 반 미확정이면 200이되 정답·해설은 조립되지 않는다 — 판정만 보인다")
+    void getResult_notSubmittedAndClassNotReleased_returnsMaskedResult() throws Exception {
+        long questionId = insertQuestion("MULTIPLE_CHOICE");
+        insertChoice(questionId, 0, "1");
+        insertChoice(questionId, 1, "4");
+        insertAnswerUnit(questionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        // 같은 배포에 확정된 형제 행이 없다.
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "NOT_SUBMITTED", null);
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("not-submitted"))
+                .andExpect(jsonPath("$.data.items[0].result").value("empty"))
+                .andExpect(jsonPath("$.data.items[0].score").value(0))
+                .andExpect(jsonPath("$.data.items[0].explanation").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctAnswer").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("미제출이어도 형제 행에 released_at이 있으면 반 확정으로 보고 전부 공개한다")
+    void getResult_notSubmittedButClassReleased_disclosesEverything() throws Exception {
+        long questionId = insertQuestion("MULTIPLE_CHOICE");
+        insertChoice(questionId, 0, "1");
+        insertChoice(questionId, 1, "4");
+        insertAnswerUnit(questionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "NOT_SUBMITTED", null);
+        // 같은 배포의 제출자 한 명이 확정됐다 — 미제출자 본인 행은 여전히 released_at이 없다.
+        insertOtherStudentAssignment(assignmentId, "GRADED", "now()");
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].explanation.summary").value("해설 원문"))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctAnswer").value("4"));
+    }
+
+    @Test
+    @DisplayName("마감이 지난 NOT_STARTED도 미제출로 파생해 200을 낸다 — DB는 아직 NOT_SUBMITTED가 아니다")
+    void getResult_notStartedPastDue_treatedAsNotSubmitted() throws Exception {
+        long questionId = insertQuestion("MULTIPLE_CHOICE");
+        insertAnswerUnit(questionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertOverdueAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "NOT_STARTED", null);
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].explanation").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("마감 전 NOT_STARTED는 미제출로 보지 않아 409로 막힌다")
+    void getResult_notStartedBeforeDue_returns409() throws Exception {
+        long questionId = insertQuestion("MULTIPLE_CHOICE");
+        insertAnswerUnit(questionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "NOT_STARTED", null);
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("WORKSHEET_RESULT_NOT_RELEASED"));
+    }
+
+    @Test
+    @DisplayName("모범 풀이 formula는 빈칸과 ANSWER_REF를 모두 정답으로 채운다 — 학생 답이 아니다")
+    void getResult_stepFormula_filledWithCorrectAnswers() throws Exception {
+        long questionId = insertQuestion("STEP_FILL");
+        long stepId = insertStepWithSegments(questionId, 0, "풀이 식과 전략 세우기", """
+                [{"type":"ANSWER_REF","unitKey":"B1"},
+                 {"type":"TEXT","value":" + "},
+                 {"type":"ANSWER_REF","unitKey":"B2"},
+                 {"type":"TEXT","value":" = "},
+                 {"type":"BLANK","unitKey":"B3"}]
+                """);
+        long unitB1 = insertAnswerUnit(questionId, stepId, "B1", 0, "VALUE", "50");
+        long unitB2 = insertAnswerUnit(questionId, stepId, "B2", 1, "VALUE", "70");
+        long unitB3 = insertAnswerUnit(questionId, stepId, "B3", 2, "VALUE", "120");
+
+        long worksheetId = insertWorksheet("GENERAL_LEARNING");
+        insertWorksheetItem(worksheetId, questionId, 1, (BigDecimal) null);
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+
+        // 학생은 B3에 틀린 값을 썼다. 모범 풀이에 이 값이 들어가면 안 된다.
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB1, "50", new BigDecimal("1.00"));
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB2, "70", new BigDecimal("1.00"));
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB3, "99", new BigDecimal("0.00"));
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].explanation.steps[0].label").value("풀이 식과 전략 세우기"))
+                .andExpect(jsonPath("$.data.items[0].explanation.steps[0].formula").value("50 + 70 = 120"))
+                .andExpect(jsonPath("$.data.items[0].explanation.answerText").value("50 · 70 · 120"));
+    }
+
+    @Test
+    @DisplayName("concept은 learning_guide의 세 키만 담고 내부 출처·품질 등급은 경로 자체가 없다")
+    void getResult_concept_exposesOnlyThreeKeys() throws Exception {
+        long questionId = insertQuestionWithLearningGuide("STEP_FILL", """
+                {"conceptTitle":"소인수분해",
+                 "summary":"자연수를 소수의 곱으로 나타내는 것",
+                 "keyPoints":["소수는 1과 자기 자신만을 약수로 갖는다","지수로 간단히 표기한다"],
+                 "questionSourceRef":"AIHUB30-1234",
+                 "source":{"datasets":["AIHUB_110"]},
+                 "status":"INTERNAL_APPROVED"}
+                """);
+        long stepId = insertStepWithSegments(questionId, 0, "1단계", """
+                [{"type":"TEXT","value":"84 = "},{"type":"BLANK","unitKey":"B1"}]
+                """);
+        long unitId = insertAnswerUnit(questionId, stepId, "B1", 0, "EXACT", "2^2 x 3 x 7");
+
+        // 종합평가에도 빈칸형 문항이 들어간다 — 모범 풀이는 학습지 유형이 아니라 문항 형식이 가른다.
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+
+        insertGradedHandwritingAnswer(assignmentStudentId, unitId, "2^2 x 3 x 7", new BigDecimal("10.00"));
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.title").value("소인수분해"))
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.summary")
+                        .value("자연수를 소수의 곱으로 나타내는 것"))
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.points[1]").value("지수로 간단히 표기한다"))
+                // 내부 출처·품질 등급·명세에만 있던 example은 DTO에 자리가 없다.
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.source").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.status").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.questionSourceRef").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.example").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].chatContext.conceptLabel").value("소인수분해"))
+                .andExpect(jsonPath("$.data.items[0].chatContext.conceptId").doesNotExist())
+                // 종합평가여도 빈칸형이면 모범 풀이가 나간다.
+                .andExpect(jsonPath("$.data.items[0].explanation.steps[0].formula").value("84 = 2^2 x 3 x 7"));
+    }
+
+    @Test
+    @DisplayName("max_score가 NULL인 문항은 만점을 1.00으로 보고, 전 칸을 맞히면 correct다")
+    void getResult_nullMaxScore_allUnitsCorrect_isCorrect() throws Exception {
+        long questionId = insertQuestion("STEP_FILL");
+        long stepId = insertStep(questionId, 0, "풀이 과정 1");
+        long unitB1 = insertAnswerUnit(questionId, stepId, "B1", 0, "VALUE", "18");
+        long unitB2 = insertAnswerUnit(questionId, stepId, "B2", 1, "VALUE", "9");
+
+        long worksheetId = insertWorksheet("GENERAL_LEARNING");
+        insertWorksheetItem(worksheetId, questionId, 1, (BigDecimal) null);
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+
+        // 배점이 없으므로 칸마다 만점이 1.00이다.
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB1, "18", new BigDecimal("1.00"));
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB2, "9", new BigDecimal("1.00"));
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].result").value("correct"))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].result").value("correct"))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[1].result").value("correct"))
+                .andExpect(jsonPath("$.data.items[0].score").value(2.0))
+                .andExpect(jsonPath("$.data.items[0].maxScore").value(2.0))
+                .andExpect(jsonPath("$.data.summary.correctCount").value(1))
+                .andExpect(jsonPath("$.data.summary.score").doesNotExist());
     }
 
     @Test
@@ -321,6 +569,25 @@ class StudentResultControllerTest {
                 """, Long.class, questionId, displayOrder, content);
     }
 
+    private long insertQuestionWithLearningGuide(String questionType, String learningGuideJson) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO problem_question(
+                    source_type, sub_unit_id, difficulty, question_type,
+                    presentation, content_blocks, prompt_text, explanation, learning_guide)
+                VALUES ('IMPORTED', ?, 1, ?, 'TEXT_ONLY', '[]'::jsonb,
+                        '검색용 원문 — 화면 표시 금지', '해설 원문', ?::jsonb)
+                RETURNING id
+                """, Long.class, subUnitId, questionType, learningGuideJson);
+    }
+
+    private long insertStepWithSegments(long questionId, int displayOrder, String label, String segmentsJson) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO problem_step(question_id, display_order, label, segments)
+                VALUES (?, ?, ?, ?::jsonb)
+                RETURNING id
+                """, Long.class, questionId, displayOrder, label, segmentsJson);
+    }
+
     private long insertStep(long questionId, int displayOrder, String label) {
         return jdbcTemplate.queryForObject("""
                 INSERT INTO problem_step(question_id, display_order, label, segments)
@@ -371,13 +638,37 @@ class StudentResultControllerTest {
                 """, Long.class, worksheetId, classId);
     }
 
+    /** 마감이 이미 지난 배포. NOT_STARTED를 미제출로 파생하는 경로를 만든다(§2.4). */
+    private long insertOverdueAssignment(long worksheetId, long classId) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO worksheet_assignment(worksheet_id, class_id, assigned_at, due_at)
+                VALUES (?, ?, now() - interval '14 days', now() - interval '7 days')
+                RETURNING id
+                """, Long.class, worksheetId, classId);
+    }
+
     /** releasedAtExpr가 null이면 released_at을 비워 게이트(409) 시나리오를 만든다. */
     private long insertAssignmentStudent(long assignmentId, String releasedAtExpr) {
+        return insertAssignmentStudent(assignmentId, "GRADED", releasedAtExpr);
+    }
+
+    private long insertAssignmentStudent(long assignmentId, String status, String releasedAtExpr) {
         String releasedAtSql = releasedAtExpr == null ? "null" : releasedAtExpr;
         return jdbcTemplate.queryForObject("""
                 INSERT INTO worksheet_assignment_student(assignment_id, student_id, status, progress_count, released_at)
-                VALUES (?, ?, 'GRADED', 1, %s)
+                VALUES (?, ?, ?, 1, %s)
                 RETURNING id
-                """.formatted(releasedAtSql), Long.class, assignmentId, studentId);
+                """.formatted(releasedAtSql), Long.class, assignmentId, studentId, status);
+    }
+
+    /** 같은 배포의 형제 행. 반 확정 판정(§8.1)이 이 행을 보고 갈린다. */
+    private void insertOtherStudentAssignment(long assignmentId, String status, String releasedAtExpr) {
+        long otherStudentId = insertAccount("STUDENT", "result-test-sibling", "학생3");
+        insertStudentProfile(otherStudentId, teacherId);
+        String releasedAtSql = releasedAtExpr == null ? "null" : releasedAtExpr;
+        jdbcTemplate.update("""
+                INSERT INTO worksheet_assignment_student(assignment_id, student_id, status, progress_count, released_at)
+                VALUES (?, ?, ?, 1, %s)
+                """.formatted(releasedAtSql), assignmentId, otherStudentId, status);
     }
 }
