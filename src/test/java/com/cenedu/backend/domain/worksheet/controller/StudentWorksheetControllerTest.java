@@ -26,7 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 최종 보고에 남긴다({@code application.yaml}에 영구히 켜두지 않는다).
  */
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-student-worksheet-controller-test-secret-32b",
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
         "app.jwt.access-token-expiration=1h",
         // .env 의 S3_ENABLED 가 테스트까지 새어들어온다. 켜두면 presign 이 실제 버킷에
         // headObject 를 날려 테스트가 네트워크와 실제 객체 존재에 묶인다.

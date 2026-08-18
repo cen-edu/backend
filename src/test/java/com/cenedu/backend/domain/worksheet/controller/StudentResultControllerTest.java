@@ -27,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
  * INSERT한 행을 별도로 기록·삭제할 필요가 없다(지침이 우려하는 공유 DB 오염과는 다른 상황).
  */
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-student-result-controller-test-secret-32byte",
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
         "app.jwt.access-token-expiration=1h",
         // 명시하지 않으면 .env 의 S3_ENABLED 가 새어들어와 실제 버킷에 headObject 를 날린다.
         "app.storage.s3.enabled=false"
