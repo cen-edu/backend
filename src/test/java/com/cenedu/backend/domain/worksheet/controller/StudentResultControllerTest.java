@@ -99,7 +99,13 @@ class StudentResultControllerTest {
                 .andExpect(jsonPath("$.data.items[0].answerUnits[0].myAnswer").value("1"))
                 .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctAnswer").value("4"))
                 // 결과 화면은 released_at 확정 이후라 explanation을 내보낸다(단계 1의 상세 조회와 반대).
-                .andExpect(jsonPath("$.data.items[0].explanation").value("해설 원문"))
+                .andExpect(jsonPath("$.data.items[0].explanation.summary").value("해설 원문"))
+                .andExpect(jsonPath("$.data.items[0].explanation.answerText").value("4"))
+                // 객관식은 problem_step 행이 없어 모범 풀이가 없다.
+                .andExpect(jsonPath("$.data.items[0].explanation.steps").doesNotExist())
+                // learning_guide가 없는 문항이라 개념 정리도 없다 — 500이 나지 않는다.
+                .andExpect(jsonPath("$.data.items[0].explanation.concept").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].chatContext.subUnitId").value(subUnitId))
                 .andExpect(jsonPath("$.data.items[0].answerUnits[0].result").value("wrong"));
     }
 
@@ -316,7 +322,7 @@ class StudentResultControllerTest {
         mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].explanation").value("해설 원문"))
+                .andExpect(jsonPath("$.data.items[0].explanation.summary").value("해설 원문"))
                 .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctAnswer").value("4"));
     }
 
@@ -354,6 +360,83 @@ class StudentResultControllerTest {
                         .header("Authorization", "Bearer " + studentToken))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("WORKSHEET_RESULT_NOT_RELEASED"));
+    }
+
+    @Test
+    @DisplayName("모범 풀이 formula는 빈칸과 ANSWER_REF를 모두 정답으로 채운다 — 학생 답이 아니다")
+    void getResult_stepFormula_filledWithCorrectAnswers() throws Exception {
+        long questionId = insertQuestion("STEP_FILL");
+        long stepId = insertStepWithSegments(questionId, 0, "풀이 식과 전략 세우기", """
+                [{"type":"ANSWER_REF","unitKey":"B1"},
+                 {"type":"TEXT","value":" + "},
+                 {"type":"ANSWER_REF","unitKey":"B2"},
+                 {"type":"TEXT","value":" = "},
+                 {"type":"BLANK","unitKey":"B3"}]
+                """);
+        long unitB1 = insertAnswerUnit(questionId, stepId, "B1", 0, "VALUE", "50");
+        long unitB2 = insertAnswerUnit(questionId, stepId, "B2", 1, "VALUE", "70");
+        long unitB3 = insertAnswerUnit(questionId, stepId, "B3", 2, "VALUE", "120");
+
+        long worksheetId = insertWorksheet("GENERAL_LEARNING");
+        insertWorksheetItem(worksheetId, questionId, 1, (BigDecimal) null);
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+
+        // 학생은 B3에 틀린 값을 썼다. 모범 풀이에 이 값이 들어가면 안 된다.
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB1, "50", new BigDecimal("1.00"));
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB2, "70", new BigDecimal("1.00"));
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB3, "99", new BigDecimal("0.00"));
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].explanation.steps[0].label").value("풀이 식과 전략 세우기"))
+                .andExpect(jsonPath("$.data.items[0].explanation.steps[0].formula").value("50 + 70 = 120"))
+                .andExpect(jsonPath("$.data.items[0].explanation.answerText").value("50 · 70 · 120"));
+    }
+
+    @Test
+    @DisplayName("concept은 learning_guide의 세 키만 담고 내부 출처·품질 등급은 경로 자체가 없다")
+    void getResult_concept_exposesOnlyThreeKeys() throws Exception {
+        long questionId = insertQuestionWithLearningGuide("STEP_FILL", """
+                {"conceptTitle":"소인수분해",
+                 "summary":"자연수를 소수의 곱으로 나타내는 것",
+                 "keyPoints":["소수는 1과 자기 자신만을 약수로 갖는다","지수로 간단히 표기한다"],
+                 "questionSourceRef":"AIHUB30-1234",
+                 "source":{"datasets":["AIHUB_110"]},
+                 "status":"INTERNAL_APPROVED"}
+                """);
+        long stepId = insertStepWithSegments(questionId, 0, "1단계", """
+                [{"type":"TEXT","value":"84 = "},{"type":"BLANK","unitKey":"B1"}]
+                """);
+        long unitId = insertAnswerUnit(questionId, stepId, "B1", 0, "EXACT", "2^2 x 3 x 7");
+
+        // 종합평가에도 빈칸형 문항이 들어간다 — 모범 풀이는 학습지 유형이 아니라 문항 형식이 가른다.
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+
+        insertGradedHandwritingAnswer(assignmentStudentId, unitId, "2^2 x 3 x 7", new BigDecimal("10.00"));
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.title").value("소인수분해"))
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.summary")
+                        .value("자연수를 소수의 곱으로 나타내는 것"))
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.points[1]").value("지수로 간단히 표기한다"))
+                // 내부 출처·품질 등급·명세에만 있던 example은 DTO에 자리가 없다.
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.source").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.status").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.questionSourceRef").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].explanation.concept.example").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].chatContext.conceptLabel").value("소인수분해"))
+                .andExpect(jsonPath("$.data.items[0].chatContext.conceptId").doesNotExist())
+                // 종합평가여도 빈칸형이면 모범 풀이가 나간다.
+                .andExpect(jsonPath("$.data.items[0].explanation.steps[0].formula").value("84 = 2^2 x 3 x 7"));
     }
 
     @Test
@@ -454,6 +537,25 @@ class StudentResultControllerTest {
                 VALUES (?, ?, ?)
                 RETURNING id
                 """, Long.class, questionId, displayOrder, content);
+    }
+
+    private long insertQuestionWithLearningGuide(String questionType, String learningGuideJson) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO problem_question(
+                    source_type, sub_unit_id, difficulty, question_type,
+                    presentation, content_blocks, prompt_text, explanation, learning_guide)
+                VALUES ('IMPORTED', ?, 1, ?, 'TEXT_ONLY', '[]'::jsonb,
+                        '검색용 원문 — 화면 표시 금지', '해설 원문', ?::jsonb)
+                RETURNING id
+                """, Long.class, subUnitId, questionType, learningGuideJson);
+    }
+
+    private long insertStepWithSegments(long questionId, int displayOrder, String label, String segmentsJson) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO problem_step(question_id, display_order, label, segments)
+                VALUES (?, ?, ?, ?::jsonb)
+                RETURNING id
+                """, Long.class, questionId, displayOrder, label, segmentsJson);
     }
 
     private long insertStep(long questionId, int displayOrder, String label) {

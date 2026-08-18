@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -11,20 +12,27 @@ import java.util.stream.Collectors;
 import com.cenedu.backend.domain.grading.entity.GradingRubricResult;
 import com.cenedu.backend.domain.grading.repository.GradingRubricResultRepository;
 import com.cenedu.backend.domain.problem.dto.response.ProblemContentBlockResponse;
+import com.cenedu.backend.domain.problem.dto.response.ProblemStepSegmentResponse;
 import com.cenedu.backend.domain.problem.entity.ProblemAnswerUnit;
 import com.cenedu.backend.domain.problem.entity.ProblemChoice;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.entity.ProblemRubricItem;
+import com.cenedu.backend.domain.problem.entity.ProblemStep;
 import com.cenedu.backend.domain.problem.repository.ProblemAnswerUnitRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemChoiceRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
+import com.cenedu.backend.domain.problem.repository.ProblemStepRepository;
 import com.cenedu.backend.domain.submission.entity.SubmissionAnswer;
 import com.cenedu.backend.domain.submission.entity.enums.GradingStatus;
 import com.cenedu.backend.domain.submission.repository.SubmissionAnswerRepository;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentContentBlockResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultAnswerUnitResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentResultChatContextResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentResultConceptResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentResultExplanationResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultItemResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentResultStepResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentRubricItemResponse;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignmentStudent;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetItem;
@@ -40,6 +48,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -61,6 +70,7 @@ public class StudentResultQueryService {
     private final ProblemQuestionRepository problemQuestionRepository;
     private final ProblemChoiceRepository problemChoiceRepository;
     private final ProblemAnswerUnitRepository problemAnswerUnitRepository;
+    private final ProblemStepRepository problemStepRepository;
     private final SubmissionAnswerRepository submissionAnswerRepository;
     private final GradingRubricResultRepository gradingRubricResultRepository;
     private final ObjectMapper objectMapper;
@@ -100,6 +110,11 @@ public class StudentResultQueryService {
         Map<Long, List<ProblemRubricItem>> rubricItemsByQuestionId = gradingRubricResultRepository
                 .findRubricItemsByQuestionIdIn(questionIds).stream()
                 .collect(Collectors.groupingBy(item -> item.getQuestion().getId()));
+        // 모범 풀이는 공개 대상일 때만 필요하다. 가릴 응답이면 조회 자체를 하지 않는다.
+        Map<Long, List<ProblemStep>> stepsByQuestionId = disclose
+                ? problemStepRepository.findAllByQuestionIds(questionIds).stream()
+                        .collect(Collectors.groupingBy(step -> step.getQuestion().getId()))
+                : Map.of();
 
         Map<Long, SubmissionAnswer> savedByAnswerUnitId = submissionAnswerRepository
                 .findByAssignmentStudentId(assignmentStudentId).stream()
@@ -162,13 +177,124 @@ public class StudentResultQueryService {
             totalScore = totalScore.add(itemScore);
             maxTotalScore = maxTotalScore.add(itemMaxScore);
 
+            StudentResultConceptResponse concept = disclose ? parseConcept(question) : null;
+            StudentResultExplanationResponse explanation = disclose
+                    ? buildExplanation(question, units, choices, unitResponses,
+                            stepsByQuestionId.getOrDefault(item.getQuestionId(), List.of()), concept)
+                    : null;
+            StudentResultChatContextResponse chatContext = disclose
+                    ? new StudentResultChatContextResponse(
+                            question.getSubUnitId(), concept == null ? null : concept.title())
+                    : null;
+
             itemResponses.add(StudentResultItemResponse.from(
                     item, question, itemResult, itemScore, itemMaxScore,
-                    parseContentBlocks(question.getContentBlocks(), question.getId()), unitResponses, rubric,
-                    disclose));
+                    parseContentBlocks(question.getContentBlocks(), question.getId()),
+                    explanation, chatContext, unitResponses, rubric));
         }
 
         return StudentResultResponse.from(was, itemResponses, totalScore, maxTotalScore);
+    }
+
+    /**
+     * 복습 화면의 해설 묶음(명세 8.4). 프론트가 필드 유무로 섹션을 켜고 끄므로 없는 것은
+     * {@code null}로 둔다.
+     *
+     * <p>{@code answerText}는 이미 만들어 둔 칸별 정답을 이어 붙인다 — 정답 해석 로직을 두 벌
+     * 만들면 객관식 1-based 순번 처리가 한쪽에만 들어가 화면마다 다른 값이 나온다.
+     *
+     * <p>{@code steps}는 <b>문항 형식</b>이 가른다. 학습지 유형이 아니다 —
+     * {@code problem_step} 행을 가지는 형식이 빈칸형뿐이고(실측), 종합평가에도 빈칸형 문항이
+     * 들어간다. 유형으로 가르면 그 문항들이 모범 풀이를 잃는다.
+     */
+    private StudentResultExplanationResponse buildExplanation(
+            ProblemQuestion question,
+            List<ProblemAnswerUnit> units,
+            List<ProblemChoice> choices,
+            List<StudentResultAnswerUnitResponse> unitResponses,
+            List<ProblemStep> steps,
+            StudentResultConceptResponse concept
+    ) {
+        String answerText = unitResponses.stream()
+                .map(StudentResultAnswerUnitResponse::correctAnswer)
+                .filter(answer -> answer != null && !answer.isBlank())
+                .collect(Collectors.joining(" · "));
+
+        Map<String, String> answerByUnitKey = new HashMap<>();
+        for (ProblemAnswerUnit unit : units) {
+            String answer = resolveCorrectAnswer(question.getQuestionType(), unit, choices);
+            if (answer != null) {
+                answerByUnitKey.put(unit.getUnitKey(), answer);
+            }
+        }
+        List<StudentResultStepResponse> stepResponses = steps.isEmpty()
+                ? null
+                : steps.stream()
+                        .map(step -> new StudentResultStepResponse(
+                                step.getLabel(), assembleFormula(step, answerByUnitKey)))
+                        .toList();
+
+        return new StudentResultExplanationResponse(
+                answerText.isEmpty() ? null : answerText,
+                question.getExplanation(),
+                stepResponses,
+                concept);
+    }
+
+    /**
+     * 모범 풀이 수식. 빈칸을 <b>정답</b>으로 채운다 — 복습 화면은 "이렇게 푸는 것이었다"를
+     * 보여주는 자리라, 학생 답을 끼우면 틀린 풀이가 모범 풀이 자리에 앉는다.
+     *
+     * <p>{@code ANSWER_REF}도 정답으로 채운다. 풀이 화면에서 같은 세그먼트는 "앞 단계에서 학생이
+     * 쓴 현재 값"을 가리키지만({@link com.cenedu.backend.domain.worksheet.dto.response
+     * .StudentSegmentResponse}), 여기서는 참조 대상 칸의 정답이 들어간다. 같은 데이터가 화면에
+     * 따라 다르게 해석되는 지점이다.
+     */
+    private String assembleFormula(ProblemStep step, Map<String, String> answerByUnitKey) {
+        StringBuilder formula = new StringBuilder();
+        for (ProblemStepSegmentResponse segment : parseSegments(step.getSegments())) {
+            if ("TEXT".equals(segment.type())) {
+                formula.append(segment.value() == null ? "" : segment.value());
+            } else {
+                formula.append(answerByUnitKey.getOrDefault(segment.unitKey(), ""));
+            }
+        }
+        return formula.toString();
+    }
+
+    /**
+     * 개념 정리(명세 8.5). {@code learning_guide} jsonb에서 <b>세 키만 골라</b> 읽는다 —
+     * 통째로 역직렬화하면 내부 출처({@code source.datasets})와 품질 등급({@code status})이
+     * 함께 실린다.
+     */
+    private StudentResultConceptResponse parseConcept(ProblemQuestion question) {
+        String learningGuide = question.getLearningGuide();
+        if (learningGuide == null || learningGuide.isBlank()) {
+            return null;
+        }
+        JsonNode node;
+        try {
+            node = objectMapper.readTree(learningGuide);
+        } catch (JacksonException e) {
+            throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
+        }
+        List<String> points = new ArrayList<>();
+        for (JsonNode point : node.path("keyPoints")) {
+            points.add(point.asString());
+        }
+        return new StudentResultConceptResponse(
+                node.path("conceptTitle").asString(null),
+                node.path("summary").asString(null),
+                List.copyOf(points));
+    }
+
+    private List<ProblemStepSegmentResponse> parseSegments(String segments) {
+        try {
+            return objectMapper.readValue(segments, new TypeReference<List<ProblemStepSegmentResponse>>() {
+            });
+        } catch (JacksonException e) {
+            throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
+        }
     }
 
     /**
