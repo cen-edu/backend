@@ -30,6 +30,17 @@ public class AnalysisClassQueryRepository {
                            WHEN COUNT(pau.id) > 0
                             AND COUNT(sa.id) FILTER (WHERE sa.grading_status = 'GRADED')
                                 = COUNT(pau.id)
+                           THEN COALESCE(SUM(sa.final_score) FILTER (
+                               WHERE sa.grading_status = 'GRADED'
+                           ), 0)
+                           ELSE NULL
+                       END AS score,
+                       COALESCE(wi.max_score, COUNT(pau.id)::numeric)
+                           AS resolved_max_score,
+                       CASE
+                           WHEN COUNT(pau.id) > 0
+                            AND COUNT(sa.id) FILTER (WHERE sa.grading_status = 'GRADED')
+                                = COUNT(pau.id)
                             AND CASE
                                 WHEN wi.max_score IS NOT NULL
                                     THEN COALESCE(SUM(sa.final_score), 0) = wi.max_score
@@ -143,8 +154,11 @@ public class AnalysisClassQueryRepository {
                 .optional();
     }
 
-    /** 참여·채점 대기·정답률·시간·취약 학생과 소분류를 한 번에 집계한다. */
-    public ClassAnalysisOverviewRow findOverview(long assignmentId) {
+    /** 참여·채점 대기·성취율·시간·취약 학생과 소분류를 한 번에 집계한다. */
+    public ClassAnalysisOverviewRow findOverview(
+            long assignmentId,
+            WorksheetType worksheetType
+    ) {
         String sql = ITEM_RESULT_CTE + """
                 , student_result AS (
                     SELECT was.id AS assignment_student_id,
@@ -152,7 +166,13 @@ public class AnalysisClassQueryRepository {
                                FILTER (WHERE ir.graded_unit_count = ir.expected_unit_count)
                                AS graded_item_count,
                            COUNT(ir.worksheet_item_id)
-                               FILTER (WHERE ir.is_correct) AS correct_item_count
+                               FILTER (WHERE ir.is_correct) AS correct_item_count,
+                           SUM(ir.score) FILTER (
+                               WHERE ir.graded_unit_count = ir.expected_unit_count
+                           ) AS earned_score,
+                           SUM(ir.resolved_max_score) FILTER (
+                               WHERE ir.graded_unit_count = ir.expected_unit_count
+                           ) AS possible_score
                     FROM worksheet_assignment_student was
                     LEFT JOIN item_result ir ON ir.assignment_student_id = was.id
                     WHERE was.assignment_id = :assignmentId
@@ -197,13 +217,23 @@ public class AnalysisClassQueryRepository {
                            WHERE was.assignment_id = :assignmentId
                              AND sa.grading_status <> 'GRADED'
                        ) AS grading_pending_answer_count,
-                       (
-                           SELECT ROUND(
-                               100.0 * SUM(correct_item_count)
-                               / NULLIF(SUM(graded_item_count), 0), 1
+                       CASE
+                           WHEN :usesScoreRate
+                           THEN (
+                               SELECT ROUND(
+                                   100.0 * SUM(earned_score)
+                                   / NULLIF(SUM(possible_score), 0), 1
+                               )
+                               FROM student_result
                            )
-                           FROM student_result
-                       ) AS class_accuracy_rate,
+                           ELSE (
+                               SELECT ROUND(
+                                   100.0 * SUM(correct_item_count)
+                                   / NULLIF(SUM(graded_item_count), 0), 1
+                               )
+                               FROM student_result
+                           )
+                       END AS class_performance_rate,
                        (
                            SELECT CAST(ROUND(AVG(total_seconds) * 1000) AS BIGINT)
                            FROM student_time
@@ -218,38 +248,60 @@ public class AnalysisClassQueryRepository {
                            SELECT COUNT(*)
                            FROM student_result
                            WHERE graded_item_count > 0
-                             AND 100.0 * correct_item_count / graded_item_count < 60
+                             AND CASE
+                                 WHEN :usesScoreRate
+                                 THEN 100.0 * earned_score
+                                      / NULLIF(possible_score, 0)
+                                 ELSE 100.0 * correct_item_count
+                                      / graded_item_count
+                             END < 60
                        ) AS weakness_student_count
                 """;
         return jdbcClient.sql(sql)
                 .param("assignmentId", assignmentId)
+                .param("usesScoreRate",
+                        worksheetType == WorksheetType.COMPREHENSIVE_ASSESSMENT)
                 .query((rs, rowNum) -> new ClassAnalysisOverviewRow(
                         rs.getInt("participant_count"),
                         rs.getInt("grading_pending_student_count"),
                         rs.getInt("grading_pending_answer_count"),
-                        rs.getObject("class_accuracy_rate", BigDecimal.class),
+                        rs.getObject("class_performance_rate", BigDecimal.class),
                         rs.getObject("average_solving_duration_ms", Long.class),
                         rs.getInt("weakness_subcategory_count"),
                         rs.getInt("weakness_student_count")))
                 .single();
     }
 
-    /** 선택한 배정의 모든 학생을 채점 완료 문항 수와 정답률로 조회한다. */
-    public List<AnalysisStudentRow> findStudents(long assignmentId) {
+    /** 선택한 배정의 모든 학생을 학습지 유형별 성취율과 함께 조회한다. */
+    public List<AnalysisStudentRow> findStudents(
+            long assignmentId,
+            WorksheetType worksheetType
+    ) {
         String sql = ITEM_RESULT_CTE + """
                 SELECT was.student_id,
                        ma.name AS student_name,
                        COUNT(ir.worksheet_item_id)
                            FILTER (WHERE ir.graded_unit_count = ir.expected_unit_count)
                            AS graded_item_count,
-                       ROUND(
-                           100.0 * COUNT(ir.worksheet_item_id) FILTER (WHERE ir.is_correct)
-                           / NULLIF(
-                               COUNT(ir.worksheet_item_id) FILTER (
+                       CASE
+                           WHEN :usesScoreRate
+                           THEN ROUND(
+                               100.0 * SUM(ir.score) FILTER (
                                    WHERE ir.graded_unit_count = ir.expected_unit_count
-                               ), 0
-                           ), 1
-                       ) AS accuracy_rate
+                               )
+                               / NULLIF(SUM(ir.resolved_max_score) FILTER (
+                                   WHERE ir.graded_unit_count = ir.expected_unit_count
+                               ), 0), 1
+                           )
+                           ELSE ROUND(
+                               100.0 * COUNT(ir.worksheet_item_id) FILTER (
+                                   WHERE ir.is_correct
+                               )
+                               / NULLIF(COUNT(ir.worksheet_item_id) FILTER (
+                                   WHERE ir.graded_unit_count = ir.expected_unit_count
+                               ), 0), 1
+                           )
+                       END AS performance_rate
                 FROM worksheet_assignment_student was
                 JOIN member_account ma ON ma.id = was.student_id
                 LEFT JOIN item_result ir ON ir.assignment_student_id = was.id
@@ -259,11 +311,13 @@ public class AnalysisClassQueryRepository {
                 """;
         return jdbcClient.sql(sql)
                 .param("assignmentId", assignmentId)
+                .param("usesScoreRate",
+                        worksheetType == WorksheetType.COMPREHENSIVE_ASSESSMENT)
                 .query((rs, rowNum) -> new AnalysisStudentRow(
                         rs.getLong("student_id"),
                         rs.getString("student_name"),
                         rs.getInt("graded_item_count"),
-                        rs.getObject("accuracy_rate", BigDecimal.class)))
+                        rs.getObject("performance_rate", BigDecimal.class)))
                 .list();
     }
 }

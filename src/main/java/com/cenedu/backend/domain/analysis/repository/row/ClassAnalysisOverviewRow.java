@@ -7,7 +7,7 @@ public record ClassAnalysisOverviewRow(
         int participantCount,
         int gradingPendingStudentCount,
         int gradingPendingAnswerCount,
-        BigDecimal classAccuracyRate,
+        BigDecimal classPerformanceRate,
         Long averageSolvingDurationMs,
         int weaknessSubcategoryCount,
         int weaknessStudentCount
