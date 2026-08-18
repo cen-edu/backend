@@ -17,6 +17,7 @@ import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
@@ -34,6 +35,7 @@ public class ProblemAuthoringFinalizationService {
     private final ProblemAssetStorageTaskRepository storageTaskRepository;
     private final ProblemSnapshotEntityMapper mapper;
     private final ObjectMapper objectMapper;
+    private ProblemSearchIndexingService searchIndexingService;
 
     public ProblemAuthoringFinalizationService(ProblemAuthoringSessionRepository sessionRepository,
             ProblemAuthoringVersionRepository versionRepository, ProblemQuestionRepository questionRepository,
@@ -48,6 +50,10 @@ public class ProblemAuthoringFinalizationService {
         this.storageTaskRepository = storageTaskRepository;
         this.mapper = mapper; this.objectMapper = objectMapper;
     }
+
+    /** 최종화 이후 검색 인덱싱 큐를 선택적으로 연결한다. */
+    @Autowired(required = false)
+    void setSearchIndexingService(ProblemSearchIndexingService service) { this.searchIndexingService = service; }
 
     /** 소유한 Session들을 검증한 뒤 최종 문제 참조를 반환한다. */
     @Transactional
@@ -134,6 +140,10 @@ public class ProblemAuthoringFinalizationService {
         }
         if (questionId == null) throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_DATA_INVALID);
         session.finalizeAs(questionId, version.getVerificationStatus());
+        if (searchIndexingService != null) {
+            searchIndexingService.enqueueFinalized(questionId, version.getId(),
+                    read(version.getSnapshot(), QuestionSnapshotV1.class));
+        }
         return new FinalizedProblemReferenceResponse(session.getId(), version.getId(), questionId,
                 questionType(version), resolveDeploymentStatus(questionId));
     }
