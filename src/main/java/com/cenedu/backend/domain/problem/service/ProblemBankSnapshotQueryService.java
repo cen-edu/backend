@@ -9,7 +9,6 @@ import com.cenedu.backend.domain.problem.authoring.snapshot.ProblemQuestionSnaps
 import com.cenedu.backend.domain.problem.authoring.snapshot.ProblemSnapshotSource;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
-import com.cenedu.backend.domain.problem.dto.response.ProblemQuestionDetailResponse;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemChoiceRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemStepRepository;
@@ -23,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ProblemBankSnapshotQueryService {
     private final ProblemQuestionRepository questionRepository;
-    private final ProblemQuestionDetailService detailService;
     private final ProblemQuestionSnapshotMapper mapper;
     private final SnapshotStructuralValidator validator;
     private final ProblemChoiceRepository choiceRepository;
@@ -33,7 +31,6 @@ public class ProblemBankSnapshotQueryService {
     private final ProblemRubricItemRepository rubricRepository;
 
     public ProblemBankSnapshotQueryService(ProblemQuestionRepository questionRepository,
-                                           ProblemQuestionDetailService detailService,
                                            ProblemQuestionSnapshotMapper mapper,
                                            SnapshotStructuralValidator validator,
                                            ProblemChoiceRepository choiceRepository,
@@ -42,7 +39,6 @@ public class ProblemBankSnapshotQueryService {
                                            ProblemAssetRepository assetRepository,
                                            ProblemRubricItemRepository rubricRepository) {
         this.questionRepository = questionRepository;
-        this.detailService = detailService;
         this.mapper = mapper;
         this.validator = validator;
         this.choiceRepository = choiceRepository;
@@ -59,32 +55,38 @@ public class ProblemBankSnapshotQueryService {
         Map<Long, ProblemQuestion> questions = questionRepository.findAllById(questionIds).stream()
                 .collect(java.util.stream.Collectors.toMap(ProblemQuestion::getId, q -> q,
                         (first, second) -> first, LinkedHashMap::new));
-        Map<Long, ProblemQuestionDetailResponse> details = detailService.getDetailsByIds(questionIds)
-                .stream().collect(java.util.stream.Collectors.toMap(ProblemQuestionDetailResponse::id,
-                        detail -> detail, (first, second) -> first, LinkedHashMap::new));
         Map<Long, List<com.cenedu.backend.domain.problem.entity.ProblemChoice>> choices = group(choiceRepository.findAllByQuestionIds(questionIds));
         Map<Long, List<com.cenedu.backend.domain.problem.entity.ProblemStep>> steps = group(stepRepository.findAllByQuestionIds(questionIds));
         Map<Long, List<com.cenedu.backend.domain.problem.entity.ProblemAnswerUnit>> units = group(answerUnitRepository.findAllByQuestionIds(questionIds));
         Map<Long, List<com.cenedu.backend.domain.problem.entity.ProblemAsset>> assets = group(assetRepository.findAllByQuestionIds(questionIds));
         Map<Long, List<com.cenedu.backend.domain.problem.entity.ProblemRubricItem>> rubrics = group(rubricRepository.findAllByQuestionIds(questionIds));
-        return questionIds.stream().map(id -> result(id, questions.get(id), details.get(id),
+        return questionIds.stream().map(id -> result(id, questions.get(id),
                 choices.getOrDefault(id, List.of()), steps.getOrDefault(id, List.of()),
                 units.getOrDefault(id, List.of()), assets.getOrDefault(id, List.of()),
                 rubrics.getOrDefault(id, List.of()))).toList();
     }
 
     private BankSnapshotResult result(Long id, ProblemQuestion question,
-                                      ProblemQuestionDetailResponse detail,
                                       List<com.cenedu.backend.domain.problem.entity.ProblemChoice> choices,
                                       List<com.cenedu.backend.domain.problem.entity.ProblemStep> steps,
                                       List<com.cenedu.backend.domain.problem.entity.ProblemAnswerUnit> units,
                                       List<com.cenedu.backend.domain.problem.entity.ProblemAsset> assets,
                                       List<com.cenedu.backend.domain.problem.entity.ProblemRubricItem> rubrics) {
         if (question == null) return new BankSnapshotResult(id, null, false, List.of("question: 존재하지 않습니다."));
-        QuestionSnapshotV1 snapshot = mapper.toSnapshot(new ProblemSnapshotSource(
-                question, choices, steps, units, assets, rubrics));
-        List<String> violations = validator.violations(snapshot);
-        return new BankSnapshotResult(id, snapshot, violations.isEmpty(), violations);
+        try {
+            QuestionSnapshotV1 snapshot = mapper.toSnapshot(new ProblemSnapshotSource(
+                    question, choices, steps, units, assets, rubrics));
+            List<String> violations = validator.violations(snapshot);
+            Map<String, String> storageKeys = assets.stream().collect(
+                    java.util.stream.Collectors.toMap(
+                            com.cenedu.backend.domain.problem.entity.ProblemAsset::getAssetKey,
+                            com.cenedu.backend.domain.problem.entity.ProblemAsset::getStorageKey,
+                            (first, second) -> first, LinkedHashMap::new));
+            return new BankSnapshotResult(id, snapshot, violations.isEmpty(), violations, storageKeys);
+        } catch (RuntimeException exception) {
+            return new BankSnapshotResult(id, null, false,
+                    List.of("snapshot mapping: " + exception.getMessage()));
+        }
     }
 
     private <T> Map<Long, List<T>> group(List<T> values) {

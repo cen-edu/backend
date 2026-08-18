@@ -14,7 +14,13 @@ class ProblemGenerationPlanTest {
             GenerationPurpose.PERSONALIZED_APPLICATION, null, null, List.of(), List.of());
         ProblemGenerationPlan plan = new ProblemGenerationPlan(UUID.randomUUID(),
             GenerationJobType.PERSONALIZED, List.of(
-                new ProblemGenerationSlotPlan(1, GenerationSlotSource.BANK_REUSE, 30L, null),
+                new ProblemGenerationSlotPlan(1, GenerationSlotSource.BANK_REUSE, 30L,
+                        new com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1(
+                                1, new com.cenedu.backend.domain.problem.authoring.model.SnapshotMetadata(
+                                com.cenedu.backend.global.common.enums.QuestionType.SHORT_INPUT,
+                                com.cenedu.backend.domain.problem.entity.enums.QuestionPresentation.TEXT_ONLY,
+                                "mid", 1L, null, null, null), List.of(), List.of(), List.of(),
+                                List.of(), List.of(), null, null, List.of()), null),
                 new ProblemGenerationSlotPlan(2, GenerationSlotSource.AI_GENERATION, null, command)));
 
         assertThat(plan.slots()).extracting(ProblemGenerationSlotPlan::source)

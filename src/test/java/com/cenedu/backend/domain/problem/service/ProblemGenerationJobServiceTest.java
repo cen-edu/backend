@@ -50,7 +50,8 @@ class ProblemGenerationJobServiceTest {
                 jobRepository,
                 itemRepository,
                 mock(ProblemAuthoringSessionRepository.class),
-                new ProblemAuthoringJsonCodec(new ObjectMapper()));
+                new ProblemAuthoringJsonCodec(new ObjectMapper()),
+                mock(ProblemAuthoringVersionService.class));
         ProblemGenerationWorkItem workItem = new ProblemGenerationWorkItem(
                 1L, 5L, 7L, 11L, mock(ProblemGenerationCommand.class));
 

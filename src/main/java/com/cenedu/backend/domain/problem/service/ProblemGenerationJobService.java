@@ -24,7 +24,6 @@ import com.cenedu.backend.domain.problem.repository.ProblemGenerationItemReposit
 import com.cenedu.backend.domain.problem.repository.ProblemGenerationJobRepository;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,13 +40,6 @@ public class ProblemGenerationJobService {
     public ProblemGenerationJobService(ProblemGenerationJobRepository jobRepository,
                                        ProblemGenerationItemRepository itemRepository,
                                        ProblemAuthoringSessionRepository sessionRepository,
-                                       ProblemAuthoringJsonCodec jsonCodec) {
-        this(jobRepository, itemRepository, sessionRepository, jsonCodec, null);
-    }
-
-    public ProblemGenerationJobService(ProblemGenerationJobRepository jobRepository,
-                                       ProblemGenerationItemRepository itemRepository,
-                                       ProblemAuthoringSessionRepository sessionRepository,
                                        ProblemAuthoringJsonCodec jsonCodec,
                                        ProblemAuthoringVersionService versionService) {
         this.jobRepository = jobRepository;
@@ -60,7 +52,7 @@ public class ProblemGenerationJobService {
     /** 문제은행 재사용과 AI 생성 슬롯을 하나의 멱등 Job으로 저장한다. */
     @Transactional
     public ProblemGenerationJobResult create(long ownerTeacherId, ProblemGenerationPlan plan) {
-        if (plan == null) throw new IllegalArgumentException("생성 계획이 필요합니다.");
+        validatePlan(plan);
         return jobRepository.findByOwnerTeacherIdAndClientRequestId(ownerTeacherId, plan.clientRequestId())
                 .map(this::toResult)
                 .orElseGet(() -> createPlanned(ownerTeacherId, plan));
@@ -171,10 +163,17 @@ public class ProblemGenerationJobService {
                 itemRepository.save(ProblemGenerationItem.createBankReuse(
                         job.getId(), slot.slotIndex(), java.util.UUID.randomUUID(),
                         session.getId(), slot.sourceQuestionId()));
-                if (slot.sourceSnapshot() != null && versionService != null) {
-                    versionService.saveBankReuse(ownerTeacherId, session.getId(),
-                            slot.sourceQuestionId(), jsonCodec.write(slot.sourceSnapshot()), "{}");
-                }
+                versionService.saveBankReuse(ownerTeacherId, session.getId(),
+                        slot.sourceQuestionId(), jsonCodec.write(slot.sourceSnapshot()),
+                        jsonCodec.write(java.util.Map.of(
+                                "schemaVersion", 1,
+                                "plans", java.util.List.of(),
+                                "artifacts", slot.sourceAssetStorageKeys().entrySet().stream()
+                                        .map(entry -> java.util.Map.of(
+                                                "assetKey", entry.getKey(),
+                                                "status", "READY",
+                                                "draftStorageKey", entry.getValue(),
+                                                "attemptCount", 0)).toList())));
             } else {
                 hasAi = true;
                 ProblemGenerationCommand command = slot.generationCommand();
@@ -228,6 +227,19 @@ public class ProblemGenerationJobService {
             }
             if (!matches(batch.jobType(), command.purpose())) {
                 throw new IllegalArgumentException("Job 유형과 생성 목적이 일치하지 않습니다.");
+            }
+        }
+    }
+
+    private void validatePlan(ProblemGenerationPlan plan) {
+        if (plan == null) throw new IllegalArgumentException("생성 계획이 필요합니다.");
+        Set<java.util.UUID> requestIds = new HashSet<>();
+        for (ProblemGenerationSlotPlan slot : plan.slots()) {
+            if (slot.source() == GenerationSlotSource.AI_GENERATION) {
+                ProblemGenerationCommand command = slot.generationCommand();
+                if (!requestIds.add(command.requestId()) || !matches(plan.jobType(), command.purpose())) {
+                    throw new IllegalArgumentException("생성 계획의 요청 ID 또는 목적이 올바르지 않습니다.");
+                }
             }
         }
     }

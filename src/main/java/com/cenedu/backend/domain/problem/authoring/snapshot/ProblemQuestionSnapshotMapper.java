@@ -60,18 +60,27 @@ public class ProblemQuestionSnapshotMapper {
                                          ProblemQuestionDetailResponse detail) {
         QuestionSnapshotV1 base = toSnapshot(question);
         if (detail == null) return base;
-        List<SnapshotContentBlock> blocks = detail.contentBlocks().stream().map(this::contentBlock).toList();
+        List<SnapshotContentBlock> blocks = new java.util.ArrayList<>();
+        for (int i = 0; i < detail.contentBlocks().size(); i++) {
+            ProblemContentBlockResponse block = detail.contentBlocks().get(i);
+            blocks.add(new SnapshotContentBlock("CB" + (i + 1),
+                    SnapshotBlockKind.valueOf(block.blockKind()), i,
+                    block.text(), block.assetRef(), block.markup()));
+        }
         List<SnapshotAssetReference> assets = detail.assets().stream()
                 .map(asset -> new SnapshotAssetReference(asset.assetKey(), asset.altText())).toList();
-        List<SnapshotChoice> choices = detail.choices().stream()
-                .map(choice -> new SnapshotChoice("C" + choice.displayOrder(), choice.displayOrder(), choice.content())).toList();
-        List<SnapshotStep> steps = detail.steps().stream().map(this::step).toList();
+        List<SnapshotChoice> choices = new java.util.ArrayList<>();
+        for (int i = 0; i < detail.choices().size(); i++) {
+            choices.add(new SnapshotChoice("C" + (i + 1), i, detail.choices().get(i).content()));
+        }
+        List<SnapshotStep> steps = new java.util.ArrayList<>();
+        for (int i = 0; i < detail.steps().size(); i++) steps.add(step(detail.steps().get(i), i));
         List<SnapshotAnswerUnit> units = detail.answerUnits().stream().map(unit -> {
             String normalized = unit.compareMethod() == com.cenedu.backend.global.common.enums.CompareMethod.CHOICE
                     || unit.compareMethod() == com.cenedu.backend.global.common.enums.CompareMethod.RUBRIC
                     ? null : unit.answer();
             return new SnapshotAnswerUnit(unit.unitKey(),
-                    unit.stepId() == null ? null : "S" + findStepOrder(detail.steps(), unit.stepId()),
+                    unit.stepId() == null ? null : "ST" + (findStepIndex(detail.steps(), unit.stepId()) + 1),
                     unit.displayOrder(), unit.answer(), normalized, unit.compareMethod(),
                     unit.diagnosticType(), unit.displayUnit());
         }).toList();
@@ -102,8 +111,19 @@ public class ProblemQuestionSnapshotMapper {
                 assets, source.choices().stream().map(com.cenedu.backend.domain.problem.dto.response.ProblemChoiceResponse::from).toList(),
                 steps, units, question.getExplanation(), guide, question.getHintText());
         QuestionSnapshotV1 snapshot = toSnapshot(question, detail);
+        List<SnapshotAnswerUnit> entityUnits = source.answerUnits().stream().map(unit -> {
+            String raw = unit.getCompareMethod() == com.cenedu.backend.global.common.enums.CompareMethod.CHOICE
+                    && unit.getAnswerRaw() != null && !unit.getAnswerRaw().startsWith("C")
+                    ? "C" + unit.getAnswerRaw() : unit.getAnswerRaw();
+            return new SnapshotAnswerUnit(unit.getUnitKey(), unit.getStep() == null ? null
+                    : "ST" + (source.steps().indexOf(unit.getStep()) + 1), unit.getDisplayOrder(),
+                    raw, unit.getCompareMethod() == com.cenedu.backend.global.common.enums.CompareMethod.CHOICE
+                    || unit.getCompareMethod() == com.cenedu.backend.global.common.enums.CompareMethod.RUBRIC
+                    ? null : unit.getAnswerNormalized(), unit.getCompareMethod(),
+                    unit.getDiagnosticType(), unit.getDisplayUnit());
+        }).toList();
         return new QuestionSnapshotV1(snapshot.schemaVersion(), snapshot.metadata(), snapshot.contentBlocks(),
-                snapshot.assets(), snapshot.choices(), snapshot.steps(), snapshot.answerUnits(),
+                snapshot.assets(), snapshot.choices(), snapshot.steps(), entityUnits,
                 snapshot.explanation(), snapshot.learningGuide(), rubrics(source.rubricItems()));
     }
 
@@ -119,23 +139,18 @@ public class ProblemQuestionSnapshotMapper {
         catch (Exception exception) { throw new IllegalArgumentException("학습 안내 JSON을 읽을 수 없습니다.", exception); }
     }
 
-    private SnapshotContentBlock contentBlock(ProblemContentBlockResponse block) {
-        return new SnapshotContentBlock(block.blockId(), SnapshotBlockKind.valueOf(block.blockKind()),
-                block.displayOrder(), block.text(), block.assetRef(), block.markup());
-    }
-
-    private SnapshotStep step(ProblemStepResponse step) {
+    private SnapshotStep step(ProblemStepResponse step, int normalizedOrder) {
         List<SnapshotSegment> segments = step.segments().stream().map(segment -> {
             SnapshotSegmentType type = SnapshotSegmentType.valueOf(segment.type());
             return new SnapshotSegment(type, type == SnapshotSegmentType.TEXT ? segment.value() : null,
                     type == SnapshotSegmentType.TEXT ? null : segment.unitKey());
         }).toList();
-        return new SnapshotStep("S" + step.displayOrder(), step.displayOrder(), step.label(), segments);
+        return new SnapshotStep("ST" + (normalizedOrder + 1), normalizedOrder, step.label(), segments);
     }
 
-    private int findStepOrder(List<ProblemStepResponse> steps, Long stepId) {
-        return steps.stream().filter(step -> step.id().equals(stepId)).findFirst()
-                .map(ProblemStepResponse::displayOrder).orElseThrow();
+    private int findStepIndex(List<ProblemStepResponse> steps, Long stepId) {
+        for (int i = 0; i < steps.size(); i++) if (steps.get(i).id().equals(stepId)) return i;
+        throw new IllegalArgumentException("답안 단위의 STEP을 찾을 수 없습니다.");
     }
 
     private SnapshotLearningGuide guide(ProblemLearningGuideResponse guide) {
@@ -144,9 +159,12 @@ public class ProblemQuestionSnapshotMapper {
 
     /** 서술형 채점 기준을 버전 간 안정적인 R 논리 키로 변환한다. */
     public List<SnapshotRubricItem> rubrics(List<ProblemRubricItem> rubricItems) {
-        return rubricItems == null ? List.of() : rubricItems.stream()
-                .map(item -> new SnapshotRubricItem("R" + item.getDisplayOrder(),
-                        item.getDisplayOrder(), item.getLabel(), item.getWeight()))
-                .toList();
+        if (rubricItems == null) return List.of();
+        List<SnapshotRubricItem> result = new java.util.ArrayList<>();
+        for (int i = 0; i < rubricItems.size(); i++) {
+            ProblemRubricItem item = rubricItems.get(i);
+            result.add(new SnapshotRubricItem("R" + (i + 1), i, item.getLabel(), item.getWeight()));
+        }
+        return List.copyOf(result);
     }
 }

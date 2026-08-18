@@ -35,9 +35,10 @@ public class ProblemGenerationPlanningService {
         int index = 1;
         for (ProblemGenerationRequirement requirement : requirements) {
             List<ProblemQuestion> bank = selector.selectAvailable(requirement.subUnitId(),
-                requirement.difficulty(), requirement.questionType(), requirement.count(), selectedIds);
+                requirement.difficulty(), requirement.questionType(), Integer.MAX_VALUE, selectedIds);
             List<Long> candidateIds = bank.stream().map(ProblemQuestion::getId).toList();
             List<BankSnapshotResult> snapshotResults = snapshotQueryService.getSnapshots(candidateIds);
+            selectedIds.addAll(candidateIds);
             java.util.Map<Long, BankSnapshotResult> resultById = snapshotResults.stream()
                     .collect(java.util.stream.Collectors.toMap(BankSnapshotResult::questionId, result -> result));
             int reusableCount = 0;
@@ -47,7 +48,8 @@ public class ProblemGenerationPlanningService {
                 selectedIds.add(question.getId());
                 reusableCount++;
                 slots.add(new ProblemGenerationSlotPlan(index++, GenerationSlotSource.BANK_REUSE,
-                    question.getId(), result.snapshot(), null));
+                    question.getId(), result.snapshot(), result.assetStorageKeys(), null));
+                if (reusableCount == requirement.count()) break;
             }
             int shortage = requirement.count() - reusableCount;
             for (int i = 0; i < shortage; i++) {

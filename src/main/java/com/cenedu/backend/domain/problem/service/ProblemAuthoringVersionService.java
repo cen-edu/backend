@@ -37,7 +37,7 @@ public class ProblemAuthoringVersionService {
                 sourceQuestionId, 1, snapshot, assetManifest == null ? "{}" : assetManifest,
                 "문제은행 문항 재사용"));
         version.startVerification(UUID.nameUUIDFromBytes(("verify:" + version.getId()).getBytes()));
-        version.passVerification("BANK_REUSE");
+        version.passVerification("{\"source\":\"BANK_REUSE\",\"structuralValidation\":\"PASSED\"}");
         session.initializeCurrentVersion(version.getId());
         return version;
     }
