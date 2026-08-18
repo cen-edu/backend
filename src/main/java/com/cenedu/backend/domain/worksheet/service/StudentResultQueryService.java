@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 
 import com.cenedu.backend.domain.grading.entity.GradingRubricResult;
 import com.cenedu.backend.domain.grading.repository.GradingRubricResultRepository;
+import com.cenedu.backend.domain.problem.dto.response.ProblemAssetResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemContentBlockResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemStepSegmentResponse;
 import com.cenedu.backend.domain.problem.entity.ProblemAnswerUnit;
@@ -22,6 +23,7 @@ import com.cenedu.backend.domain.problem.repository.ProblemAnswerUnitRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemChoiceRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemStepRepository;
+import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
 import com.cenedu.backend.domain.submission.entity.SubmissionAnswer;
 import com.cenedu.backend.domain.submission.entity.enums.GradingStatus;
 import com.cenedu.backend.domain.submission.repository.SubmissionAnswerRepository;
@@ -79,6 +81,7 @@ public class StudentResultQueryService {
     private final ProblemStepRepository problemStepRepository;
     private final SubmissionAnswerRepository submissionAnswerRepository;
     private final GradingRubricResultRepository gradingRubricResultRepository;
+    private final ProblemQuestionDetailService problemQuestionDetailService;
     private final ObjectMapper objectMapper;
 
     public StudentResultResponse getResult(long studentId, long assignmentStudentId) {
@@ -125,6 +128,9 @@ public class StudentResultQueryService {
         Map<Long, SubmissionAnswer> savedByAnswerUnitId = submissionAnswerRepository
                 .findByAssignmentStudentId(assignmentStudentId).stream()
                 .collect(Collectors.toMap(SubmissionAnswer::getAnswerUnitId, answer -> answer));
+
+        Map<Long, List<ProblemAssetResponse>> assetsByQuestionId = problemQuestionDetailService
+                .getAssetsByQuestionIds(questionIds);
 
         List<Long> submissionAnswerIds = savedByAnswerUnitId.values().stream()
                 .map(SubmissionAnswer::getId)
@@ -195,8 +201,9 @@ public class StudentResultQueryService {
 
             itemResponses.add(StudentResultItemResponse.from(
                     item, question, itemResult, itemScore, itemMaxScore,
-                    parseContentBlocks(question.getContentBlocks(), question.getId()),
-                    explanation, chatContext, unitResponses, rubric));
+                    parseContentBlocks(question.getContentBlocks()),
+                    explanation, chatContext, unitResponses, rubric,
+                    assetsByQuestionId.getOrDefault(question.getId(), List.of())));
         }
 
         return StudentResultResponse.from(was, itemResponses, totalScore, maxTotalScore);
@@ -446,12 +453,12 @@ public class StudentResultQueryService {
                 .toList();
     }
 
-    private List<StudentContentBlockResponse> parseContentBlocks(String contentBlocks, long questionId) {
+    private List<StudentContentBlockResponse> parseContentBlocks(String contentBlocks) {
         try {
             List<ProblemContentBlockResponse> blocks = objectMapper.readValue(
                     contentBlocks, new TypeReference<List<ProblemContentBlockResponse>>() {
                     });
-            return blocks.stream().map(block -> StudentContentBlockResponse.from(block, questionId)).toList();
+            return blocks.stream().map(StudentContentBlockResponse::from).toList();
         } catch (JacksonException e) {
             throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
         }

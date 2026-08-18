@@ -29,6 +29,7 @@ import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
@@ -38,6 +39,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import org.springframework.beans.factory.ObjectProvider;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -84,7 +86,7 @@ public class ProblemQuestionDetailService {
             findAnswerUnitsByQuestionId(questionIds);
 
         Map<Long, List<ProblemAssetResponse>> assetsByQuestionId =
-            findAssetsByQuestionId(questionIds);
+            getAssetsByQuestionIds(questionIds);
 
         return questions.stream()
             .map(question -> ProblemQuestionDetailResponse.from(
@@ -198,9 +200,15 @@ public class ProblemQuestionDetailService {
             ));
     }
 
-    // 이미지 자산을 문항 ID별 응답 목록으로 묶는다.
-    private Map<Long, List<ProblemAssetResponse>>
-    findAssetsByQuestionId(List<Long> questionIds) {
+    /**
+     * 이미지 자산을 문항 ID별 응답 목록으로 묶는다. {@code url}은 조회 가능한 S3 URL이고,
+     * S3 기능이 꺼져 있으면 {@code null}이다.
+     *
+     * <p>정답·해설이 섞이지 않은 자산 정보만 담으므로 학생·채점 응답에서도 그대로 쓴다.
+     * 문항 상세({@link ProblemQuestionDetailResponse})는 정답을 포함하므로 재사용하면 안 된다.
+     */
+    public Map<Long, List<ProblemAssetResponse>>
+    getAssetsByQuestionIds(List<Long> questionIds) {
 
         return problemAssetRepository
             .findAllByQuestionIds(questionIds)
@@ -217,7 +225,16 @@ public class ProblemQuestionDetailService {
             ));
     }
 
-    // S3 기능이 활성화된 경우 storage_key를 조회 URL로 변환한다.
+    /**
+     * S3 기능이 활성화된 경우 storage_key를 조회 URL로 변환한다. 만들지 못하면 {@code null}이다.
+     *
+     * <p>버킷에 객체가 없을 때 던지지 않고 {@code null}로 떨어뜨린다. 이미지 한 장이 비었다고
+     * 문항 목록 전체가 404가 되면 교사·학생이 그 화면을 아예 열지 못한다. 프론트는 url이 없으면
+     * altText 플레이스홀더를 그리므로 나머지 문항은 정상적으로 풀 수 있다.
+     *
+     * <p>저장소 장애·설정 누락({@code IMAGE_STORAGE_FAILED}, {@code IMAGE_STORAGE_NOT_CONFIGURED})은
+     * 삼키지 않는다. 그것까지 감추면 S3가 통째로 죽은 상황이 "이미지 없는 화면"으로 조용히 보인다.
+     */
     private String createAssetUrl(ProblemAsset asset) {
         ProblemAssetUrlService urlService =
             problemAssetUrlServiceProvider.getIfAvailable();
@@ -226,7 +243,16 @@ public class ProblemQuestionDetailService {
             return null;
         }
 
-        return urlService.createUrl(asset.getStorageKey());
+        try {
+            return urlService.createUrl(asset.getStorageKey());
+        } catch (BusinessException exception) {
+            if (exception.getErrorCode() != ErrorCode.IMAGE_NOT_FOUND) {
+                throw exception;
+            }
+            log.warn("문항 이미지가 버킷에 없어 URL 없이 내려보낸다 — questionId={}, assetKey={}, storageKey={}",
+                asset.getQuestion().getId(), asset.getAssetKey(), asset.getStorageKey());
+            return null;
+        }
     }
 
     // 문항 본문의 JSON 배열을 화면 표시용 블록 목록으로 변환한다.

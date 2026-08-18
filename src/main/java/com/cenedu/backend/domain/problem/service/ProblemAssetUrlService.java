@@ -20,12 +20,12 @@ import lombok.RequiredArgsConstructor;
 public class ProblemAssetUrlService {
 
     private static final Duration URL_EXPIRATION =
-        Duration.ofHours(1);
+        Duration.ofHours(6);
 
     private final ImageStorageService imageStorageService;
     private final S3Properties s3Properties;
 
-    /** problem_asset.storage_key를 1시간 동안 조회 가능한 S3 URL로 변환한다. */
+    /** problem_asset.storage_key를 6시간 동안 조회 가능한 S3 URL로 변환한다. */
     public String createUrl(String storageKey) {
         return imageStorageService.createGetUrl(
             s3Properties.requiredProblemBucket(),

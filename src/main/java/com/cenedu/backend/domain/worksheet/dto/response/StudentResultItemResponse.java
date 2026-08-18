@@ -3,6 +3,7 @@ package com.cenedu.backend.domain.worksheet.dto.response;
 import java.math.BigDecimal;
 import java.util.List;
 
+import com.cenedu.backend.domain.problem.dto.response.ProblemAssetResponse;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetItem;
 
@@ -33,7 +34,8 @@ public record StudentResultItemResponse(
         StudentResultExplanationResponse explanation,
         StudentResultChatContextResponse chatContext,
         List<StudentResultAnswerUnitResponse> answerUnits,
-        List<StudentRubricItemResponse> rubric
+        List<StudentRubricItemResponse> rubric,
+        List<ProblemAssetResponse> assets
 ) {
 
     public static StudentResultItemResponse from(
@@ -46,7 +48,8 @@ public record StudentResultItemResponse(
             StudentResultExplanationResponse explanation,
             StudentResultChatContextResponse chatContext,
             List<StudentResultAnswerUnitResponse> answerUnits,
-            List<StudentRubricItemResponse> rubric
+            List<StudentRubricItemResponse> rubric,
+            List<ProblemAssetResponse> assets
     ) {
         return new StudentResultItemResponse(
                 item.getId(),
@@ -61,7 +64,8 @@ public record StudentResultItemResponse(
                 explanation,
                 chatContext,
                 List.copyOf(answerUnits),
-                rubric
+                rubric,
+                List.copyOf(assets)
         );
     }
 }

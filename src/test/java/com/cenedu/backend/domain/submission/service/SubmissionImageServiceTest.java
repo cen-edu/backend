@@ -7,6 +7,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 
 import com.cenedu.backend.domain.problem.service.ProblemAnswerUnitService;
 import com.cenedu.backend.domain.worksheet.service.WorksheetImageAccessService;
@@ -104,5 +106,42 @@ class SubmissionImageServiceTest {
 
         assertThat(url).isEqualTo("https://example.com/image");
         verify(worksheetImageAccessService).validateQuestionIncluded(101L, 35L);
+    }
+
+    @Test
+    @DisplayName("버킷에 없는 칸은 결과에서 빠지고 나머지 칸의 URL은 그대로 나온다")
+    void skipsMissingObjectsInsteadOfFailingWholeRequest() {
+        when(worksheetImageAccessService.getAuthorizedWorksheetId(
+                7L, UserRole.TEACHER, 1001L)).thenReturn(101L);
+        when(answerUnitService.getQuestionId(501L)).thenReturn(35L);
+        when(answerUnitService.getQuestionId(502L)).thenReturn(36L);
+        when(imageStorageService.createGetUrl(
+                "answer-bucket", "answers/1001/501", Duration.ofMinutes(10)))
+                .thenThrow(new BusinessException(ErrorCode.IMAGE_NOT_FOUND));
+        when(imageStorageService.createGetUrl(
+                "answer-bucket", "answers/1001/502", Duration.ofMinutes(10)))
+                .thenReturn("https://example.com/second");
+
+        Map<Long, String> urls = submissionImageService.createGetUrls(
+                7L, UserRole.TEACHER, 1001L, List.of(501L, 502L));
+
+        assertThat(urls).doesNotContainKey(501L);
+        assertThat(urls).containsEntry(502L, "https://example.com/second");
+    }
+
+    @Test
+    @DisplayName("저장소 장애는 삼키지 않고 그대로 올린다 — 이미지 없는 화면으로 숨으면 안 된다")
+    void propagatesStorageFailure() {
+        when(worksheetImageAccessService.getAuthorizedWorksheetId(
+                7L, UserRole.TEACHER, 1001L)).thenReturn(101L);
+        when(answerUnitService.getQuestionId(501L)).thenReturn(35L);
+        when(imageStorageService.createGetUrl(
+                "answer-bucket", "answers/1001/501", Duration.ofMinutes(10)))
+                .thenThrow(new BusinessException(ErrorCode.IMAGE_STORAGE_FAILED));
+
+        assertThatThrownBy(() -> submissionImageService.createGetUrls(
+                7L, UserRole.TEACHER, 1001L, List.of(501L)))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.IMAGE_STORAGE_FAILED);
     }
 }

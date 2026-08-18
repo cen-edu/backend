@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.cenedu.backend.domain.problem.dto.response.ProblemAssetResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemContentBlockResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemStepSegmentResponse;
 import com.cenedu.backend.domain.problem.entity.ProblemAnswerUnit;
@@ -14,6 +15,7 @@ import com.cenedu.backend.domain.problem.repository.ProblemAnswerUnitRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemChoiceRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemStepRepository;
+import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
 import com.cenedu.backend.domain.submission.entity.SubmissionAnswer;
 import com.cenedu.backend.domain.submission.repository.SubmissionAnswerRepository;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentAnswerUnitResponse;
@@ -67,6 +69,7 @@ public class StudentWorksheetQueryService {
     private final ProblemStepRepository problemStepRepository;
     private final ProblemAnswerUnitRepository problemAnswerUnitRepository;
     private final SubmissionAnswerRepository submissionAnswerRepository;
+    private final ProblemQuestionDetailService problemQuestionDetailService;
     private final ObjectMapper objectMapper;
 
     public StudentAssignmentListResponse getAssignments(long studentId) {
@@ -154,10 +157,14 @@ public class StudentWorksheetQueryService {
                 .findByAssignmentStudentId(assignmentStudentId).stream()
                 .collect(Collectors.toMap(SubmissionAnswer::getAnswerUnitId, answer -> answer));
 
+        Map<Long, List<ProblemAssetResponse>> assetsByQuestionId = problemQuestionDetailService
+                .getAssetsByQuestionIds(questionIds);
+
         List<StudentWorksheetItemResponse> itemResponses = items.stream()
                 .map(item -> buildItemResponse(
                         item, questionsById.get(item.getQuestionId()),
-                        choicesByQuestionId, stepsByQuestionId, answerUnitsByQuestionId, savedByAnswerUnitId))
+                        choicesByQuestionId, stepsByQuestionId, answerUnitsByQuestionId, savedByAnswerUnitId,
+                        assetsByQuestionId))
                 .toList();
 
         return StudentWorksheetDetailResponse.from(was, itemResponses);
@@ -169,13 +176,14 @@ public class StudentWorksheetQueryService {
             Map<Long, List<ProblemChoice>> choicesByQuestionId,
             Map<Long, List<ProblemStep>> stepsByQuestionId,
             Map<Long, List<ProblemAnswerUnit>> answerUnitsByQuestionId,
-            Map<Long, SubmissionAnswer> savedByAnswerUnitId
+            Map<Long, SubmissionAnswer> savedByAnswerUnitId,
+            Map<Long, List<ProblemAssetResponse>> assetsByQuestionId
     ) {
         long questionId = question.getId();
         List<ProblemAnswerUnit> units = answerUnitsByQuestionId.getOrDefault(questionId, List.of());
 
         List<StudentContentBlockResponse> contentBlocks =
-                parseContentBlocks(question.getContentBlocks(), questionId);
+                parseContentBlocks(question.getContentBlocks());
 
         List<StudentChoiceResponse> choices = choicesByQuestionId.getOrDefault(questionId, List.of()).stream()
                 .map(StudentChoiceResponse::from)
@@ -192,7 +200,9 @@ public class StudentWorksheetQueryService {
                         unit, question.getQuestionType(), savedByAnswerUnitId.get(unit.getId())))
                 .toList();
 
-        return StudentWorksheetItemResponse.from(item, question, contentBlocks, choices, steps, answerUnits);
+        return StudentWorksheetItemResponse.from(
+                item, question, contentBlocks, choices, steps, answerUnits,
+                assetsByQuestionId.getOrDefault(questionId, List.of()));
     }
 
     /** custom_stage의 distinct 집합을 표시 순서대로. items가 이미 displayOrder로 정렬돼 있다. */
@@ -204,12 +214,12 @@ public class StudentWorksheetQueryService {
                 .toList();
     }
 
-    private List<StudentContentBlockResponse> parseContentBlocks(String contentBlocks, long questionId) {
+    private List<StudentContentBlockResponse> parseContentBlocks(String contentBlocks) {
         try {
             List<ProblemContentBlockResponse> blocks = objectMapper.readValue(
                     contentBlocks, new TypeReference<List<ProblemContentBlockResponse>>() {
                     });
-            return blocks.stream().map(block -> StudentContentBlockResponse.from(block, questionId)).toList();
+            return blocks.stream().map(StudentContentBlockResponse::from).toList();
         } catch (JacksonException e) {
             throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
         }

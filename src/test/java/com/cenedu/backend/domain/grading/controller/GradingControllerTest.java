@@ -36,7 +36,10 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @SpringBootTest(properties = {
         "app.jwt.secret=cen-edu-grading-controller-test-secret-32byte",
-        "app.jwt.access-token-expiration=1h"
+        "app.jwt.access-token-expiration=1h",
+        // 명시하지 않으면 .env 의 S3_ENABLED 가 새어들어와 이 테스트가 실제 버킷에 headObject 를
+        // 날린다. 그러면 "S3 가 꺼진 환경" 이라는 이름과 달리 켜진 채로 돌게 된다.
+        "app.storage.s3.enabled=false"
 })
 @AutoConfigureMockMvc
 @Import(PostgresTestcontainer.class)

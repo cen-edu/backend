@@ -16,11 +16,13 @@ import com.cenedu.backend.infra.storage.service.ImageStorageService;
 import com.cenedu.backend.infra.storage.service.ValidatedImage;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 /** 학생 답안 이미지의 권한 검증과 S3 저장·조회를 조율한다. */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "app.storage.s3", name = "enabled", havingValue = "true")
@@ -69,6 +71,10 @@ public class SubmissionImageService {
      *
      * <p>배정 권한은 1회만 검증하고, 칸이 이 학습지 문항인지는 칸마다 확인한다 — 검증을 줄이는 게
      * 아니라 같은 검증을 반복하지 않게 하는 것이다.
+     *
+     * <p>버킷에 객체가 없는 칸은 결과에서 빠진다(호출부의 {@code get}이 {@code null}). 업로드 실패나
+     * 수명주기 삭제로 한 장이 비었다고 던지면 교사가 그 학생 답안을 통째로 못 연다. 저장소 장애·설정
+     * 누락은 그대로 올린다 — 그것까지 감추면 S3가 죽은 상황이 "필기 없는 답안"으로 보인다.
      */
     public Map<Long, String> createGetUrls(long memberId, UserRole role, long assignmentStudentId,
                                            List<Long> answerUnitIds) {
@@ -82,11 +88,19 @@ public class SubmissionImageService {
         for (Long answerUnitId : answerUnitIds) {
             long questionId = answerUnitService.getQuestionId(answerUnitId);
             worksheetImageAccessService.validateQuestionIncluded(worksheetId, questionId);
-            urlsByAnswerUnitId.put(answerUnitId, imageStorageService.createGetUrl(
-                    s3Properties.requiredAnswerBucket(),
-                    answerKey(assignmentStudentId, answerUnitId),
-                    ANSWER_IMAGE_URL_EXPIRATION
-            ));
+            try {
+                urlsByAnswerUnitId.put(answerUnitId, imageStorageService.createGetUrl(
+                        s3Properties.requiredAnswerBucket(),
+                        answerKey(assignmentStudentId, answerUnitId),
+                        ANSWER_IMAGE_URL_EXPIRATION
+                ));
+            } catch (BusinessException exception) {
+                if (exception.getErrorCode() != ErrorCode.IMAGE_NOT_FOUND) {
+                    throw exception;
+                }
+                log.warn("필기 이미지가 버킷에 없어 URL 없이 내려보낸다 — assignmentStudentId={}, answerUnitId={}",
+                        assignmentStudentId, answerUnitId);
+            }
         }
         return urlsByAnswerUnitId;
     }
