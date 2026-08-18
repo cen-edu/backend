@@ -5,7 +5,6 @@ import java.util.List;
 import com.cenedu.backend.domain.analysis.report.AnalysisReportDraft;
 import com.cenedu.backend.domain.analysis.report.AnalysisReportGenerationPort;
 import com.cenedu.backend.domain.analysis.report.AnalysisReportRequest;
-import com.cenedu.backend.domain.analysis.repository.AnalysisReportQueryRepository;
 import com.cenedu.backend.domain.analysis.service.AnalysisReportDraftValidator
         .AnalysisReportDraftInvalidException;
 import org.slf4j.Logger;
@@ -36,20 +35,20 @@ public class AnalysisReportGenerationRunner {
     private static final String GENERATION_FAILED = "GENERATION_FAILED";
 
     private final ThreadPoolTaskExecutor executor;
-    private final AnalysisReportQueryRepository queryRepository;
+    private final AnalysisReportRequestAssembler requestAssembler;
     private final AnalysisReportGenerationPort generationPort;
     private final AnalysisReportDraftValidator draftValidator;
     private final AnalysisReportService reportService;
 
     public AnalysisReportGenerationRunner(
             @Qualifier("analysisReportTaskExecutor") ThreadPoolTaskExecutor executor,
-            AnalysisReportQueryRepository queryRepository,
+            AnalysisReportRequestAssembler requestAssembler,
             AnalysisReportGenerationPort generationPort,
             AnalysisReportDraftValidator draftValidator,
             AnalysisReportService reportService
     ) {
         this.executor = executor;
-        this.queryRepository = queryRepository;
+        this.requestAssembler = requestAssembler;
         this.generationPort = generationPort;
         this.draftValidator = draftValidator;
         this.reportService = reportService;
@@ -70,12 +69,11 @@ public class AnalysisReportGenerationRunner {
     private void generate(AnalysisReportGenerationRequested event) {
         long assignmentStudentId = event.assignmentStudentId();
         try {
-            List<Long> gradedItemIds = queryRepository.findGradedWorksheetItemIds(
-                    event.assignmentId(), assignmentStudentId);
-            AnalysisReportDraft draft = generationPort.generate(
-                    new AnalysisReportRequest(assignmentStudentId, gradedItemIds));
+            AnalysisReportRequest request = requestAssembler.assemble(
+                    event.assignmentId(), event.studentId(), assignmentStudentId);
+            AnalysisReportDraft draft = generationPort.generate(request);
             List<AnalysisReportDraft.ItemMessageDraft> validated =
-                    draftValidator.validate(draft, gradedItemIds);
+                    draftValidator.validate(draft, request.gradedWorksheetItemIds());
             reportService.completeGeneration(assignmentStudentId, draft, validated);
             log.info("분석 보고서 생성 완료 — assignmentStudentId={}, 문항 {}건",
                     assignmentStudentId, validated.size());

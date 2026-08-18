@@ -8,6 +8,7 @@ package com.cenedu.backend.domain.analysis.service;
  */
 public record AnalysisReportGenerationRequested(
         long assignmentId,
+        long studentId,
         long assignmentStudentId
 ) {
 }

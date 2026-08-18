@@ -71,7 +71,7 @@ public class AnalysisReportService {
                 source.assignmentStudentId(), now, now.minus(STALE_GENERATING));
         if (started > 0) {
             eventPublisher.publishEvent(new AnalysisReportGenerationRequested(
-                    assignmentId, source.assignmentStudentId()));
+                    assignmentId, studentId, source.assignmentStudentId()));
         }
         return new AnalysisReportGenerationResponse(
                 GenerationStatus.GENERATING, RETRY_AFTER_MS);
