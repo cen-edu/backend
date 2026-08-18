@@ -205,6 +205,51 @@ final class VerificationFixtures {
                 snapshot.rubricItems());
     }
 
+    /** 첫 answerUnit 의 answerRaw 만 바꾼다. 정답 유출 방지 테스트가 쓰는 값이다. */
+    static QuestionSnapshotV1 withAnswerRaw(QuestionSnapshotV1 snapshot, String answerRaw) {
+        SnapshotAnswerUnit first = snapshot.answerUnits().getFirst();
+        List<SnapshotAnswerUnit> units = new java.util.ArrayList<>(snapshot.answerUnits());
+        units.set(0, new SnapshotAnswerUnit(
+                first.unitKey(), first.stepKey(), first.displayOrder(), answerRaw,
+                first.answerNormalized(), first.compareMethod(), first.diagnosticType(),
+                first.displayUnit()));
+        return new QuestionSnapshotV1(
+                snapshot.schemaVersion(),
+                snapshot.metadata(),
+                snapshot.contentBlocks(),
+                snapshot.assets(),
+                snapshot.choices(),
+                snapshot.steps(),
+                List.copyOf(units),
+                snapshot.explanation(),
+                snapshot.learningGuide(),
+                snapshot.rubricItems());
+    }
+
+    /** 기대 문항 유형만 바꾼다. TYPE_MISMATCH 대조에 쓴다. */
+    static VerificationExpectation withExpectedQuestionType(
+            VerificationExpectation expectation, QuestionType questionType
+    ) {
+        return new VerificationExpectation(
+                questionType,
+                expectation.expectedDifficulty(),
+                expectation.expectedCurriculum(),
+                expectation.targetEvaluationArea(),
+                expectation.targetDiagnosticTypes(),
+                expectation.requiredAssetKeys());
+    }
+
+    /** 원본 검사가 결함을 못 찾은 응답. */
+    static final String CONTENT_CHECK_CLEAN = """
+            {"findings": []}""";
+
+    /** 원본 검사 결함 하나를 담은 응답. */
+    static String contentCheckResponse(String type, String kind, String location, String detail) {
+        return """
+                {"findings": [{"type": "%s", "kind": "%s", "location": "%s", "detail": "%s"}]}"""
+                .formatted(type, kind, location, detail);
+    }
+
     static QuestionSnapshotV1 withMetadata(QuestionSnapshotV1 snapshot, SnapshotMetadata metadata) {
         return new QuestionSnapshotV1(
                 snapshot.schemaVersion(),
