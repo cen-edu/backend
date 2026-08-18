@@ -5,6 +5,7 @@ import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.search.ProblemSearchDocument;
 import com.cenedu.backend.domain.problem.authoring.search.SearchIndexingCommand;
 import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -48,7 +49,8 @@ public class ProblemSearchIndexJdbcRepository {
                        OR (status='PROCESSING' AND updated_at < :stale)
                     ORDER BY id FOR UPDATE SKIP LOCKED LIMIT :limit)
                 RETURNING id, question_id, command, attempt_count
-                """, new MapSqlParameterSource().addValue("now", now).addValue("stale", now.minusSeconds(60))
+                """, new MapSqlParameterSource().addValue("now", Timestamp.from(now))
+                .addValue("stale", Timestamp.from(now.minusSeconds(60)))
                 .addValue("limit", limit), (rs, row) -> {
                     try { return new ClaimedSearchIndexTask(rs.getLong("id"), rs.getLong("question_id"),
                             objectMapper.readValue(rs.getString("command"), SearchIndexingCommand.class),
