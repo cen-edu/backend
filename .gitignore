@@ -50,3 +50,6 @@ out/
 CLAUDE.md
 CLAUDE.local.md
 .claude/
+
+### tools ###
+/tools/bruno
