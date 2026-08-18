@@ -43,6 +43,21 @@ public class ProblemAnswerUnitService {
     }
 
     /**
+     * 문항별 답안 칸 수를 배치로 센다. 진행률 분모(일반·맞춤 학습의 {@code totalUnits})가
+     * 이 값을 쓴다.
+     *
+     * <p>칸이 하나도 없는 문항은 결과에서 빠진다. 호출부가 0으로 본다.
+     */
+    public Map<Long, Long> countByQuestionIds(List<Long> questionIds) {
+        if (questionIds.isEmpty()) {
+            return Map.of();
+        }
+        return answerUnitRepository.findAllByQuestionIds(questionIds).stream()
+                .collect(Collectors.groupingBy(
+                        unit -> unit.getQuestion().getId(), Collectors.counting()));
+    }
+
+    /**
      * 채점기가 쓰는 정답값.
      *
      * <p>{@code compareMethod}는 담지 않는다 — 채점 기준은 {@code submission_answer}에 저장된
