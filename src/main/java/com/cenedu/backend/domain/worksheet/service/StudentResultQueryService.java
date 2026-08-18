@@ -50,7 +50,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -189,7 +188,8 @@ public class StudentResultQueryService {
             totalScore = totalScore.add(itemScore);
             maxTotalScore = maxTotalScore.add(itemMaxScore);
 
-            StudentResultConceptResponse concept = disclose ? parseConcept(question) : null;
+            StudentResultConceptResponse concept =
+                    disclose ? LearningGuideParser.parse(objectMapper, question) : null;
             StudentResultExplanationResponse explanation = disclose
                     ? buildExplanation(question, units, choices, unitResponses,
                             stepsByQuestionId.getOrDefault(item.getQuestionId(), List.of()), concept)
@@ -277,32 +277,6 @@ public class StudentResultQueryService {
             }
         }
         return formula.toString();
-    }
-
-    /**
-     * 개념 정리(명세 8.5). {@code learning_guide} jsonb에서 <b>세 키만 골라</b> 읽는다 —
-     * 통째로 역직렬화하면 내부 출처({@code source.datasets})와 품질 등급({@code status})이
-     * 함께 실린다.
-     */
-    private StudentResultConceptResponse parseConcept(ProblemQuestion question) {
-        String learningGuide = question.getLearningGuide();
-        if (learningGuide == null || learningGuide.isBlank()) {
-            return null;
-        }
-        JsonNode node;
-        try {
-            node = objectMapper.readTree(learningGuide);
-        } catch (JacksonException e) {
-            throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
-        }
-        List<String> points = new ArrayList<>();
-        for (JsonNode point : node.path("keyPoints")) {
-            points.add(point.asString());
-        }
-        return new StudentResultConceptResponse(
-                node.path("conceptTitle").asString(null),
-                node.path("summary").asString(null),
-                List.copyOf(points));
     }
 
     private List<ProblemStepSegmentResponse> parseSegments(String segments) {
