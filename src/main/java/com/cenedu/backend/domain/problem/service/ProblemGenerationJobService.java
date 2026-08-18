@@ -7,6 +7,9 @@ import java.util.Set;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationBatchCommand;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationSlotSource;
+import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationPlan;
+import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationSlotPlan;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationItemResult;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationJobResult;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationWorkItem;
@@ -34,6 +37,15 @@ public class ProblemGenerationJobService {
     private final ProblemGenerationItemRepository itemRepository;
     private final ProblemAuthoringSessionRepository sessionRepository;
     private final ProblemAuthoringJsonCodec jsonCodec;
+
+    /** 문제은행 재사용과 AI 생성 슬롯을 하나의 멱등 Job으로 저장한다. */
+    @Transactional
+    public ProblemGenerationJobResult create(long ownerTeacherId, ProblemGenerationPlan plan) {
+        if (plan == null) throw new IllegalArgumentException("생성 계획이 필요합니다.");
+        return jobRepository.findByOwnerTeacherIdAndClientRequestId(ownerTeacherId, plan.clientRequestId())
+                .map(this::toResult)
+                .orElseGet(() -> createPlanned(ownerTeacherId, plan));
+    }
 
     /** clientRequestId를 멱등 키로 사용해 Job과 문항별 Session·Item을 생성한다. */
     @Transactional
@@ -126,6 +138,29 @@ public class ProblemGenerationJobService {
                     job.getId(), index + 1, command.requestId(), session.getId(),
                     command.purpose(), 1, jsonCodec.write(command)));
         }
+        return toResult(job);
+    }
+
+    private ProblemGenerationJobResult createPlanned(long ownerTeacherId, ProblemGenerationPlan plan) {
+        ProblemGenerationJob job = jobRepository.saveAndFlush(ProblemGenerationJob.create(
+                ownerTeacherId, plan.clientRequestId(), plan.jobType()));
+        boolean hasAi = false;
+        for (ProblemGenerationSlotPlan slot : plan.slots()) {
+            ProblemAuthoringSession session = sessionRepository.saveAndFlush(
+                    ProblemAuthoringSession.createGenerating(ownerTeacherId));
+            if (slot.source() == GenerationSlotSource.BANK_REUSE) {
+                itemRepository.save(ProblemGenerationItem.createBankReuse(
+                        job.getId(), slot.slotIndex(), java.util.UUID.randomUUID(),
+                        session.getId(), slot.sourceQuestionId()));
+            } else {
+                hasAi = true;
+                ProblemGenerationCommand command = slot.generationCommand();
+                itemRepository.save(ProblemGenerationItem.create(
+                        job.getId(), slot.slotIndex(), command.requestId(), session.getId(),
+                        command.purpose(), 1, jsonCodec.write(command)));
+            }
+        }
+        if (!hasAi) job.completeWithoutExecution();
         return toResult(job);
     }
 
