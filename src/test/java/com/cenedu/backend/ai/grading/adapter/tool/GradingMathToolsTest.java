@@ -137,10 +137,37 @@ class GradingMathToolsTest {
     }
 
     @Test
-    @DisplayName("무한대·NaN 은 값으로 내지 않는다 — JSON 으로 실을 수 없다")
-    void rejectsNonFiniteResult() {
-        assertThat(tools.math("2^2^2^2^2", null).status()).isEqualTo(Status.TOO_COMPLEX);
-        assertThat(tools.math("(0-1)^0.5", null).status()).isEqualTo(Status.TOO_COMPLEX);
+    @DisplayName("무한대·NaN 은 NOT_FINITE — 가드에 걸린 것(TOO_COMPLEX)과 가른다")
+    void reportsNonFiniteResult() {
+        assertThat(tools.math("2^2^2^2^2", null).status()).isEqualTo(Status.NOT_FINITE);
+        assertThat(tools.math("(0-1)^0.5", null).status()).isEqualTo(Status.NOT_FINITE);
+        assertThat(tools.math("(0-1)^0.5", null).value()).isNull();
+    }
+
+    // ===== 공백 보정 (A-3) =====
+
+    @Test
+    @DisplayName("연산자 주변 공백은 지우고 계산한다 — 지우는 규칙이 하나뿐이라 해석이 갈리지 않는다")
+    void normalizesSpaces() {
+        assertThat(tools.math("3*x + 5", Map.of("x", 2.0)).value()).isEqualTo(11.0);
+        assertThat(tools.math("  3*2  ", null).value()).isEqualTo(6.0);
+        assertThat(tools.math("3 * x + 5 = 11", Map.of("x", 2.0)).holds()).isTrue();
+        assertThat(tools.math("| 3 - 5 |", null).value()).isEqualTo(2.0);
+    }
+
+    @Test
+    @DisplayName("숫자 사이 공백은 보정하지 않고 UNREADABLE — 1 2 를 12 로 붙이는 것은 창작이다")
+    void rejectsDigitSpaceDigit() {
+        assertThat(tools.math("1 2", null).status()).isEqualTo(Status.UNREADABLE);
+        assertThat(tools.math("1 2 + 3", null).status()).isEqualTo(Status.UNREADABLE);
+        assertThat(tools.math("12+3", null).value()).isEqualTo(15.0);
+    }
+
+    @Test
+    @DisplayName("길이 상한은 공백을 지운 뒤의 길이로 잰다")
+    void measuresLengthAfterSpaceRemoval() {
+        assertThat(tools.math("1 + ".repeat(99) + "1", null).status()).isEqualTo(Status.OK);
+        assertThat(tools.math("1 + ".repeat(100) + "1", null).status()).isEqualTo(Status.TOO_COMPLEX);
     }
 
     @Test
