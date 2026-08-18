@@ -1,7 +1,10 @@
 package com.cenedu.backend.ai.problem.adapter;
 
-import com.cenedu.backend.domain.problem.authoring.generation.GenerationReference;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
+import com.cenedu.backend.ai.agent.ChatMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
+import java.util.LinkedHashMap;
 import org.springframework.stereotype.Component;
 
 /** 문제 유형별 생성 규칙을 공통 시스템 프롬프트와 결합한다. */
@@ -9,16 +12,13 @@ import org.springframework.stereotype.Component;
 public class ProblemGenerationPromptFactory {
 
     /** 서버가 기대하는 S1 JSON 계약과 생성 조건을 프롬프트로 만든다. */
-    public String create(ProblemGenerationCommand command) {
+    public ProblemGenerationPrompt create(ProblemGenerationCommand command) {
         var spec = command.specification();
         var curriculum = command.curriculum();
-        String references = command.references() == null ? "없음" : command.references().stream()
-                .map(GenerationReference::sourceQuestionId).map(String::valueOf).reduce((a, b) -> a + ", " + b)
-                .orElse("없음");
-        return """
+        String systemPrompt = """
                 당신은 초중등 수학 문제 출제자다. 아래 조건으로 문제 하나를 생성하라.
                 반드시 JSON 객체만 출력하고 Markdown 코드 펜스를 사용하지 마라.
-                문제 유형은 %s, 난이도는 %s, 소단원 ID는 %d다.
+                문제 유형·난이도·소단원은 CURRENT_REQUEST_JSON의 조건을 따른다.
                 requestId, DB ID, schemaVersion, metadata, displayOrder, 논리 키는 출력하지 마라.
                 contentBlocks의 첫 항목은 blockKind=TEXT, assetRef=null, markup=null로 작성한다.
                 text에는 학생에게 실제로 보여줄 완결된 문제 문장을 넣는다.
@@ -32,12 +32,25 @@ public class ProblemGenerationPromptFactory {
                 explanation에는 이 문제의 구체적인 계산 또는 모범 응답 방향을 담고 일반론만 쓰지 않는다.
                 keyPoints는 직접적인 정답이나 계산 절차를 노출하지 않는다.
                 현재 MVP에서는 그림 자산을 만들지 않으므로 assets는 항상 []다.
-                참고 문제 ID: %s. 교육과정: %s > %s > %s.
-
                 유형별 규칙:
                 %s
-                """.formatted(spec.questionType(), spec.difficulty(), curriculum.subUnitId(), references,
-                curriculum.majorUnitName(), curriculum.middleUnitName(), curriculum.subUnitName(), typeRules(spec.questionType().name()));
+                """.formatted(typeRules(spec.questionType().name()));
+        List<ChatMessage> messages = new java.util.ArrayList<>();
+        if (command.references() != null && !command.references().isEmpty()) {
+            messages.add(ChatMessage.user("FEW_SHOT_JSON\n" + new FewShotReferenceSerializer().serialize(curriculum, command.references())));
+        }
+        messages.add(ChatMessage.user("CURRENT_REQUEST_JSON\n" + currentRequest(command)));
+        return new ProblemGenerationPrompt(systemPrompt, messages);
+    }
+
+    private String currentRequest(ProblemGenerationCommand command) {
+        try {
+            LinkedHashMap<String, Object> request = new LinkedHashMap<>();
+            request.put("purpose", command.purpose().name()); request.put("specification", command.specification());
+            request.put("curriculum", command.curriculum());
+            request.put("instruction", "참고 문제의 구조와 전략만 참고하고 수치·문장·정답을 복사하지 마라.");
+            return new ObjectMapper().writeValueAsString(request);
+        } catch (Exception exception) { throw new IllegalStateException("현재 생성 요청 JSON을 만들 수 없습니다.", exception); }
     }
 
     private String typeRules(String type) {
