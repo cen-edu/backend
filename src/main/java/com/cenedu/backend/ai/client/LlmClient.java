@@ -47,6 +47,31 @@ public interface LlmClient {
     }
 
     /**
+     * JSON Schema로 응답 구조를 제한하는 호출이다.
+     *
+     * <p>구조화 출력을 지원하지 않는 구현체는 기존 텍스트 호출로 대체할 수 있다.
+     * OpenAI 구현체는 런타임 옵션의 {@code response_format=json_schema}로 전달한다.
+     */
+    default LlmResponse completeStructured(
+            String systemPrompt,
+            List<ChatMessage> messages,
+            String outputSchema
+    ) {
+        return completeStructured(systemPrompt, messages, null, LlmUseCase.DEFAULT, outputSchema);
+    }
+
+    /** 목적별 모델과 JSON Schema를 함께 지정하는 구조화 출력 호출이다. */
+    default LlmResponse completeStructured(
+            String systemPrompt,
+            List<ChatMessage> messages,
+            Long seed,
+            LlmUseCase useCase,
+            String outputSchema
+    ) {
+        return complete(systemPrompt, messages, seed, useCase);
+    }
+
+    /**
      * 목적별 모델로 호출한다. 저작과 검증처럼 <b>같은 모델을 쓰면 안 되는</b> 경로가 대상이다.
      *
      * <p>모델 이름을 인자로 받지 않는다. 호출부가 모델명을 알면 코드에 박히고, 모델을 바꿀 때

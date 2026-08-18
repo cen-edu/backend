@@ -52,8 +52,33 @@ public class OpenAiLlmClient implements LlmClient {
     public LlmResponse complete(
             String systemPrompt, List<ChatMessage> messages, Long seed, LlmUseCase useCase
     ) {
+        return completeInternal(systemPrompt, messages, seed, useCase, null);
+    }
+
+    /** OpenAI JSON Schema 구조화 출력 옵션을 적용한다. */
+    @Override
+    public LlmResponse completeStructured(
+            String systemPrompt,
+            List<ChatMessage> messages,
+            Long seed,
+            LlmUseCase useCase,
+            String outputSchema
+    ) {
+        if (outputSchema == null || outputSchema.isBlank()) {
+            throw new IllegalArgumentException("구조화 출력 JSON Schema는 필수입니다.");
+        }
+        return completeInternal(systemPrompt, messages, seed, useCase, outputSchema);
+    }
+
+    private LlmResponse completeInternal(
+            String systemPrompt,
+            List<ChatMessage> messages,
+            Long seed,
+            LlmUseCase useCase,
+            String outputSchema
+    ) {
         LlmModelOptions options = properties.optionsFor(useCase);
-        Prompt prompt = buildPrompt(systemPrompt, messages, seed, useCase, options);
+        Prompt prompt = buildPrompt(systemPrompt, messages, seed, useCase, options, outputSchema);
 
         long startedAt = System.nanoTime();
         ChatResponse response;
@@ -113,7 +138,8 @@ public class OpenAiLlmClient implements LlmClient {
             List<ChatMessage> messages,
             Long seed,
             LlmUseCase useCase,
-            LlmModelOptions options
+            LlmModelOptions options,
+            String outputSchema
     ) {
         List<Message> springMessages = new ArrayList<>();
 
@@ -128,7 +154,7 @@ public class OpenAiLlmClient implements LlmClient {
         }
 
         boolean defaultUseCase = useCase == null || useCase == LlmUseCase.DEFAULT;
-        if (seed == null && defaultUseCase) {
+        if (seed == null && defaultUseCase && outputSchema == null) {
             // 옵션을 싣지 않는다. 모델 빈의 기본 옵션이 그대로 쓰인다.
             // 기존 호출부(개념 챗봇 답변 생성)가 지나는 경로이므로 동작을 바꾸지 않는다.
             return new Prompt(springMessages);
@@ -139,12 +165,17 @@ public class OpenAiLlmClient implements LlmClient {
         // (task_17 §5 실측). 안 적으면 seed 를 주는 호출만 상한도 추론 강도도 없이 나간다.
         OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
                 .model(options.model())
-                .reasoningEffort(options.reasoningEffort())
                 .maxCompletionTokens(Math.toIntExact(options.maxCompletionTokens()));
+        if (OpenAiClientConfig.supportsReasoningEffort(options.model())) {
+            builder.reasoningEffort(options.reasoningEffort());
+        }
         if (seed != null) {
             // Spring AI 의 seed 는 Integer 다. LlmClient 가 Long 을 받는 것은 호출부
             // 편의이고, 범위를 넘는 값은 조용히 잘리지 않고 여기서 예외로 드러나야 한다.
             builder.seed(Math.toIntExact(seed));
+        }
+        if (outputSchema != null) {
+            builder.outputSchema(outputSchema);
         }
         return new Prompt(springMessages, builder.build());
     }
