@@ -5,9 +5,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProcessingResult;
@@ -43,7 +45,8 @@ class ProblemGenerationWorkerTest {
         generationPort = mock(ProblemGenerationPort.class);
         ObjectProvider<ProblemGenerationPort> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(generationPort);
-        worker = new ProblemGenerationWorker(jobService, candidateService, provider);
+        worker = new ProblemGenerationWorker(jobService, candidateService, provider,
+                new ProblemAiConcurrencyLimiter(4, 30));
         ProblemGenerationCommand command = new ProblemGenerationCommand(
                 UUID.randomUUID(),
                 GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
@@ -53,7 +56,7 @@ class ProblemGenerationWorkerTest {
                         1L, 1, 1, "수와 연산", "사칙연산", "덧셈"),
                 List.of(), List.of());
         workItem = new ProblemGenerationWorkItem(1L, 2L, 7L, 3L, command);
-        when(jobService.claim(1L)).thenReturn(workItem);
+        when(jobService.tryClaim(1L)).thenReturn(Optional.of(workItem));
     }
 
     @Test
@@ -85,6 +88,29 @@ class ProblemGenerationWorkerTest {
 
         verify(generationPort, times(3)).generate(any());
         verify(jobService).fail(workItem, "GENERATION_FAILED");
+    }
+
+    @Test
+    @DisplayName("검증 기술 오류는 새 후보를 생성하지 않고 Item을 실패로 종료한다")
+    void verificationErrorDoesNotRegenerate() {
+        when(generationPort.generate(any())).thenReturn(candidate());
+        when(candidateService.process(any()))
+                .thenReturn(result(VerificationOverallStatus.ERROR, false));
+
+        worker.execute(1L);
+
+        verify(generationPort, times(1)).generate(any());
+        verify(jobService).fail(workItem, "VERIFICATION_ERROR");
+    }
+
+    @Test
+    @DisplayName("멱등 재요청으로 이미 선점된 Item은 두 번 생성하지 않는다")
+    void ignoresAlreadyClaimedItem() {
+        when(jobService.tryClaim(1L)).thenReturn(Optional.empty());
+
+        worker.execute(1L);
+
+        verifyNoInteractions(generationPort, candidateService);
     }
 
     private ProblemCandidateDraft candidate() {

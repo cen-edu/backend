@@ -44,6 +44,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** 생성·수정 후보를 S1 검증, Version 보관, 의미·자산 검증, current 승격 순서로 조율한다. */
 @Service
 public class ProblemCandidateProcessingService {
+    private static final int MAX_VERIFICATION_ERROR_RETRIES = 2;
 
     private final ProblemAuthoringSessionRepository sessionRepository;
     private final ProblemAuthoringVersionRepository versionRepository;
@@ -53,6 +54,7 @@ public class ProblemCandidateProcessingService {
     private final ObjectProvider<ProblemVerificationPort> verificationPortProvider;
     private final ObjectProvider<ProblemAssetProductionPort> assetPortProvider;
     private final TransactionTemplate transactionTemplate;
+    private final ProblemAiConcurrencyLimiter concurrencyLimiter;
 
     public ProblemCandidateProcessingService(
             ProblemAuthoringSessionRepository sessionRepository,
@@ -62,7 +64,8 @@ public class ProblemCandidateProcessingService {
             ProblemAuthoringJsonCodec jsonCodec,
             ObjectProvider<ProblemVerificationPort> verificationPortProvider,
             ObjectProvider<ProblemAssetProductionPort> assetPortProvider,
-            PlatformTransactionManager transactionManager
+            PlatformTransactionManager transactionManager,
+            ProblemAiConcurrencyLimiter concurrencyLimiter
     ) {
         this.sessionRepository = sessionRepository;
         this.versionRepository = versionRepository;
@@ -72,6 +75,7 @@ public class ProblemCandidateProcessingService {
         this.verificationPortProvider = verificationPortProvider;
         this.assetPortProvider = assetPortProvider;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.concurrencyLimiter = concurrencyLimiter;
     }
 
     /** 외부 AI 호출을 트랜잭션 밖에서 수행하고 최종 PASSED 후보만 current로 승격한다. */
@@ -85,10 +89,16 @@ public class ProblemCandidateProcessingService {
         transactionTemplate.executeWithoutResult(status -> beginVerification(
                 registered, manifest, verificationRequestId));
 
-        ProblemVerificationBundle bundle = verify(
-                request, manifest, verificationRequestId);
+        ProblemVerificationBundle bundle = verify(request, manifest, verificationRequestId);
+        int errorRetries = 0;
+        while (bundle.overallStatus() == VerificationOverallStatus.ERROR
+                && errorRetries < MAX_VERIFICATION_ERROR_RETRIES) {
+            errorRetries++;
+            bundle = verify(request, manifest, verificationRequestId);
+        }
+        ProblemVerificationBundle completedBundle = bundle;
         transactionTemplate.executeWithoutResult(status -> completeVerification(
-                request, registered, bundle));
+                request, registered, completedBundle));
 
         return new CandidateProcessingResult(
                 registered.versionId(),
@@ -148,7 +158,10 @@ public class ProblemCandidateProcessingService {
         List<DraftAssetArtifact> artifacts = new ArrayList<>();
         for (GeneratedAssetPlan plan : plans) {
             try {
-                DraftAssetArtifact artifact = assetPort.produce(plan, context);
+                DraftAssetArtifact artifact;
+                try (ProblemAiConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire()) {
+                    artifact = assetPort.produce(plan, context);
+                }
                 if (artifact == null || !plan.assetKey().equals(artifact.assetKey())) {
                     artifacts.add(failedArtifact(
                             plan.assetKey(), "INVALID_ASSET_ARTIFACT"));
@@ -225,7 +238,10 @@ public class ProblemCandidateProcessingService {
             ProblemVerificationRequest request
     ) {
         try {
-            ProblemVerificationReport report = port.verify(request);
+            ProblemVerificationReport report;
+            try (ProblemAiConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire()) {
+                report = port.verify(request);
+            }
             if (report == null
                     || !request.verificationRequestId().equals(report.requestId())
                     || report.scope() != request.scope()) {

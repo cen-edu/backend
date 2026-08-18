@@ -383,6 +383,8 @@ public class SnapshotStructuralValidator {
             }
             if (blankCount == 0) {
                 violations.add(stepPath + ": 최소 1개의 BLANK가 필요합니다.");
+            } else if (blankCount > 2) {
+                violations.add(stepPath + ": 한 단계에는 최대 2개의 BLANK만 허용됩니다.");
             }
         }
     }

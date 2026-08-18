@@ -23,23 +23,29 @@ public class ProblemGenerationWorker {
     private final ProblemGenerationJobService jobService;
     private final ProblemCandidateProcessingService candidateProcessingService;
     private final ObjectProvider<ProblemGenerationPort> generationPortProvider;
+    private final ProblemAiConcurrencyLimiter concurrencyLimiter;
 
     public ProblemGenerationWorker(
             ProblemGenerationJobService jobService,
             ProblemCandidateProcessingService candidateProcessingService,
-            ObjectProvider<ProblemGenerationPort> generationPortProvider
+            ObjectProvider<ProblemGenerationPort> generationPortProvider,
+            ProblemAiConcurrencyLimiter concurrencyLimiter
     ) {
         this.jobService = jobService;
         this.candidateProcessingService = candidateProcessingService;
         this.generationPortProvider = generationPortProvider;
+        this.concurrencyLimiter = concurrencyLimiter;
     }
 
     /** 선점한 Item을 생성·검증하고 의미 실패 시 최대 두 번 같은 명령으로 재생성한다. */
     public void execute(Long itemId) {
-        ProblemGenerationWorkItem workItem = jobService.claim(itemId);
+        ProblemGenerationWorkItem workItem = jobService.tryClaim(itemId).orElse(null);
+        if (workItem == null) {
+            return;
+        }
         while (true) {
             ProblemCandidateDraft candidate;
-            try {
+            try (ProblemAiConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire()) {
                 candidate = generationPort().generate(workItem.command());
                 if (candidate == null || !workItem.command().requestId()
                         .equals(candidate.requestId())) {
@@ -69,6 +75,10 @@ public class ProblemGenerationWorker {
 
             if (result.promoted()) {
                 jobService.succeed(workItem);
+                return;
+            }
+            if (result.status() == com.cenedu.backend.domain.problem.authoring.verification.VerificationOverallStatus.ERROR) {
+                jobService.fail(workItem, "VERIFICATION_ERROR");
                 return;
             }
             if (!jobService.prepareRetry(workItem, result.status().name())) {

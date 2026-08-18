@@ -2,6 +2,7 @@ package com.cenedu.backend.domain.problem.dto.response;
 
 import com.cenedu.backend.domain.problem.entity.ProblemAsset;
 import com.cenedu.backend.domain.problem.entity.enums.AssetRole;
+import com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus;
 
 public record ProblemAssetResponse(
     String assetKey,
@@ -10,7 +11,8 @@ public record ProblemAssetResponse(
     String url,
     int widthPx,
     int heightPx,
-    String altText
+    String altText,
+    ProblemAssetStorageStatus storageStatus
 ) {
 
     /**
@@ -27,7 +29,8 @@ public record ProblemAssetResponse(
             url,
             asset.getWidthPx(),
             asset.getHeightPx(),
-            asset.getAltText()
+            asset.getAltText(),
+            asset.getStorageStatus()
         );
     }
 }

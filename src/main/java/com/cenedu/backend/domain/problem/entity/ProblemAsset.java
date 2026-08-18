@@ -1,6 +1,7 @@
 package com.cenedu.backend.domain.problem.entity;
 
 import com.cenedu.backend.domain.problem.entity.enums.AssetRole;
+import com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -52,6 +53,10 @@ public class ProblemAsset {
     @Column(name = "storage_key", nullable = false, length = 255)
     private String storageKey;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "storage_status", nullable = false, length = 20)
+    private ProblemAssetStorageStatus storageStatus;
+
     @Column(name = "width_px", nullable = false)
     private int widthPx;
 
@@ -63,7 +68,7 @@ public class ProblemAsset {
 
     private ProblemAsset(ProblemQuestion question, String assetKey, AssetRole role,
                          short displayOrder, String storageKey, int widthPx, int heightPx,
-                         String altText) {
+                         String altText, ProblemAssetStorageStatus storageStatus) {
         this.question = question;
         this.assetKey = assetKey;
         this.role = role;
@@ -72,6 +77,7 @@ public class ProblemAsset {
         this.widthPx = widthPx;
         this.heightPx = heightPx;
         this.altText = altText;
+        this.storageStatus = storageStatus;
     }
 
     /** 문항 이미지를 생성한다. */
@@ -79,7 +85,15 @@ public class ProblemAsset {
                                       short displayOrder, String storageKey, int widthPx,
                                       int heightPx, String altText) {
         return new ProblemAsset(question, assetKey, role, displayOrder, storageKey, widthPx,
-                heightPx, altText);
+                heightPx, altText, ProblemAssetStorageStatus.READY);
+    }
+
+    /** 승인된 생성 자산을 S3 업로드 대기 상태로 생성한다. */
+    public static ProblemAsset createPending(ProblemQuestion question, String assetKey, AssetRole role,
+                                             short displayOrder, String storageKey, int widthPx,
+                                             int heightPx, String altText) {
+        return new ProblemAsset(question, assetKey, role, displayOrder, storageKey, widthPx,
+                heightPx, altText, ProblemAssetStorageStatus.PENDING);
     }
 
     /** 같은 이미지 자리에 새 원본을 저장했을 때 저장 위치와 크기를 갱신한다. */
@@ -87,5 +101,19 @@ public class ProblemAsset {
         this.storageKey = storageKey;
         this.widthPx = widthPx;
         this.heightPx = heightPx;
+    }
+
+    /** S3 업로드를 시작한다. */
+    public void markProcessing() { storageStatus = ProblemAssetStorageStatus.PROCESSING; }
+
+    /** 최종화 transaction에서 S3 업로드 대기 상태로 전환한다. */
+    public void markPending() { storageStatus = ProblemAssetStorageStatus.PENDING; }
+
+    /** 최종 S3 객체가 확인되었음을 기록한다. */
+    public void markReady() { storageStatus = ProblemAssetStorageStatus.READY; }
+
+    /** 업로드 재시도 대기 또는 최종 실패 상태를 기록한다. */
+    public void markFailed(boolean retryable) {
+        storageStatus = retryable ? ProblemAssetStorageStatus.RETRY_WAIT : ProblemAssetStorageStatus.FAILED;
     }
 }

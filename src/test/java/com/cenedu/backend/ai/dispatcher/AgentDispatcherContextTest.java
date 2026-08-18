@@ -54,12 +54,12 @@ class AgentDispatcherContextTest {
     }
 
     @Test
-    @DisplayName("아직 구현체가 없는 서피스를 부르면 AI_AGENT_NOT_FOUND 가 난다")
-    void realSurfacesAreStillUnimplemented() {
+    @DisplayName("아직 구현체가 없는 복습 채팅을 부르면 AI_AGENT_NOT_FOUND 가 난다")
+    void reviewChatIsStillUnimplemented() {
         AgentRequest request = AgentRequest.of(
-                AgentKind.PROBLEM_EDIT,
-                new Actor(1L, Actor.Role.TEACHER),
-                "풀이를 더 잘게 나눠줘",
+                AgentKind.REVIEW_CHAT,
+                new Actor(1L, Actor.Role.STUDENT),
+                "이 문제를 어떻게 시작해요?",
                 Map.of());
 
         assertThatThrownBy(() -> dispatcher.dispatch(request))
