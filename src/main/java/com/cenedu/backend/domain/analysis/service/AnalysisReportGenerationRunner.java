@@ -3,6 +3,7 @@ package com.cenedu.backend.domain.analysis.service;
 import java.util.List;
 
 import com.cenedu.backend.domain.analysis.report.AnalysisReportDraft;
+import com.cenedu.backend.domain.analysis.report.AnalysisReportGenerationException;
 import com.cenedu.backend.domain.analysis.report.AnalysisReportGenerationPort;
 import com.cenedu.backend.domain.analysis.report.AnalysisReportRequest;
 import com.cenedu.backend.domain.analysis.service.AnalysisReportDraftValidator
@@ -77,12 +78,18 @@ public class AnalysisReportGenerationRunner {
             reportService.completeGeneration(assignmentStudentId, draft, validated);
             log.info("분석 보고서 생성 완료 — assignmentStudentId={}, 문항 {}건",
                     assignmentStudentId, validated.size());
+        } catch (AnalysisReportGenerationException e) {
+            log.warn("분석 보고서 생성 실패 — assignmentStudentId={}, code={}, 원인={}",
+                    assignmentStudentId, e.getErrorCode(), e.getMessage());
+            reportService.failGeneration(assignmentStudentId, e.getErrorCode());
         } catch (AnalysisReportDraftInvalidException e) {
             log.warn("분석 보고서 문장 검증 실패 — assignmentStudentId={}, code={}",
                     assignmentStudentId, e.getErrorCode());
             reportService.failGeneration(assignmentStudentId, e.getErrorCode());
         } catch (RuntimeException e) {
-            log.error("분석 보고서 생성 실패 — assignmentStudentId={}", assignmentStudentId, e);
+            // 계약에 없는 예외. 여기 걸리면 원인을 특정할 수 없으니 스택을 남긴다.
+            log.error("분석 보고서 생성 중 예상치 못한 오류 — assignmentStudentId={}",
+                    assignmentStudentId, e);
             reportService.failGeneration(assignmentStudentId, GENERATION_FAILED);
         }
     }

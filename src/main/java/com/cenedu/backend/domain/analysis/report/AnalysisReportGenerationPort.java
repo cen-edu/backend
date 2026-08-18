@@ -15,8 +15,9 @@ public interface AnalysisReportGenerationPort {
     /**
      * 정제된 요청으로 문장을 생성한다.
      *
-     * @throws RuntimeException 호출에 실패하거나 응답을 해석할 수 없을 때. 호출부가 잡아
-     *                          보고서를 생성 실패 상태로 되돌린다
+     * @throws AnalysisReportGenerationException 호출에 실패하거나 응답을 해석할 수 없을 때.
+     *                                           호출부가 잡아 원인 코드와 함께 보고서를 생성
+     *                                           실패 상태로 되돌린다
      */
     AnalysisReportDraft generate(AnalysisReportRequest request);
 }

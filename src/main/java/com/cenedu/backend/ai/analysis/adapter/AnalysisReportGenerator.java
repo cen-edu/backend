@@ -9,6 +9,7 @@ import com.cenedu.backend.ai.client.LlmResponse;
 import com.cenedu.backend.ai.client.LlmUseCase;
 import com.cenedu.backend.ai.client.OpenAiProperties;
 import com.cenedu.backend.domain.analysis.report.AnalysisReportDraft;
+import com.cenedu.backend.domain.analysis.report.AnalysisReportGenerationException;
 import com.cenedu.backend.domain.analysis.report.AnalysisReportGenerationPort;
 import com.cenedu.backend.domain.analysis.report.AnalysisReportRequest;
 import org.slf4j.Logger;
@@ -55,11 +56,17 @@ public class AnalysisReportGenerator implements AnalysisReportGenerationPort {
     @Override
     public AnalysisReportDraft generate(AnalysisReportRequest request) {
         String requestJson = objectMapper.writeValueAsString(request);
-        LlmResponse response = llmClient.complete(
-                AnalysisReportPrompts.systemPrompt(),
-                List.of(ChatMessage.user(AnalysisReportPrompts.userPrompt(requestJson))),
-                null,
-                LlmUseCase.ANALYSIS_REPORT);
+        LlmResponse response;
+        try {
+            response = llmClient.complete(
+                    AnalysisReportPrompts.systemPrompt(),
+                    List.of(ChatMessage.user(AnalysisReportPrompts.userPrompt(requestJson))),
+                    null,
+                    LlmUseCase.ANALYSIS_REPORT);
+        } catch (RuntimeException e) {
+            throw new AnalysisReportGenerationException(
+                    AnalysisReportGenerationException.LLM_CALL_FAILED, "모델 호출에 실패했습니다.", e);
+        }
 
         // 출력 길이가 한도에 닿으면 JSON 이 잘려 파싱이 깨진다. 한도를 올릴지 판단할 근거로 남긴다.
         log.info("분석 문장 생성 호출 — assignmentStudentId={}, 문항 {}건, "
@@ -82,14 +89,13 @@ public class AnalysisReportGenerator implements AnalysisReportGenerationPort {
     private List<AnalysisReportDraft.ItemMessageDraft> itemMessages(JsonNode root) {
         JsonNode itemMessages = root.path("itemMessages");
         if (!itemMessages.isArray()) {
-            throw new AnalysisReportResponseParseException("응답의 itemMessages 가 배열이 아닙니다.");
+            throw parseError("응답의 itemMessages 가 배열이 아닙니다.");
         }
         List<AnalysisReportDraft.ItemMessageDraft> drafts = new ArrayList<>();
         for (JsonNode item : itemMessages) {
             JsonNode itemId = item.path("worksheetItemId");
             if (!itemId.isNumber()) {
-                throw new AnalysisReportResponseParseException(
-                        "응답의 itemMessages 원소에 worksheetItemId 가 없습니다.");
+                throw parseError("응답의 itemMessages 원소에 worksheetItemId 가 없습니다.");
             }
             drafts.add(new AnalysisReportDraft.ItemMessageDraft(
                     itemId.asLong(),
@@ -110,12 +116,19 @@ public class AnalysisReportGenerator implements AnalysisReportGenerationPort {
         try {
             JsonNode root = objectMapper.readTree(stripCodeFence(text));
             if (root == null || !root.isObject()) {
-                throw new AnalysisReportResponseParseException("응답이 JSON 객체가 아닙니다.");
+                throw parseError("응답이 JSON 객체가 아닙니다.");
             }
             return root;
         } catch (JacksonException e) {
-            throw new AnalysisReportResponseParseException("응답을 JSON 으로 읽지 못했습니다.", e);
+            throw new AnalysisReportGenerationException(
+                    AnalysisReportGenerationException.PARSE_ERROR,
+                    "응답을 JSON 으로 읽지 못했습니다.", e);
         }
+    }
+
+    private AnalysisReportGenerationException parseError(String message) {
+        return new AnalysisReportGenerationException(
+                AnalysisReportGenerationException.PARSE_ERROR, message);
     }
 
     private static String stripCodeFence(String text) {
