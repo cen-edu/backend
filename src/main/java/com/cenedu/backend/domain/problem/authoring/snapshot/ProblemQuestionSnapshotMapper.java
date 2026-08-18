@@ -24,10 +24,18 @@ import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.entity.ProblemRubricItem;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotRubricItem;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
 
 /** 문제 Entity의 영속화 필드만 S1 스냅샷 계약으로 변환하는 경계 Mapper다. */
 @Component
 public class ProblemQuestionSnapshotMapper {
+
+    private final ObjectMapper objectMapper;
+
+    public ProblemQuestionSnapshotMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     /** 문제 본체의 분류·설명과 JSON 하위 구조를 Version 저장용 스냅샷으로 만든다. */
     public QuestionSnapshotV1 toSnapshot(ProblemQuestion question) {
@@ -70,6 +78,45 @@ public class ProblemQuestionSnapshotMapper {
         SnapshotLearningGuide guide = guide(detail.learningGuide());
         return new QuestionSnapshotV1(1, base.metadata(), blocks, assets, choices, steps, units,
                 detail.explanation(), guide, List.of());
+    }
+
+    /** 문제 Entity와 하위 Entity를 S1 스냅샷으로 변환한다. */
+    public QuestionSnapshotV1 toSnapshot(ProblemSnapshotSource source) {
+        ProblemQuestion question = source.question();
+        List<ProblemContentBlockResponse> blocks = readList(question.getContentBlocks(),
+                new TypeReference<List<ProblemContentBlockResponse>>() {});
+        List<ProblemStepResponse> steps = source.steps().stream().map(step -> new ProblemStepResponse(
+                step.getId(), step.getDisplayOrder(), step.getLabel(),
+                readList(step.getSegments(), new TypeReference<List<ProblemStepSegmentResponse>>() {}))).toList();
+        List<ProblemAnswerUnitResponse> units = source.answerUnits().stream()
+                .map(unit -> new ProblemAnswerUnitResponse(unit.getId(),
+                        unit.getStep() == null ? null : unit.getStep().getId(), unit.getUnitKey(),
+                        unit.getDisplayOrder(), unit.getLabel(), unit.getAnswerRaw(),
+                        unit.getCompareMethod(), unit.getDiagnosticType(), unit.getDisplayUnit())).toList();
+        List<ProblemAssetResponse> assets = source.assets().stream()
+                .map(asset -> new ProblemAssetResponse(asset.getAssetKey(), asset.getRole(),
+                        asset.getDisplayOrder(), null, asset.getWidthPx(), asset.getHeightPx(), asset.getAltText())).toList();
+        ProblemLearningGuideResponse guide = readGuide(question.getLearningGuide());
+        ProblemQuestionDetailResponse detail = new ProblemQuestionDetailResponse(question.getId(), null,
+                question.getDifficulty(), question.getQuestionType(), question.getPresentation(), blocks,
+                assets, source.choices().stream().map(com.cenedu.backend.domain.problem.dto.response.ProblemChoiceResponse::from).toList(),
+                steps, units, question.getExplanation(), guide, question.getHintText());
+        QuestionSnapshotV1 snapshot = toSnapshot(question, detail);
+        return new QuestionSnapshotV1(snapshot.schemaVersion(), snapshot.metadata(), snapshot.contentBlocks(),
+                snapshot.assets(), snapshot.choices(), snapshot.steps(), snapshot.answerUnits(),
+                snapshot.explanation(), snapshot.learningGuide(), rubrics(source.rubricItems()));
+    }
+
+    private <T> List<T> readList(String json, TypeReference<List<T>> type) {
+        if (json == null || json.isBlank()) return List.of();
+        try { return objectMapper.readValue(json, type); }
+        catch (Exception exception) { throw new IllegalArgumentException("문제 JSON을 읽을 수 없습니다.", exception); }
+    }
+
+    private ProblemLearningGuideResponse readGuide(String json) {
+        if (json == null || json.isBlank()) return null;
+        try { return objectMapper.readValue(json, ProblemLearningGuideResponse.class); }
+        catch (Exception exception) { throw new IllegalArgumentException("학습 안내 JSON을 읽을 수 없습니다.", exception); }
     }
 
     private SnapshotContentBlock contentBlock(ProblemContentBlockResponse block) {
