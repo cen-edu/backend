@@ -101,4 +101,9 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+
+    // Gradle 테스트 워커의 기본 힙은 512m 이라 통합 테스트가 늘면 OutOfMemoryError 가 난다.
+    // 스프링 컨텍스트를 클래스마다 새로 띄우는 테스트가 많아 캐시가 쌓이는 것이 원인이고,
+    // 터지는 클래스가 실행 순서에 따라 매번 달라져 코드 문제로 오인하기 쉽다.
+    maxHeapSize = '2g'
 }
