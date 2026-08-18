@@ -22,7 +22,7 @@ public record ClassAnalysisOverviewResponse(
             int participantCount,
             int gradingPendingStudentCount,
             int gradingPendingAnswerCount,
-            BigDecimal classAccuracyRate,
+            BigDecimal classPerformanceRate,
             Long averageSolvingDurationMs,
             Integer weaknessSubcategoryCount,
             int weaknessStudentCount
