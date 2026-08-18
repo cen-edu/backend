@@ -61,7 +61,7 @@ public class WorksheetQueryService {
     /** 문제 보관함 목록 - 탭·학년·학기·검색어로 필터링한 학습지를 최신순으로 반환한다. */
     public WorksheetListResponse getWorksheets(long teacherId, WorksheetListRequest request) {
         Short grade = request.grade() == null ? null : request.grade().shortValue();
-        String semester = request.semester() == null ? null : toDbSemester(request.semester());
+        String semester = request.semester() == null ? null : SemesterCodec.toDbSemester(request.semester());
         String tab = request.resolvedTab();
         WorksheetOrigin originFilter = resolveOriginFilter(tab);
         WorksheetType typeFilter = resolveTypeFilter(tab);
@@ -226,15 +226,6 @@ public class WorksheetQueryService {
             case "assessment" -> WorksheetType.COMPREHENSIVE_ASSESSMENT;
             case "all", "custom" -> null;
             default -> throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "tab 값이 올바르지 않습니다.");
-        };
-    }
-
-    private String toDbSemester(String semester) {
-        return switch (semester) {
-            case "first" -> "1";
-            case "second" -> "2";
-            case "common" -> "COMMON";
-            default -> throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE, "semester 값이 올바르지 않습니다.");
         };
     }
 

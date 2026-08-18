@@ -106,7 +106,8 @@ public class StudentWorksheetQueryService {
         List<StudentAssignmentResponse> assignments = rows.stream()
                 .map(row -> {
                     List<WorksheetItem> items = itemsByWorksheetId.getOrDefault(row.worksheetId(), List.of());
-                    int totalUnits = totalUnits(row.type(), items, answerUnitCountByQuestionId);
+                    int totalUnits = WorksheetUnitCounter.totalUnits(
+                            row.type(), items, answerUnitCountByQuestionId);
                     Long sourceAssignmentStudentId = row.sourceAssignmentId() == null
                             ? null
                             : assignmentStudentIdBySourceAssignmentId.get(row.sourceAssignmentId());
@@ -192,15 +193,6 @@ public class StudentWorksheetQueryService {
                 .toList();
 
         return StudentWorksheetItemResponse.from(item, question, contentBlocks, choices, steps, answerUnits);
-    }
-
-    private int totalUnits(WorksheetType type, List<WorksheetItem> items, Map<Long, Long> answerUnitCountByQuestionId) {
-        if (type == WorksheetType.COMPREHENSIVE_ASSESSMENT) {
-            return items.size();
-        }
-        return items.stream()
-                .mapToInt(item -> Math.toIntExact(answerUnitCountByQuestionId.getOrDefault(item.getQuestionId(), 0L)))
-                .sum();
     }
 
     /** custom_stage의 distinct 집합을 표시 순서대로. items가 이미 displayOrder로 정렬돼 있다. */
