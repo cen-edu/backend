@@ -50,6 +50,15 @@ app:
       max-completion-tokens: ${OPENAI_MAX_COMPLETION_TOKENS:3000}
       timeout: ${OPENAI_TIMEOUT:60s}
       max-retries: ${OPENAI_MAX_RETRIES:2}
+      # 목적별 모델. 지정하지 않은 값은 위 기본값을 따른다.
+      use-cases:
+        # 검증은 저작과 다른 모델을 쓴다. 같은 모델이면 같은 방식으로 틀리고,
+        # 둘 다 틀려도 대조가 통과해 검증기가 통과 도장 기계가 된다.
+        # minimal 을 쓰지 않는 이유: 검증기는 문항을 실제로 풀어야 한다.
+        verification:
+          model: ${OPENAI_VERIFICATION_MODEL:gpt-5}
+          reasoning-effort: ${OPENAI_VERIFICATION_REASONING_EFFORT:medium}
+          max-completion-tokens: ${OPENAI_VERIFICATION_MAX_COMPLETION_TOKENS:6000}
   jwt:
     secret: ${JWT_SECRET}
     access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:1h}

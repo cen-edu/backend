@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.List;
 
 import com.cenedu.backend.ai.agent.ChatMessage;
@@ -40,7 +41,7 @@ import org.springframework.ai.openai.OpenAiChatModel;
 class OpenAiLlmClientTest {
 
     private static final OpenAiProperties PROPERTIES = new OpenAiProperties(
-            "test-key", "gpt-5-mini", "minimal", 3000, Duration.ofSeconds(60), 2);
+            "test-key", "gpt-5-mini", "minimal", 3000, Duration.ofSeconds(60), 2, Map.of());
 
     private OpenAiChatModel chatModel;
     private OpenAiLlmClient llmClient;
