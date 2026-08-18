@@ -1,5 +1,6 @@
 package com.cenedu.backend.domain.member.repository;
 
+import java.util.Collection;
 import java.util.List;
 
 import com.cenedu.backend.domain.member.entity.MemberClassEnrollment;
@@ -40,4 +41,7 @@ public interface MemberClassEnrollmentRepository
     List<MemberClassEnrollment> findAllActiveByTeacherIdAndStudentIdIn(
             @Param("teacherId") Long teacherId,
             @Param("studentIds") List<Long> studentIds);
+
+    /** 지정한 반들의 학생 배정을 물리 삭제한다. */
+    void deleteAllBySchoolClassIdIn(Collection<Long> classIds);
 }
