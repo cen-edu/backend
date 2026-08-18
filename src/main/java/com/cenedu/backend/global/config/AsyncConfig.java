@@ -30,4 +30,24 @@ public class AsyncConfig {
         executor.setThreadNamePrefix("grading-");
         return executor;
     }
+
+    /**
+     * AI 분석 문장 생성 전용 실행기.
+     * {@code @Qualifier("analysisReportTaskExecutor")} 로 지정해 쓴다.
+     *
+     * <p>LLM 호출이라 스레드가 대부분 응답을 기다린다. CPU 를 쓰지 않으므로 규칙 채점보다 넉넉히
+     * 잡되, 큐는 짧게 둔다. <b>여기서 밀린 시간이 곧 교사 화면의 "생성 중" 시간</b>이라서, 길게
+     * 대기시키느니 거절하고 다시 시도하게 하는 편이 낫다.
+     *
+     * <p>스레드가 영원히 묶이지는 않는다. {@code app.ai.client.timeout} 이 호출을 끊는다.
+     */
+    @Bean
+    public ThreadPoolTaskExecutor analysisReportTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("analysis-report-");
+        return executor;
+    }
 }
