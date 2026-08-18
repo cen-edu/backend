@@ -9,11 +9,13 @@ import java.util.stream.Collectors;
 
 import com.cenedu.backend.domain.analysis.dto.response.LearningAssessmentAchievementResponse;
 import com.cenedu.backend.domain.analysis.dto.response.LearningAssessmentInsightsResponse;
+import com.cenedu.backend.domain.analysis.dto.response.StudentLearningAssessmentPerformanceResponse;
 import com.cenedu.backend.domain.analysis.entity.enums.DifficultyBand;
 import com.cenedu.backend.domain.analysis.repository.LearningAssessmentQueryRepository;
 import com.cenedu.backend.domain.analysis.repository.row.AnalysisAssignmentAccessRow;
 import com.cenedu.backend.domain.analysis.repository.row.LearningAssessmentGroupAggregateRow;
 import com.cenedu.backend.domain.analysis.repository.row.LearningStudentSubcategoryRow;
+import com.cenedu.backend.domain.analysis.repository.row.StudentLearningGroupComparisonRow;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
@@ -35,6 +37,53 @@ public class LearningAssessmentQueryService {
 
     private final AnalysisClassQueryService classQueryService;
     private final LearningAssessmentQueryRepository repository;
+
+    /** 학습평가 학생의 평가 영역·난이도별 정답률을 학급과 비교해 반환한다. */
+    public StudentLearningAssessmentPerformanceResponse getStudentPerformance(
+            long teacherId,
+            long assignmentId,
+            long studentId
+    ) {
+        requireLearningAssessment(teacherId, assignmentId);
+        if (!repository.existsAssignmentStudent(assignmentId, studentId)) {
+            throw new BusinessException(ErrorCode.ANALYSIS_STUDENT_NOT_ASSIGNED);
+        }
+
+        List<StudentLearningGroupComparisonRow> comparisons = repository
+                .findStudentGroupComparisons(assignmentId, studentId);
+        Map<String, StudentLearningGroupComparisonRow> evaluationAreaRows =
+                comparisonRowsByCode(
+                        comparisons,
+                        StudentLearningGroupComparisonRow.GroupDimension.EVALUATION_AREA);
+        List<StudentLearningAssessmentPerformanceResponse.EvaluationAreaComparison>
+                evaluationAreas = Arrays.stream(EvaluationArea.values())
+                .map(area -> toEvaluationAreaComparison(
+                        area, evaluationAreaRows.get(area.name())))
+                .toList();
+
+        Map<String, StudentLearningGroupComparisonRow> difficultyRows =
+                comparisonRowsByCode(
+                        comparisons,
+                        StudentLearningGroupComparisonRow.GroupDimension.DIFFICULTY);
+        List<StudentLearningAssessmentPerformanceResponse.DifficultyBandComparison>
+                difficultyBands = DIFFICULTY_DISPLAY_ORDER.stream()
+                .map(band -> toDifficultyBandComparison(band, difficultyRows.get(band.name())))
+                .toList();
+
+        List<StudentLearningAssessmentPerformanceResponse.StudentSubcategoryResult>
+                subcategoryResults = repository
+                .findStudentSubcategoryDetails(assignmentId, studentId).stream()
+                .map(row -> new StudentLearningAssessmentPerformanceResponse
+                        .StudentSubcategoryResult(
+                        row.subcategoryId(),
+                        row.subcategoryName(),
+                        row.correctCount(),
+                        row.gradedCount()))
+                .toList();
+
+        return new StudentLearningAssessmentPerformanceResponse(
+                evaluationAreas, difficultyBands, subcategoryResults);
+    }
 
     /** 학습평가의 평가 영역·난이도별 결과와 우선 확인 문항을 반환한다. */
     public LearningAssessmentInsightsResponse getInsights(
@@ -165,6 +214,50 @@ public class LearningAssessmentQueryService {
 
     private boolean isReferenceOnly(LearningAssessmentGroupAggregateRow row) {
         return row == null || row.itemCount() < 2 || row.gradedResultCount() == 0;
+    }
+
+    private Map<String, StudentLearningGroupComparisonRow> comparisonRowsByCode(
+            List<StudentLearningGroupComparisonRow> rows,
+            StudentLearningGroupComparisonRow.GroupDimension dimension
+    ) {
+        return rows.stream()
+                .filter(row -> row.dimension() == dimension)
+                .collect(Collectors.toMap(
+                        StudentLearningGroupComparisonRow::groupCode,
+                        Function.identity()));
+    }
+
+    private StudentLearningAssessmentPerformanceResponse.EvaluationAreaComparison
+            toEvaluationAreaComparison(
+                    EvaluationArea area,
+                    StudentLearningGroupComparisonRow row
+            ) {
+        return new StudentLearningAssessmentPerformanceResponse.EvaluationAreaComparison(
+                area,
+                row == null ? 0 : row.itemCount(),
+                row == null ? null : row.studentAccuracyRate(),
+                row == null ? null : row.classAccuracyRate(),
+                isStudentReferenceOnly(row));
+    }
+
+    private StudentLearningAssessmentPerformanceResponse.DifficultyBandComparison
+            toDifficultyBandComparison(
+                    DifficultyBand band,
+                    StudentLearningGroupComparisonRow row
+            ) {
+        return new StudentLearningAssessmentPerformanceResponse.DifficultyBandComparison(
+                band,
+                row == null ? 0 : row.itemCount(),
+                row == null ? null : row.studentAccuracyRate(),
+                row == null ? null : row.classAccuracyRate(),
+                isStudentReferenceOnly(row));
+    }
+
+    /** 학생과 학급 중 한쪽이라도 채점 완료 결과가 없으면 비교값을 참고용으로 표시한다. */
+    private boolean isStudentReferenceOnly(StudentLearningGroupComparisonRow row) {
+        return row == null
+                || row.studentGradedResultCount() == 0
+                || row.classGradedResultCount() == 0;
     }
 
     private LearningAssessmentAchievementResponse.LearningAssessmentStudentAchievement
