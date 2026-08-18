@@ -8,7 +8,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-/** 개념 조회. 개념 챗봇의 도구 3종(이름 검색 / 선수 확장 / 소단원 목록)이 쓰는 DB 계층이다. */
+/**
+ * 개념 조회. 개념 챗봇의 도구 3종(이름 검색 / 선수 확장 / 소단원 목록)이 쓰는 DB 계층이다.
+ *
+ * <p><b>TODO(배세빈):</b> 아래 PostgreSQL 네이티브 쿼리 4개는 현재 AGENTS.md 6절의
+ * "네이티브 쿼리는 pgvector 유사도 검색만 허용" 규칙 밖에 있다. 재귀 CTE·ILIKE·LIMIT를
+ * JPQL로 대체할 수 있는지 검토하고, 대체가 불가능하면 구현을 유지하기 전에 팀 합의로 예외 범위와
+ * 테스트 기준을 AGENTS.md에 먼저 명시한다.
+ */
 public interface ChatConceptRepository extends JpaRepository<ChatConcept, Long> {
 
     /**
