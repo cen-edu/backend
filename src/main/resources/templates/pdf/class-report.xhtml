@@ -72,7 +72,7 @@
     <tr>
         <th>번호</th>
         <th class="left">문항</th>
-        <th>영역</th>
+        <th th:if="${view.showPriorityArea()}">영역</th>
         <th>난이도</th>
         <th>정답 학생</th>
     </tr>
@@ -81,7 +81,8 @@
     <tr th:each="item : ${view.priorityItems}">
         <td th:text="${item.itemNumber}">1</td>
         <td class="left" th:text="${item.questionTitle}">문항</td>
-        <td th:text="${item.evaluationArea != null ? item.evaluationArea : '-'}">-</td>
+        <td th:if="${view.showPriorityArea()}"
+            th:text="${item.evaluationArea != null ? item.evaluationArea : '-'}">-</td>
         <td th:text="${item.difficultyBand}">중</td>
         <td><span th:text="${item.correctStudentCount}">0</span> /
             <span th:text="${item.gradedStudentCount}">0</span></td>

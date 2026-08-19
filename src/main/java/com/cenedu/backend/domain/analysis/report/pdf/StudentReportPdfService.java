@@ -84,9 +84,10 @@ public class StudentReportPdfService {
         return new StudentReportView(
                 summary,
                 comparison.title(),
+                comprehensive ? "문항 유형" : "영역",
                 comparison.bars(),
                 comparison.difficultyBars(),
-                toItemRows(items, report),
+                toItemRows(items, report, comprehensive),
                 report,
                 sessions,
                 LocalDate.now().format(DATE));
@@ -149,7 +150,8 @@ public class StudentReportPdfService {
      */
     private List<StudentReportView.ItemRow> toItemRows(
             StudentItemResultListResponse items,
-            AnalysisReportResponse report
+            AnalysisReportResponse report,
+            boolean comprehensive
     ) {
         Map<Long, AnalysisReportResponse.ItemMessage> messages = report.itemMessages().stream()
                 .collect(Collectors.toMap(
@@ -162,7 +164,9 @@ public class StudentReportPdfService {
                     return new StudentReportView.ItemRow(
                             item.itemNumber(),
                             item.questionTitle(),
-                            ReportLabels.of(item.evaluationArea()),
+                            comprehensive
+                                    ? ReportLabels.of(item.questionTypeGroup())
+                                    : ReportLabels.of(item.evaluationArea()),
                             ReportLabels.of(item.difficultyBand()),
                             ReportLabels.of(item.resultType()),
                             item.score(),

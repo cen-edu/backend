@@ -41,7 +41,17 @@ public record ClassReportView(
         return !scoreTimes.isEmpty();
     }
 
-    /** 학급 정답률이 낮아 먼저 볼 문항. */
+    /** 우선 확인 문항에 분류 열을 보일지. 값이 하나도 없으면 빈 열을 인쇄하지 않는다. */
+    public boolean showPriorityArea() {
+        return priorityItems.stream().anyMatch(item -> item.evaluationArea() != null);
+    }
+
+    /**
+     * 학급 정답률이 낮아 먼저 볼 문항.
+     *
+     * @param evaluationArea 학습평가에만 있다. 종합평가는 조회 API 가 평가 영역을 주지 않고,
+     *                       넣는 문항 유형에도 영역이 없어 열 자체를 숨긴다
+     */
     public record PriorityItem(
             int itemNumber,
             String questionTitle,

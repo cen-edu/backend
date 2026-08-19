@@ -106,7 +106,7 @@
     <tr>
         <th>번호</th>
         <th class="left">문항</th>
-        <th>영역</th>
+        <th th:text="${view.itemTypeColumnLabel}">영역</th>
         <th>난이도</th>
         <th>결과</th>
         <th>점수</th>
@@ -117,7 +117,7 @@
     <tr th:each="item : ${view.items}">
         <td th:text="${item.itemNumber}">1</td>
         <td class="left" th:text="${item.questionTitle}">문항</td>
-        <td th:text="${item.evaluationArea != null ? item.evaluationArea : '-'}">-</td>
+        <td th:text="${item.typeLabel != null ? item.typeLabel : '-'}">-</td>
         <td th:text="${item.difficultyBand}">중</td>
         <td th:text="${item.resultType}">정답</td>
         <td th:text="${item.score != null ? item.score + ' / ' + item.maxScore : '-'}">-</td>

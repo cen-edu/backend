@@ -15,12 +15,15 @@ import com.cenedu.backend.domain.analysis.dto.response.StudentAnalysisSummaryRes
  * <b>유형 판단과 값 결합은 Java 에서 끝내고 템플릿은 배치만 한다.</b>
  *
  * @param comparisonTitle 비교 막대의 제목. 학습평가면 평가 영역, 종합평가면 문항 유형이다
+ * @param itemTypeColumnLabel 문항 표에서 분류 열의 이름. 종합평가는 평가 영역이 비어 있어
+ *                            문항 유형을 대신 보여준다
  * @param comparisonBars  학생과 학급을 나란히 보여줄 막대. 유형에 따라 출처 API 가 다르다
  * @param report          AI 문장. 아직 생성되지 않았어도 {@code null} 이 아니라 PENDING 상태로 온다
  */
 public record StudentReportView(
         StudentAnalysisSummaryResponse summary,
         String comparisonTitle,
+        String itemTypeColumnLabel,
         List<ComparisonBar> comparisonBars,
         List<ComparisonBar> difficultyBars,
         List<ItemRow> items,
@@ -73,11 +76,14 @@ public record StudentReportView(
      * <p>화면은 두 목록을 {@code worksheetItemId} 로 맞춰 그리지만, PDF 는 한 번에 한 줄로
      * 인쇄되므로 미리 붙여 두는 편이 템플릿이 단순하다. AI 문장이 없는 문항은 세 값이 모두
      * {@code null} 이다 — 채점되지 않아 문장을 만들 근거가 없었던 문항이다.
+     *
+     * @param typeLabel 학습평가면 평가 영역, 종합평가면 문항 유형. 종합평가에 넣는 문항 유형에는
+     *                  평가 영역이 없어서, 그대로 두면 표의 한 열이 통째로 빈칸이 된다
      */
     public record ItemRow(
             int itemNumber,
             String questionTitle,
-            String evaluationArea,
+            String typeLabel,
             String difficultyBand,
             String resultType,
             BigDecimal score,

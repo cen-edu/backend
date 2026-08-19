@@ -11,9 +11,11 @@ import java.util.List;
 import com.cenedu.backend.domain.analysis.dto.response.AnalysisReportResponse;
 import com.cenedu.backend.domain.analysis.dto.response.CustomLearningSessionListResponse;
 import com.cenedu.backend.domain.analysis.dto.response.StudentAnalysisSummaryResponse;
+import com.cenedu.backend.domain.analysis.dto.response.StudentComprehensiveAssessmentPerformanceResponse;
 import com.cenedu.backend.domain.analysis.dto.response.StudentItemResultListResponse;
 import com.cenedu.backend.domain.analysis.dto.response.StudentLearningAssessmentPerformanceResponse;
 import com.cenedu.backend.domain.analysis.entity.enums.AnalysisStatus;
+import com.cenedu.backend.domain.analysis.entity.enums.AssessmentQuestionTypeGroup;
 import com.cenedu.backend.domain.analysis.entity.enums.DifficultyBand;
 import com.cenedu.backend.domain.analysis.entity.enums.GenerationStatus;
 import com.cenedu.backend.domain.analysis.entity.enums.StudentItemResultType;
@@ -67,9 +69,9 @@ class StudentReportPdfServiceTest {
                 renderer);
 
         when(studentDetailQueryService.getSummary(TEACHER_ID, ASSIGNMENT_ID, STUDENT_ID))
-                .thenReturn(summary());
+                .thenReturn(summary(WorksheetType.GENERAL_LEARNING));
         when(studentDetailQueryService.getItems(TEACHER_ID, ASSIGNMENT_ID, STUDENT_ID))
-                .thenReturn(items());
+                .thenReturn(items(WorksheetType.GENERAL_LEARNING));
         when(learningQueryService.getStudentPerformance(
                 TEACHER_ID, ASSIGNMENT_ID, STUDENT_ID)).thenReturn(performance());
         when(customLearningQueryService.getSessions(TEACHER_ID, ASSIGNMENT_ID, STUDENT_ID))
@@ -94,6 +96,7 @@ class StudentReportPdfServiceTest {
         assertThat(text).contains("난이도별 성취", "중");
         assertThat(text).contains("부분정답");
         assertThat(text).contains("이항할 때 부호 바꾸기");
+        assertThat(text).contains("영역");
     }
 
     @Test
@@ -109,6 +112,26 @@ class StudentReportPdfServiceTest {
     }
 
     @Test
+    @DisplayName("종합평가는 문항 유형별 비교를 담는다")
+    void rendersComprehensiveAssessmentReport() throws IOException {
+        when(studentDetailQueryService.getSummary(TEACHER_ID, ASSIGNMENT_ID, STUDENT_ID))
+                .thenReturn(summary(WorksheetType.COMPREHENSIVE_ASSESSMENT));
+        when(studentDetailQueryService.getItems(TEACHER_ID, ASSIGNMENT_ID, STUDENT_ID))
+                .thenReturn(items(WorksheetType.COMPREHENSIVE_ASSESSMENT));
+        when(comprehensiveQueryService.getStudentPerformance(
+                TEACHER_ID, ASSIGNMENT_ID, STUDENT_ID)).thenReturn(comprehensivePerformance());
+        when(reportService.getReport(TEACHER_ID, ASSIGNMENT_ID, STUDENT_ID))
+                .thenReturn(readyReport());
+
+        String text = textOf(service.render(TEACHER_ID, ASSIGNMENT_ID, STUDENT_ID));
+
+        assertThat(text).contains("문항 유형별 성취", "객관식", "서술형");
+        assertThat(text).doesNotContain("평가 영역별 성취");
+        // 문항 표의 분류 열도 평가 영역이 아니라 문항 유형이어야 한다
+        assertThat(text).contains("문항 유형");
+    }
+
+    @Test
     @DisplayName("파일명에는 ID 만 쓴다")
     void buildsFileName() {
         assertThat(service.fileName(101L, 11L)).isEqualTo("analysis-report-101-11.pdf");
@@ -121,10 +144,10 @@ class StudentReportPdfServiceTest {
         }
     }
 
-    private StudentAnalysisSummaryResponse summary() {
+    private StudentAnalysisSummaryResponse summary(WorksheetType type) {
         return new StudentAnalysisSummaryResponse(
                 STUDENT_ID, "김민수", "1반", "소인수분해 학습평가",
-                WorksheetType.GENERAL_LEARNING, AnalysisStatus.REVIEW,
+                type, AnalysisStatus.REVIEW,
                 12, 10, 6,
                 new BigDecimal("60.0"), new BigDecimal("52.4"),
                 null, null,
@@ -132,11 +155,19 @@ class StudentReportPdfServiceTest {
                         31L, "일차방정식", 3, 5, new BigDecimal("40.0"))));
     }
 
-    private StudentItemResultListResponse items() {
+    /**
+     * 실제 조회 API 와 같은 방식으로 채운다. 종합평가는 평가 영역이 비고 문항 유형이 오며,
+     * 학습평가는 그 반대다. 종합평가에 넣는 문항 유형에는 평가 영역이 없기 때문이다.
+     */
+    private StudentItemResultListResponse items(WorksheetType type) {
+        boolean comprehensive = type == WorksheetType.COMPREHENSIVE_ASSESSMENT;
         return new StudentItemResultListResponse(555L, List.of(
                 new StudentItemResultListResponse.StudentItemResult(
                         501L, 9001L, 1, "소인수분해로 나타내기",
-                        EvaluationArea.UNDERSTANDING, null, DifficultyBand.MID,
+                        comprehensive ? null : EvaluationArea.UNDERSTANDING,
+                        comprehensive
+                                ? AssessmentQuestionTypeGroup.MULTIPLE_CHOICE : null,
+                        DifficultyBand.MID,
                         GradingStatus.GRADED, StudentItemResultType.PARTIAL_CORRECT,
                         new BigDecimal("1"), new BigDecimal("2"),
                         null, null, 4, 8, new BigDecimal("50.0"), List.of())));
@@ -158,6 +189,23 @@ class StudentReportPdfServiceTest {
                         DifficultyBand.MID, 5,
                         new BigDecimal("60.0"), new BigDecimal("52.0"), false)),
                 List.of());
+    }
+
+    private StudentComprehensiveAssessmentPerformanceResponse comprehensivePerformance() {
+        return new StudentComprehensiveAssessmentPerformanceResponse(
+                List.of(
+                        new StudentComprehensiveAssessmentPerformanceResponse
+                                .QuestionTypeGroupComparison(
+                                AssessmentQuestionTypeGroup.MULTIPLE_CHOICE, 4,
+                                new BigDecimal("75.0"), new BigDecimal("62.5"), false),
+                        new StudentComprehensiveAssessmentPerformanceResponse
+                                .QuestionTypeGroupComparison(
+                                AssessmentQuestionTypeGroup.ESSAY, 2,
+                                new BigDecimal("50.0"), new BigDecimal("35.0"), false)),
+                List.of(new StudentComprehensiveAssessmentPerformanceResponse
+                        .DifficultyBandComparison(
+                        DifficultyBand.HIGH, 3,
+                        new BigDecimal("33.3"), new BigDecimal("30.0"), false)));
     }
 
     private AnalysisReportResponse readyReport() {
