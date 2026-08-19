@@ -280,8 +280,8 @@ class StudentResultControllerTest {
     }
 
     @Test
-    @DisplayName("서술형 채점 실패(행 없음)면 rubric은 빈 배열이고 문항 판정은 pending이다")
-    void getResult_essayGradingFailed_emptyRubric() throws Exception {
+    @DisplayName("서술형 채점 실패(행 없음)면 기준 목록은 내려가되 satisfied는 미판정이고 판정은 pending이다")
+    void getResult_essayGradingFailed_rubricUnjudged() throws Exception {
         long questionId = insertQuestion("ESSAY");
         long answerUnitId = insertAnswerUnit(questionId, null, "MAIN", 0, "RUBRIC", null);
         insertRubricItem(questionId, 0, "채점 기준 1", 10);
@@ -304,7 +304,68 @@ class StudentResultControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].result").value("pending"))
                 .andExpect(jsonPath("$.data.items[0].rubric").isArray())
-                .andExpect(jsonPath("$.data.items[0].rubric").isEmpty());
+                // 기준 목록 자체는 내려간다 — 없으면 화면이 채점 기준을 못 그린다.
+                .andExpect(jsonPath("$.data.items[0].rubric.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].rubric[0].description").value("채점 기준 1"))
+                // 판정 행이 없으므로 "미충족(false)"이 아니라 "미판정(null)"이다.
+                .andExpect(jsonPath("$.data.items[0].rubric[0].satisfied").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("객관식 결과에는 보기 전체가 내려간다 — 정답 표시는 담기지 않는다")
+    void getResult_multipleChoice_includesChoices() throws Exception {
+        long questionId = insertQuestion("MULTIPLE_CHOICE");
+        insertChoice(questionId, 0, "2");
+        insertChoice(questionId, 1, "6");
+        insertChoice(questionId, 2, "12");
+        long answerUnitId = insertAnswerUnit(questionId, null, "MAIN", 0, "CHOICE", "2");
+
+        long worksheetId = insertWorksheet("GENERAL_LEARNING");
+        insertWorksheetItem(worksheetId, questionId, 1, (BigDecimal) null);
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+        insertGradedHandwritingAnswer(assignmentStudentId, answerUnitId, "6", new BigDecimal("1.00"));
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].choices.length()").value(3))
+                .andExpect(jsonPath("$.data.items[0].choices[1].text").value("6"))
+                .andExpect(jsonPath("$.data.items[0].choices[1].displayOrder").value(1))
+                // 어느 보기가 정답인지는 보기 목록이 아니라 answerUnits가 가진다.
+                .andExpect(jsonPath("$.data.items[0].choices[0].correct").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].steps").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("빈칸형 결과에는 단계 구조가 내려간다 — 빈칸은 answerUnitId로 칸과 이어진다")
+    void getResult_stepFill_includesSteps() throws Exception {
+        long questionId = insertQuestion("STEP_FILL");
+        long stepId = insertStepWithSegments(questionId, 0, "1단계", """
+                [{"type":"TEXT","value":"84 = "},{"type":"BLANK","unitKey":"B1"}]
+                """);
+        long unitB1 = insertAnswerUnit(questionId, stepId, "B1", 0, "VALUE", "2^2 x 3 x 7");
+
+        long worksheetId = insertWorksheet("GENERAL_LEARNING");
+        insertWorksheetItem(worksheetId, questionId, 1, (BigDecimal) null);
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+        insertGradedHandwritingAnswer(assignmentStudentId, unitB1, "2^2 x 3 x 7", new BigDecimal("1.00"));
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].steps.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].steps[0].label").value("1단계"))
+                .andExpect(jsonPath("$.data.items[0].steps[0].segments[0].type").value("text"))
+                .andExpect(jsonPath("$.data.items[0].steps[0].segments[0].value").value("84 = "))
+                .andExpect(jsonPath("$.data.items[0].steps[0].segments[1].type").value("blank"))
+                .andExpect(jsonPath("$.data.items[0].steps[0].segments[1].answerUnitId").value(unitB1))
+                // 빈칸 세그먼트에 정답은 담기지 않는다.
+                .andExpect(jsonPath("$.data.items[0].steps[0].segments[1].value").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].choices").doesNotExist());
     }
 
     @Test
