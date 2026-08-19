@@ -97,7 +97,7 @@ public class ClassReportPdfService {
                 .toList();
 
         return new ClassReportView(
-                overview, students, "평가 영역별 성취", areas, bands, priority,
+                overview, students, "평가 영역별 성취", areas, bands, priority, "영역",
                 subcategoryMatrix(achievement), List.of(), null, null,
                 LocalDate.now().format(DATE));
     }
@@ -129,7 +129,7 @@ public class ClassReportPdfService {
                 .map(item -> new ClassReportView.PriorityItem(
                         item.itemNumber(),
                         item.questionTitle(),
-                        null,
+                        ReportLabels.of(item.questionTypeGroup()),
                         ReportLabels.of(item.difficultyBand()),
                         item.correctStudentCount(),
                         item.gradedStudentCount()))
@@ -143,7 +143,7 @@ public class ClassReportPdfService {
                 .toList();
 
         return new ClassReportView(
-                overview, students, "문항 유형별 성취", groups, bands, priority,
+                overview, students, "문항 유형별 성취", groups, bands, priority, "문항 유형",
                 itemMatrix(achievement), scoreTimes,
                 distribution.medianScoreRate(), distribution.medianSolvingDurationMs(),
                 LocalDate.now().format(DATE));

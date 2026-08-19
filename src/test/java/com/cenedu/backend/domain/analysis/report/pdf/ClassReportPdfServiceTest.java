@@ -98,6 +98,8 @@ class ClassReportPdfServiceTest {
         assertThat(text).contains("문항 유형별 성취", "객관식", "서술형");
         assertThat(text).contains("문항별 성취", "1번");
         assertThat(text).contains("점수와 풀이시간", "30분 30초");
+        // 우선 확인 문항의 분류 열도 평가 영역이 아니라 문항 유형이다
+        assertThat(text).contains("이차방정식의 근", "서술형");
         assertThat(text).doesNotContain("평가 영역별 성취");
     }
 
@@ -157,7 +159,8 @@ class ClassReportPdfServiceTest {
                         DifficultyBand.HIGH, 3, new BigDecimal("30.0"), false)),
                 List.of(new ComprehensiveAssessmentInsightsResponse
                         .ComprehensiveAssessmentPriorityItem(
-                        501L, 1, "이차방정식의 근", DifficultyBand.HIGH, 2, 8)));
+                        501L, 1, "이차방정식의 근", AssessmentQuestionTypeGroup.ESSAY,
+                        DifficultyBand.HIGH, 2, 8)));
     }
 
     private ComprehensiveAssessmentItemAchievementResponse itemAchievement() {

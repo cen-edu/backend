@@ -21,6 +21,7 @@ import com.cenedu.backend.domain.analysis.repository.row.ScoreTimeStudentRow;
 import com.cenedu.backend.domain.analysis.repository.row.StudentAssessmentGroupComparisonRow;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType;
 import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.enums.QuestionType;
 import com.cenedu.backend.global.common.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -106,6 +107,8 @@ public class ComprehensiveAssessmentQueryService {
                         row.worksheetItemId(),
                         row.itemNumber(),
                         row.questionTitle(),
+                        AssessmentQuestionTypeGroup.from(
+                                QuestionType.valueOf(row.questionType())),
                         DifficultyBand.from(row.sourceDifficulty()),
                         row.correctStudentCount(),
                         row.gradedStudentCount()))

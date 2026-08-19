@@ -287,13 +287,15 @@ public class ComprehensiveAssessmentQueryRepository {
                 SELECT worksheet_item_id,
                        item_number,
                        question_title,
+                       question_type,
                        difficulty,
                        COUNT(*) FILTER (WHERE is_correct) AS correct_student_count,
                        COUNT(*) FILTER (
                            WHERE graded_unit_count = expected_unit_count
                        ) AS graded_student_count
                 FROM item_result
-                GROUP BY worksheet_item_id, item_number, question_title, difficulty
+                GROUP BY worksheet_item_id, item_number, question_title,
+                         question_type, difficulty
                 HAVING COUNT(*) FILTER (
                     WHERE graded_unit_count = expected_unit_count
                 ) > 0
@@ -311,6 +313,7 @@ public class ComprehensiveAssessmentQueryRepository {
                         rs.getLong("worksheet_item_id"),
                         rs.getInt("item_number"),
                         rs.getString("question_title"),
+                        rs.getString("question_type"),
                         rs.getInt("difficulty"),
                         rs.getInt("correct_student_count"),
                         rs.getInt("graded_student_count")))
