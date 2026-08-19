@@ -1588,7 +1588,7 @@ Classification is server-owned:
 
 The applier verifies `patch.schemaVersion`, non-null request/base IDs, classifier result equals declared mode, every parameter is editable, and every `expectedOldValue` exactly equals the server's canonical scalar at the path. A mismatch throws `SemanticPatchConflictException(path, expected, actual)` before any model is returned. It copies records; it never mutates lists. After apply it runs semantic validation/evaluation/materialization. PRESENTATIONAL patches additionally require identical per-template placeholder sets and unchanged normalized semantic value map. PARAMETRIC patches permit dependent changes and require complete re-materialization/re-render.
 
-- [ ] **Step 1: Write failing classification and optimistic conflict tests**
+- [x] **Step 1: Write classification and optimistic conflict tests** *(사용자 지정 방식에 따라 RED 단계는 생략)*
 
 ```java
 @Test
@@ -1613,23 +1613,23 @@ void rejectsStaleExpectedOldValueWithoutPartialApply() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED** *(사용자 지정 방식에 따라 생략)*
 
 Run: `bash gradlew test --tests '*ProblemSemanticPatchClassifierTest' --tests '*ProblemSemanticPatchApplierTest' --tests '*ProblemSemanticDiffFactoryTest'`
 
 Expected: FAIL because patch contracts and services do not exist.
 
-- [ ] **Step 3: Implement path parser, classifier, copy-on-write applier, and sanitized diff**
+- [x] **Step 3: Implement path parser, classifier, copy-on-write applier, and sanitized diff**
 
 `ProblemSemanticDiffFactory.create(baseModel, patchedModel, mode)` derives impact areas from placeholder references and diagram bindings. It includes editable parameter values/units but excludes computed answer values, answer-unit raw values, explanation text, and rubric model answers.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN** *(Task11 관련 테스트 통과)*
 
 Run: `bash gradlew test --tests '*ProblemSemanticPatchClassifierTest' --tests '*ProblemSemanticPatchApplierTest' --tests '*ProblemSemanticDiffFactoryTest' --tests '*DefaultProblemSemanticMaterializerTest'`
 
 Expected: PASS for all five operations, every legal path family, illegal/structural paths, stale values, non-editable parameters, placeholder invariance, and deterministic impact sets.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/authoring/edit/semantic \
