@@ -5,8 +5,12 @@ import java.util.List;
 import com.cenedu.backend.domain.problem.authoring.edit.EditAction;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditExecutionPlan;
 import com.cenedu.backend.domain.problem.authoring.edit.ReplacementSourcePolicy;
+import com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemModificationExecutionResult;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
+import com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionStatus;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
+import com.cenedu.backend.domain.curriculum.service.CurriculumUnitQueryService;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringSessionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringVersionRepository;
 import org.springframework.stereotype.Component;
@@ -24,6 +28,10 @@ public class ProblemModificationExecutionCoordinator {
     private final ProblemAuthoringVersionRepository versionRepository;
     private final ProblemAuthoringJsonCodec jsonCodec;
     private final TransactionTemplate transactionTemplate;
+    private ProblemSemanticModificationService semanticModificationService;
+    private ProblemStructuralRegenerationService structuralRegenerationService;
+    private ProblemSemanticExtractionService semanticExtractionService;
+    private CurriculumUnitQueryService curriculumUnitQueryService;
     private ProblemTeacherDecisionEventService decisionEventService;
 
     public ProblemModificationExecutionCoordinator(ProblemModificationWorker modificationWorker,
@@ -46,6 +54,30 @@ public class ProblemModificationExecutionCoordinator {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setDecisionEventService(ProblemTeacherDecisionEventService service) { this.decisionEventService = service; }
 
+    /** semantic patch 실행기를 선택적으로 연결해 기존 legacy 경로와 공존시킨다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSemanticModificationService(ProblemSemanticModificationService service) {
+        this.semanticModificationService = service;
+    }
+
+    /** 구조적 semantic patch를 generation port 경로로 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setStructuralRegenerationService(ProblemStructuralRegenerationService service) {
+        this.structuralRegenerationService = service;
+    }
+
+    /** semantic model이 없는 기존 Version의 lazy extraction 경계를 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSemanticExtractionService(ProblemSemanticExtractionService service) {
+        this.semanticExtractionService = service;
+    }
+
+    /** extraction에 현재 Snapshot의 소단원 curriculum scope를 제공한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setCurriculumUnitQueryService(CurriculumUnitQueryService service) {
+        this.curriculumUnitQueryService = service;
+    }
+
     /** RESTORE는 AI 호출 없이 즉시 전환하고 나머지는 수정 Worker에 위임한다. */
     public Object execute(long teacherId, ProblemEditExecutionPlan plan,
                           com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 baseSnapshot) {
@@ -53,7 +85,56 @@ public class ProblemModificationExecutionCoordinator {
             stateService.restorePassedVersion(teacherId, plan.sessionId(), plan.restoreVersionId());
             if (decisionEventService != null) decisionEventService.recordRestore(
                     teacherId, plan.sessionId(), plan.restoreVersionId(), plan.requestId());
-            return plan.restoreVersionId();
+            return new com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemModificationExecutionResult(
+                    plan.restoreVersionId(), com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode.RESTORE,
+                    new com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemSemanticDiff(java.util.List.of(),
+                            java.util.EnumSet.allOf(com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticImpactArea.class), false, false),
+                    true, false);
+        }
+        if (plan.semanticPatch() != null) {
+            ProblemAuthoringVersion baseVersion = versionRepository
+                    .findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
+                    .orElseThrow(() -> new com.cenedu.backend.global.common.BusinessException(
+                        com.cenedu.backend.global.common.ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
+            if (baseVersion.getSemanticModel() == null && semanticExtractionService != null) {
+                var extraction = semanticExtractionService.ensureVersionSemantic(
+                        teacherId, plan.sessionId(), baseVersion.getId(), currentCurriculum(baseSnapshot));
+                if (extraction.status() == SemanticExtractionStatus.EXTRACTED) {
+                    baseVersion = versionRepository.findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
+                            .orElseThrow(() -> new com.cenedu.backend.global.common.BusinessException(
+                                    com.cenedu.backend.global.common.ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
+                } else if (plan.instructions() != null && !plan.instructions().isEmpty()) {
+                    Object fallback = modificationWorker.execute(teacherId,
+                            new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
+                                    plan.requestId(), plan, baseSnapshot, null));
+                    return legacyFallbackResult(plan, fallback);
+                }
+            }
+            if (baseVersion.getSemanticModel() == null) {
+                Object fallback = modificationWorker.execute(teacherId,
+                        new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
+                                plan.requestId(), plan, baseSnapshot, null));
+                return legacyFallbackResult(plan, fallback);
+            }
+            if (plan.semanticPatch().mode() == com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode.STRUCTURAL_REGENERATION) {
+                if (structuralRegenerationService == null)
+                    throw new com.cenedu.backend.global.common.BusinessException(
+                            com.cenedu.backend.global.common.ErrorCode.PROBLEM_AI_PORT_NOT_CONFIGURED);
+                if (baseVersion.getSemanticModel() == null)
+                    throw new com.cenedu.backend.global.common.BusinessException(
+                            com.cenedu.backend.global.common.ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
+                var baseModel = new com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemSemanticDocumentCodec(
+                        new tools.jackson.databind.ObjectMapper()).readSemanticModel(baseVersion.getSemanticModel());
+                return structuralRegenerationService.regenerate(teacherId, baseVersion, plan, baseModel);
+            }
+            if (baseVersion.getSemanticModel() == null) {
+                throw new com.cenedu.backend.global.common.BusinessException(
+                        com.cenedu.backend.global.common.ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
+            }
+            if (semanticModificationService == null)
+                throw new com.cenedu.backend.global.common.BusinessException(
+                        com.cenedu.backend.global.common.ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
+            return semanticModificationService.apply(teacherId, plan.sessionId(), baseVersion, plan.semanticPatch());
         }
         if (plan.action() == EditAction.REPLACE
                 && plan.sourcePolicy() == ReplacementSourcePolicy.BANK_FIRST) {
@@ -66,10 +147,37 @@ public class ProblemModificationExecutionCoordinator {
         }
         Object result = modificationWorker.execute(teacherId,
                 new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
-                        plan.requestId(), plan, baseSnapshot));
+                        plan.requestId(), plan, baseSnapshot, null));
         if (plan.action() == EditAction.REPLACE && decisionEventService != null) decisionEventService.recordReplacement(
                 teacherId, plan.sessionId(), plan.baseVersionId(), plan.requestId(), plan.instructions());
         return result;
+    }
+
+    private CurriculumScope currentCurriculum(
+            com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 snapshot) {
+        if (curriculumUnitQueryService == null || snapshot.metadata().subUnitId() == null) return null;
+        var path = curriculumUnitQueryService.getPathsBySubUnitIds(
+                java.util.Set.of(snapshot.metadata().subUnitId())).get(snapshot.metadata().subUnitId());
+        if (path == null) return null;
+        return new CurriculumScope(path.curriculumRevision(), path.schoolLevel(), path.grade(),
+                path.semester() == null ? null : path.semester().intValue(), path.achievementStandardId(),
+                path.subUnitId(), path.majorUnitName(), path.middleUnitName(), path.subUnitName());
+    }
+
+    private ProblemModificationExecutionResult legacyFallbackResult(ProblemEditExecutionPlan plan, Object result) {
+        Long versionId = null;
+        boolean promoted = false;
+        if (result instanceof com.cenedu.backend.domain.problem.authoring.candidate.CandidateProcessingResult processed) {
+            versionId = processed.versionId();
+            promoted = processed.promoted();
+        }
+        var mode = plan.semanticPatch() == null
+                ? com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode.REJECTED
+                : plan.semanticPatch().mode();
+        return new ProblemModificationExecutionResult(versionId, mode,
+                new com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemSemanticDiff(
+                        java.util.List.of(), java.util.Set.of(), mode == com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode.STRUCTURAL_REGENERATION, true),
+                promoted, true);
     }
 
     private Long tryBankReuse(long teacherId, ProblemEditExecutionPlan plan,

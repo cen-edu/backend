@@ -15,8 +15,43 @@ import com.cenedu.backend.domain.problem.authoring.validation.SnapshotNormalized
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import com.cenedu.backend.ai.problem.adapter.semantic.*;
+import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
 
 class SpringAiProblemGenerationAdapterTest {
+    @Test
+    void enabledFlagRoutesToSemanticPipeline() {
+        var semantic = mock(ProblemSemanticGenerationPipeline.class);
+        var legacy = mock(LegacyProblemGenerationPipeline.class);
+        var command = new ProblemGenerationCommand(UUID.randomUUID(), null, GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
+                new GenerationSpecification(QuestionType.SHORT_INPUT, "mid", null, List.of()),
+                new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "대", "중", "소"), List.of(), List.of());
+        var expected = mock(ProblemCandidateDraft.class);
+        when(semantic.generate(command)).thenReturn(expected);
+        var adapter = new SpringAiProblemGenerationAdapter(new SemanticAuthoringProperties(true), semantic, legacy);
+        assertEquals(expected, adapter.generate(command));
+        verify(semantic).generate(command);
+        verifyNoInteractions(legacy);
+    }
+
+    @Test
+    void failedOriginExtractionFallsBackToLegacyPipeline() {
+        var semantic = mock(ProblemSemanticGenerationPipeline.class);
+        var legacy = mock(LegacyProblemGenerationPipeline.class);
+        var origin = new GenerationReference(GenerationReferenceRole.ORIGIN, 41L,
+                com.cenedu.backend.domain.problem.support.ProblemSnapshotFixtures.shortInput());
+        var command = new ProblemGenerationCommand(UUID.randomUUID(), null, GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
+                new GenerationSpecification(QuestionType.SHORT_INPUT, "mid", null, List.of()),
+                new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "대", "중", "소"),
+                List.of(origin), List.of());
+        var expected = mock(ProblemCandidateDraft.class);
+        when(legacy.generate(command)).thenReturn(expected);
+
+        assertEquals(expected, new SpringAiProblemGenerationAdapter(
+                new SemanticAuthoringProperties(true), semantic, legacy).generate(command));
+        verify(legacy).generate(command);
+        verifyNoInteractions(semantic);
+    }
     @Test
     void usesCommonLlmClientAndMapsResponseWithoutCallingOpenAiDirectly() {
         LlmClient client = mock(LlmClient.class);

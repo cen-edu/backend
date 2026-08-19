@@ -90,7 +90,7 @@ public class ProblemModificationWorker {
                 (command.requestId() + ":attempt:" + attempt)
                         .getBytes(StandardCharsets.UTF_8));
         return new ProblemModificationCommand(
-                requestId, command.plan(), command.baseSnapshot());
+                requestId, command.plan(), command.baseSnapshot(), command.baseSemanticModel());
     }
 
     /** 수정 대상 Session이 실제로 교사 소유인지 확인한다. */

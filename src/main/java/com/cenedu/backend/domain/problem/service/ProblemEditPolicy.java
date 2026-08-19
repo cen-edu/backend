@@ -15,6 +15,9 @@ import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditTargetRef;
 import com.cenedu.backend.domain.problem.authoring.edit.ReplacementSourcePolicy;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotSegmentType;
+import com.cenedu.backend.domain.problem.authoring.edit.semantic.*;
+import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.ErrorCode;
 import org.springframework.stereotype.Component;
 
 /** 확정 수정 명령을 자연어 재해석 없이 RESTORE·MODIFY·REPLACE와 허용 범위로 변환한다. */
@@ -26,6 +29,15 @@ public class ProblemEditPolicy {
                                          QuestionSnapshotV1 baseSnapshot,
                                          Long resolvedRestoreVersionId) {
         validate(command, baseSnapshot, resolvedRestoreVersionId);
+        if (command.semanticPatch() != null) {
+            ProblemSemanticPatch patch = command.semanticPatch();
+            if (!java.util.Objects.equals(command.baseVersionId(), patch.baseVersionId()))
+                throw new BusinessException(ErrorCode.PROBLEM_EDIT_COMMAND_STALE);
+            if (new ProblemSemanticPatchClassifier().classify(patch) != patch.mode())
+                throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_EDIT_REJECTED);
+            if (patch.mode() == SemanticEditMode.REJECTED)
+                throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_EDIT_REJECTED);
+        }
         EditAction action = action(command);
         if (action == EditAction.RESTORE) {
             return new ProblemEditExecutionPlan(
@@ -37,7 +49,8 @@ public class ProblemEditPolicy {
             return new ProblemEditExecutionPlan(
                     command.requestId(), command.sessionId(), command.baseVersionId(),
                     action, command.replacementSourcePolicy(), null,
-                    safeInstructions(command.instructions()),
+                safeInstructions(command.instructions()),
+                    command.semanticPatch(),
                     List.of(new ProblemEditTargetRef(EditTargetType.WHOLE_QUESTION, null)),
                     List.of(), List.of(), command.requestedSpecification());
         }
@@ -52,6 +65,7 @@ public class ProblemEditPolicy {
                 command.requestId(), command.sessionId(), command.baseVersionId(),
                 action, ReplacementSourcePolicy.NONE, null,
                 safeInstructions(command.instructions()),
+                command.semanticPatch(),
                 List.copyOf(requested), List.copyOf(dependent),
                 List.copyOf(protectedTargets), command.requestedSpecification());
     }
@@ -59,6 +73,10 @@ public class ProblemEditPolicy {
     private EditAction action(ConfirmedProblemEditCommand command) {
         if (command.restoreReference() != null) {
             return EditAction.RESTORE;
+        }
+        if (command.semanticPatch() != null) {
+            return command.semanticPatch().mode() == SemanticEditMode.STRUCTURAL_REGENERATION
+                    ? EditAction.REPLACE : EditAction.MODIFY;
         }
         boolean wholeReplacement = command.requestedSpecification() != null
                 || command.replacementSourcePolicy() != ReplacementSourcePolicy.NONE
@@ -172,7 +190,7 @@ public class ProblemEditPolicy {
             }
             return;
         }
-        if (safeInstructions(command.instructions()).isEmpty()
+        if (command.semanticPatch() == null && safeInstructions(command.instructions()).isEmpty()
                 && command.requestedSpecification() == null) {
             throw new IllegalArgumentException("수행할 수정 요청이 없습니다.");
         }

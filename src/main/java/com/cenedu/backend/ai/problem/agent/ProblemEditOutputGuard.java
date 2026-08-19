@@ -7,6 +7,7 @@ import com.cenedu.backend.ai.agent.*;
 import com.cenedu.backend.ai.guard.GuardDecision;
 import com.cenedu.backend.ai.guard.output.OutputGuard;
 import com.cenedu.backend.domain.problem.authoring.edit.*;
+import com.cenedu.backend.domain.problem.authoring.edit.semantic.*;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
@@ -27,9 +28,32 @@ public class ProblemEditOutputGuard implements OutputGuard {
         try {
             ProblemEditConversationResult result = objectMapper.convertValue(value, ProblemEditConversationResult.class);
             if (result.action() == null) return GuardDecision.block("PROBLEM_EDIT_ACTION_INVALID", "수정 action이 없습니다.");
-            String message = result.assistantMessage() == null ? "" : result.assistantMessage().toLowerCase(Locale.ROOT);
+            ProblemEditAgentPayload payload = objectMapper.convertValue(
+                    request.payload().get(ProblemEditAgent.REQUEST_KEY), ProblemEditAgentPayload.class);
+            if (payload.currentSemanticModel() != null) {
+                if (result.semanticPatch() == null)
+                    return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_MISSING", "semantic patch가 없습니다.");
+                ProblemSemanticPatch patch = result.semanticPatch();
+                if (!payload.requestId().equals(patch.requestId())
+                        || !payload.baseVersionId().equals(patch.baseVersionId())
+                        || patch.schemaVersion() != ProblemSemanticPatch.CURRENT_SCHEMA_VERSION)
+                    return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_BINDING", "semantic patch binding이 올바르지 않습니다.");
+                if ((patch.mode() == SemanticEditMode.STRUCTURAL_REGENERATION
+                        || patch.mode() == SemanticEditMode.RESTORE
+                        || patch.mode() == SemanticEditMode.REJECTED)
+                        && !patch.operations().isEmpty())
+                    return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_OPERATIONS", "해당 semantic patch mode에는 operation을 포함할 수 없습니다.");
+                if (new ProblemSemanticPatchClassifier().classify(patch) != patch.mode())
+                    return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_INVALID", "semantic patch가 허용된 분류와 일치하지 않습니다.");
+            } else if (result.semanticPatch() != null) {
+                return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_UNSUPPORTED", "semantic model이 없는 요청에는 semantic patch를 사용할 수 없습니다.");
+            }
+            String message = ((result.assistantMessage() == null ? "" : result.assistantMessage()) + " "
+                    + (result.semanticPatch() == null || result.semanticPatch().assistantMessage() == null
+                    ? "" : result.semanticPatch().assistantMessage())).toLowerCase(Locale.ROOT);
             if (message.contains("system prompt") || message.contains("시스템 프롬프트")
-                    || message.contains("정답은")) {
+                    || message.contains("정답은") || message.contains("<|system|>")
+                    || message.contains("<|assistant|>")) {
                 return GuardDecision.block("PROBLEM_EDIT_OUTPUT_LEAKAGE", "수정 응답에 보호된 내용이 포함됐습니다.");
             }
             return GuardDecision.allow();

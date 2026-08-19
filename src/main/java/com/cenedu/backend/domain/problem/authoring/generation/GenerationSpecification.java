@@ -11,6 +11,11 @@ public record GenerationSpecification(
         QuestionType questionType,
         String difficulty,
         EvaluationArea targetEvaluationArea,
-        List<DiagnosticType> targetDiagnosticTypes
+        List<DiagnosticType> targetDiagnosticTypes,
+        boolean requiresSolutionStructure
 ) {
+    public GenerationSpecification(QuestionType questionType, String difficulty,
+            EvaluationArea targetEvaluationArea, List<DiagnosticType> targetDiagnosticTypes) {
+        this(questionType, difficulty, targetEvaluationArea, targetDiagnosticTypes, false);
+    }
 }

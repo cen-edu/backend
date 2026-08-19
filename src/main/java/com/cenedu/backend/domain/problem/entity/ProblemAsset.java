@@ -2,6 +2,7 @@ package com.cenedu.backend.domain.problem.entity;
 
 import com.cenedu.backend.domain.problem.entity.enums.AssetRole;
 import com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.RenderSpecDocument;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,6 +17,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -66,6 +69,16 @@ public class ProblemAsset {
     @Column(name = "alt_text", columnDefinition = "TEXT")
     private String altText;
 
+    @Column(name = "render_spec_schema_version")
+    private Short renderSpecSchemaVersion;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "render_spec", columnDefinition = "jsonb")
+    private String renderSpec;
+    @Column(name = "render_spec_hash", length = 64)
+    private String renderSpecHash;
+    @Column(name = "renderer_version", length = 30)
+    private String rendererVersion;
+
     private ProblemAsset(ProblemQuestion question, String assetKey, AssetRole role,
                          short displayOrder, String storageKey, int widthPx, int heightPx,
                          String altText, ProblemAssetStorageStatus storageStatus) {
@@ -115,5 +128,11 @@ public class ProblemAsset {
     /** 업로드 재시도 대기 또는 최종 실패 상태를 기록한다. */
     public void markFailed(boolean retryable) {
         storageStatus = retryable ? ProblemAssetStorageStatus.RETRY_WAIT : ProblemAssetStorageStatus.FAILED;
+    }
+
+    public void attachRenderSpec(RenderSpecDocument document) {
+        if (document == null) throw new IllegalArgumentException("render spec document가 필요합니다.");
+        renderSpecSchemaVersion = (short) document.schemaVersion(); renderSpec = document.json();
+        renderSpecHash = document.sha256(); rendererVersion = document.rendererVersion();
     }
 }

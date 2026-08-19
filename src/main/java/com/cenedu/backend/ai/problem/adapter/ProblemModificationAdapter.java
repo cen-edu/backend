@@ -69,7 +69,7 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
                                 command.baseSnapshot().metadata().subUnitId(), "대단원", "중단원", "소단원"),
                             List.of(), List.of()), output);
             var mergedSnapshot = snapshotMerger.merge(command.plan(), command.baseSnapshot(), mapped.snapshot());
-            ProblemCandidateDraft candidate = new ProblemCandidateDraft(command.requestId(), mergedSnapshot,
+            ProblemCandidateDraft candidate = ProblemCandidateDraft.legacy(command.requestId(), mergedSnapshot,
                     mapped.assetPlans(), new CandidateProvenance(CandidateSourceType.AI_MODIFY,
                     null, List.of()));
             structuralValidator.validate(candidate.snapshot());

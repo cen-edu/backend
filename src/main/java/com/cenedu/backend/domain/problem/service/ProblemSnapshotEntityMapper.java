@@ -3,6 +3,8 @@ package com.cenedu.backend.domain.problem.service;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.RenderSpecDocument;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.SemanticModelDocument;
 
 import com.cenedu.backend.domain.problem.authoring.model.*;
 import com.cenedu.backend.domain.problem.entity.*;
@@ -31,6 +33,15 @@ public class ProblemSnapshotEntityMapper {
     public ProblemQuestionPersistenceBundle map(QuestionSnapshotV1 snapshot,
                                                 Map<String, String> finalAssetKeys,
                                                 ProblemQuestion derivedFrom) {
+        return map(snapshot, finalAssetKeys, derivedFrom, null, Map.of());
+    }
+
+    /** 의미 모델과 canonical render document를 함께 문제은행 묶음에 연결한다. */
+    public ProblemQuestionPersistenceBundle map(QuestionSnapshotV1 snapshot,
+                                                Map<String, String> finalAssetKeys,
+                                                ProblemQuestion derivedFrom,
+                                                SemanticModelDocument semanticModel,
+                                                Map<String, RenderSpecDocument> renderSpecs) {
         requireValid(snapshot);
         SnapshotMetadata metadata = snapshot.metadata();
         String contentBlocks = write(snapshot.contentBlocks());
@@ -42,6 +53,7 @@ public class ProblemSnapshotEntityMapper {
                 metadata.subUnitId(), metadata.topicCode(), difficulty(metadata.difficulty()), metadata.evaluationArea(),
                 metadata.questionType(), metadata.presentation(), contentBlocks, promptText,
                 snapshot.explanation(), learningGuide, VerificationStatus.PASSED);
+        if (semanticModel != null) question.attachSemanticModel(semanticModel);
 
         List<ProblemChoice> choices = snapshot.choices().stream()
                 .map(c -> ProblemChoice.create(question, (short) c.displayOrder(), c.content())).toList();
@@ -59,10 +71,16 @@ public class ProblemSnapshotEntityMapper {
         List<ProblemRubricItem> rubrics = snapshot.rubricItems().stream()
                 .map(r -> ProblemRubricItem.create(question, r.displayOrder(), r.criterion(), (short) r.weightPercent(), null, null))
                 .toList();
-        List<ProblemAsset> assets = snapshot.assets().stream().map((a) ->
-                ProblemAsset.create(question, a.assetKey(), AssetRole.FIGURE, (short) snapshot.assets().indexOf(a),
-                        requiredAssetKey(finalAssetKeys, a.assetKey()), 0, 0, a.altText())).toList();
-        return new ProblemQuestionPersistenceBundle(question, choices, steps, answers, rubrics, assets);
+        List<ProblemAsset> assets = snapshot.assets().stream().map((a) -> {
+            ProblemAsset asset = ProblemAsset.create(question, a.assetKey(), AssetRole.FIGURE,
+                    (short) snapshot.assets().indexOf(a), requiredAssetKey(finalAssetKeys, a.assetKey()),
+                    0, 0, a.altText());
+            RenderSpecDocument renderSpec = renderSpecs == null ? null : renderSpecs.get(a.assetKey());
+            if (renderSpec != null) asset.attachRenderSpec(renderSpec);
+            return asset;
+        }).toList();
+        return new ProblemQuestionPersistenceBundle(question, choices, steps, answers, rubrics, assets,
+                semanticModel, renderSpecs == null ? Map.of() : Map.copyOf(renderSpecs));
     }
 
     private void requireValid(QuestionSnapshotV1 snapshot) {

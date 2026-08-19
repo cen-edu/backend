@@ -1,0 +1,1 @@
+package com.cenedu.backend.domain.problem.authoring.diagram; public record NumberLineIntervalSpec(String intervalKey,String startKey,String endKey,boolean includeStart,boolean includeEnd,String labelTemplate) {}

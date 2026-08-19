@@ -12,6 +12,7 @@ import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditAgentResultEn
 import com.cenedu.backend.domain.problem.authoring.edit.EditTargetType;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditConversationResult;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditInstruction;
+import com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemSemanticPatch;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
@@ -47,8 +48,7 @@ public class ProblemEditAgent implements Agent {
                     ProblemStructuredOutputSchemas.EDIT_TURN).text();
             ProblemEditAgentResultEnvelope envelope = objectMapper.readValue(
                     response, ProblemEditAgentResultEnvelope.class);
-            ProblemEditConversationResult normalized = normalizeTargets(
-                    payload, envelope.problemEditResult());
+            ProblemEditConversationResult normalized = normalizeTargets(payload, envelope.problemEditResult());
             return AgentResponse.ofData(Map.of(
                     ProblemEditAgentResultEnvelope.RESPONSE_KEY, normalized));
         } catch (RuntimeException exception) {
@@ -76,8 +76,15 @@ public class ProblemEditAgent implements Agent {
             return new ProblemEditInstruction(instruction.targetType(), targetKey,
                     instruction.changeNature(), instruction.instruction());
         }).toList();
-        return new ProblemEditConversationResult(
-                result.action(), normalized, result.assistantMessage());
+        ProblemSemanticPatch semanticPatch = result.semanticPatch();
+        if (payload.currentSemanticModel() != null && semanticPatch != null) {
+            semanticPatch = new ProblemSemanticPatch(
+                    ProblemSemanticPatch.CURRENT_SCHEMA_VERSION,
+                    payload.requestId(), payload.baseVersionId(), semanticPatch.mode(),
+                    semanticPatch.operations(), semanticPatch.assistantMessage());
+        }
+        return new ProblemEditConversationResult(result.action(), normalized, semanticPatch,
+                result.assistantMessage());
     }
 
     private boolean keyed(EditTargetType type) {

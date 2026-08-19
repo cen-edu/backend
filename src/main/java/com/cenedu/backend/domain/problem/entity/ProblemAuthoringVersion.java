@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringVerificationStatus;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.SemanticModelDocument;
 import com.cenedu.backend.global.common.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -71,6 +72,16 @@ public class ProblemAuthoringVersion extends BaseTimeEntity {
     @Column(name = "snapshot", nullable = false, columnDefinition = "jsonb", updatable = false)
     private String snapshot;
 
+    @Column(name = "semantic_model_schema_version")
+    private Short semanticModelSchemaVersion;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "semantic_model", columnDefinition = "jsonb")
+    private String semanticModel;
+
+    @Column(name = "semantic_model_hash", length = 64)
+    private String semanticModelHash;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "asset_manifest", nullable = false, columnDefinition = "jsonb")
     private String assetManifest;
@@ -122,6 +133,26 @@ public class ProblemAuthoringVersion extends BaseTimeEntity {
         return new ProblemAuthoringVersion(sessionId, versionNo, parentVersionId,
                 sourceRequestId, operationType, sourceQuestionId, snapshotSchemaVersion,
                 snapshot, assetManifest, changeSummary);
+    }
+
+    public static ProblemAuthoringVersion create(Long sessionId, int versionNo,
+            Long parentVersionId, UUID sourceRequestId, AuthoringOperationType operationType,
+            Long sourceQuestionId, int snapshotSchemaVersion, String snapshot,
+            SemanticModelDocument semanticModel, String assetManifest, String changeSummary) {
+        ProblemAuthoringVersion version = create(sessionId, versionNo, parentVersionId, sourceRequestId,
+                operationType, sourceQuestionId, snapshotSchemaVersion, snapshot, assetManifest, changeSummary);
+        version.attachSemanticModel(semanticModel);
+        return version;
+    }
+
+    public void attachSemanticModel(SemanticModelDocument document) {
+        if (document == null) return;
+        if (semanticModelHash != null && !semanticModelHash.equals(document.sha256())) {
+            throw new IllegalStateException("semantic model hash를 변경할 수 없습니다.");
+        }
+        semanticModelSchemaVersion = (short) document.schemaVersion();
+        semanticModel = document.json();
+        semanticModelHash = document.sha256();
     }
 
     /** 임시 자산 생성 상태와 결과만 manifest에 반영하고 S1 스냅샷은 바꾸지 않는다. */
