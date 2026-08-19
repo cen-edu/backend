@@ -173,8 +173,12 @@ public class AnswerGradingService {
     /**
      * 학생의 전 칸이 {@code GRADED}면 채점 완료로 표시한다(명세 7절 6번).
      *
-     * <p>서술형이 든 학습지는 여기 도달하지 못한다 — {@code RUBRIC} 칸이 {@code FAILED}로 남기
-     * 때문이다. 교사가 그 칸을 손으로 채워야 완료되고, 그래야 확정이 열린다. 정상 동작이다.
+     * <p><b>서술형이 든 학습지도 여기 도달한다.</b> 예전에는 {@code RUBRIC} 칸이 무조건
+     * {@code FAILED}로 남아 그 학습지가 영영 완료되지 않았으나, 지금은 LLM 판정이 붙으면
+     * {@code GRADED}가 된다. 배점이 없는 학습지는 점수 없이 판정만 남기고도 완료된다(D25).
+     *
+     * <p>다만 판정 불가({@code UNJUDGEABLE})가 하나라도 있거나 루브릭이 없는 칸은 여전히
+     * {@code FAILED}다. 그 칸은 교사가 손으로 채워야 완료되고, 그래야 확정이 열린다.
      *
      * @param assessment 종합평가면 총점을 다시 계산한다. 일반·맞춤 학습은 {@code total_score}가
      *                   "종합평가 전용" 컬럼이라 채우지 않는다
