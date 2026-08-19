@@ -46,7 +46,19 @@ public class ProblemSemanticModificationService {
             throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
         ProblemSemanticModelV1 baseModel = semanticCodec.readSemanticModel(baseVersion.getSemanticModel());
         ProblemSemanticModelV1 changed = applier.apply(baseModel, patch);
+        MaterializedProblem baseMaterialized = materializer.materialize(baseModel);
         MaterializedProblem materialized = materializer.materialize(changed);
+        if (patch.mode() == SemanticEditMode.PRESENTATIONAL_PATCH) {
+            if (!java.util.Objects.equals(baseMaterialized.report().resolvedValues(), materialized.report().resolvedValues())
+                    || !java.util.Objects.equals(baseMaterialized.snapshot().answerUnits(), materialized.snapshot().answerUnits()))
+                throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID);
+            boolean styleOrLabelOnly = patch.operations().stream().allMatch(operation ->
+                    operation.type() == SemanticPatchOperationType.SET_DIAGRAM_STYLE
+                            || operation.type() == SemanticPatchOperationType.SET_LABEL_TEXT
+                            || operation.type() == SemanticPatchOperationType.SET_TEMPLATE_TEXT);
+            if (!styleOrLabelOnly && !java.util.Objects.equals(baseModel.diagrams(), changed.diagrams()))
+                throw new BusinessException(ErrorCode.PROBLEM_DIAGRAM_RENDER_FAILED);
+        }
         QuestionSnapshotV1 baseSnapshot = jsonCodec.read(baseVersion.getSnapshot(), QuestionSnapshotV1.class);
         ProblemCandidateDraft candidate = new ProblemCandidateDraft(patch.requestId(), materialized.snapshot(),
                 materialized.assetPlans(), changed, new CandidateProvenance(CandidateSourceType.AI_MODIFY, null, java.util.List.of()));

@@ -68,12 +68,13 @@ public class ProblemModificationExecutionCoordinator {
             stateService.restorePassedVersion(teacherId, plan.sessionId(), plan.restoreVersionId());
             if (decisionEventService != null) decisionEventService.recordRestore(
                     teacherId, plan.sessionId(), plan.restoreVersionId(), plan.requestId());
-            return plan.restoreVersionId();
+            return new com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemModificationExecutionResult(
+                    plan.restoreVersionId(), com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode.RESTORE,
+                    new com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemSemanticDiff(java.util.List.of(),
+                            java.util.EnumSet.allOf(com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticImpactArea.class), false, false),
+                    true, false);
         }
         if (plan.semanticPatch() != null) {
-            if (semanticModificationService == null)
-                throw new com.cenedu.backend.global.common.BusinessException(
-                        com.cenedu.backend.global.common.ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
             ProblemAuthoringVersion baseVersion = versionRepository
                     .findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
                     .orElseThrow(() -> new com.cenedu.backend.global.common.BusinessException(
@@ -89,6 +90,19 @@ public class ProblemModificationExecutionCoordinator {
                         new tools.jackson.databind.ObjectMapper()).readSemanticModel(baseVersion.getSemanticModel());
                 return structuralRegenerationService.regenerate(teacherId, baseVersion, plan, baseModel);
             }
+            if (baseVersion.getSemanticModel() == null) {
+                if (!plan.instructions().isEmpty()) {
+                    Object fallback = modificationWorker.execute(teacherId,
+                            new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
+                                    plan.requestId(), plan, baseSnapshot, null));
+                    return fallback;
+                }
+                throw new com.cenedu.backend.global.common.BusinessException(
+                        com.cenedu.backend.global.common.ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
+            }
+            if (semanticModificationService == null)
+                throw new com.cenedu.backend.global.common.BusinessException(
+                        com.cenedu.backend.global.common.ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
             return semanticModificationService.apply(teacherId, plan.sessionId(), baseVersion, plan.semanticPatch());
         }
         if (plan.action() == EditAction.REPLACE
