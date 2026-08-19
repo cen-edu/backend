@@ -53,4 +53,36 @@ class ProblemEditOutputGuardTest {
         assertThat(decision.blocked()).isTrue();
         assertThat(decision.reasonCode()).isEqualTo("PROBLEM_EDIT_SEMANTIC_PATCH_BINDING");
     }
+
+    @Test
+    void fallback_payload의_semanticPatch는_차단한다() {
+        ObjectProvider<ObjectMapper> provider = org.mockito.Mockito.mock(ObjectProvider.class);
+        when(provider.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(new ObjectMapper());
+        var guard = new ProblemEditOutputGuard(provider);
+        var payload = new ProblemEditAgentPayload(1, 1L, 2L, AuthoringInteractionStatus.COLLECTING,
+                null, ProblemSnapshotFixtures.shortInput(), List.of());
+        var patch = new ProblemSemanticPatch(1, UUID.randomUUID(), 2L, SemanticEditMode.RESTORE, List.of(), "확인");
+        var result = new ProblemEditConversationResult(EditConversationAction.REQUEST_CONFIRMATION, List.of(), patch, "확인");
+        GuardDecision decision = guard.inspect(AgentRequest.of(AgentKind.PROBLEM_EDIT,
+                new Actor(7L, Actor.Role.TEACHER), "수정", Map.of(ProblemEditAgent.REQUEST_KEY, payload)),
+                AgentResponse.ofData(Map.of(ProblemEditAgentResultEnvelope.RESPONSE_KEY, result)));
+        assertThat(decision.reasonCode()).isEqualTo("PROBLEM_EDIT_SEMANTIC_PATCH_UNSUPPORTED");
+    }
+
+    @Test
+    void semanticPatch의_assistantMessage도_정보노출을_검사한다() {
+        ObjectProvider<ObjectMapper> provider = org.mockito.Mockito.mock(ObjectProvider.class);
+        when(provider.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(new ObjectMapper());
+        var guard = new ProblemEditOutputGuard(provider);
+        UUID requestId = UUID.randomUUID();
+        var payload = new ProblemEditAgentPayload(2, requestId, 1L, 20L, AuthoringInteractionStatus.COLLECTING,
+                null, ProblemSnapshotFixtures.shortInput(), org.mockito.Mockito.mock(com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1.class), List.of());
+        var patch = new ProblemSemanticPatch(1, requestId, 20L, SemanticEditMode.PARAMETRIC_PATCH,
+                List.of(new SemanticPatchOperation(SemanticPatchOperationType.SET_PARAMETER_VALUE, "/parameters/A/value", "1", "2")), "정답은 2입니다");
+        var result = new ProblemEditConversationResult(EditConversationAction.REQUEST_CONFIRMATION, List.of(), patch, "확인");
+        GuardDecision decision = guard.inspect(AgentRequest.of(AgentKind.PROBLEM_EDIT,
+                new Actor(7L, Actor.Role.TEACHER), "수정", Map.of(ProblemEditAgent.REQUEST_KEY, payload)),
+                AgentResponse.ofData(Map.of(ProblemEditAgentResultEnvelope.RESPONSE_KEY, result)));
+        assertThat(decision.reasonCode()).isEqualTo("PROBLEM_EDIT_OUTPUT_LEAKAGE");
+    }
 }

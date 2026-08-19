@@ -48,7 +48,7 @@ class ProblemEditAgentTest {
     void returnsStructuredProblemEditResult() {
         LlmClient client = mock(LlmClient.class);
         when(client.completeStructured(any(), any(), any())).thenReturn(new LlmResponse("""
-                {"schemaVersion":1,"problemEditResult":{"action":"CONTINUE_COLLECTION",
+                {"schemaVersion":2,"problemEditResult":{"action":"CONTINUE_COLLECTION",
                 "instructionDeltas":[{"targetType":"QUESTION_BODY","targetKey":null,
                 "changeNature":"SEMANTIC","instruction":"문장을 간결하게 바꾼다"}],
                 "assistantMessage":"추가 수정 사항이 있나요?"}}
@@ -72,7 +72,7 @@ class ProblemEditAgentTest {
     void selectedTargetOverridesModelInventedTargetKey() {
         LlmClient client = mock(LlmClient.class);
         when(client.completeStructured(any(), any(), any())).thenReturn(new LlmResponse("""
-                {"schemaVersion":1,"problemEditResult":{"action":"REQUEST_CONFIRMATION",
+                {"schemaVersion":2,"problemEditResult":{"action":"REQUEST_CONFIRMATION",
                 "instructionDeltas":[{"targetType":"QUESTION_BODY","targetKey":"S1",
                 "changeNature":"PRESENTATIONAL","instruction":"발문을 다듬는다"}],
                 "assistantMessage":"확인해 주세요."}}

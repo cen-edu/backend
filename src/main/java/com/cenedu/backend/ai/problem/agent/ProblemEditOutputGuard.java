@@ -40,8 +40,12 @@ public class ProblemEditOutputGuard implements OutputGuard {
                     return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_BINDING", "semantic patch binding이 올바르지 않습니다.");
                 if (new ProblemSemanticPatchClassifier().classify(patch) != patch.mode())
                     return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_INVALID", "semantic patch가 허용된 분류와 일치하지 않습니다.");
+            } else if (result.semanticPatch() != null) {
+                return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_UNSUPPORTED", "semantic model이 없는 요청에는 semantic patch를 사용할 수 없습니다.");
             }
-            String message = result.assistantMessage() == null ? "" : result.assistantMessage().toLowerCase(Locale.ROOT);
+            String message = ((result.assistantMessage() == null ? "" : result.assistantMessage()) + " "
+                    + (result.semanticPatch() == null || result.semanticPatch().assistantMessage() == null
+                    ? "" : result.semanticPatch().assistantMessage())).toLowerCase(Locale.ROOT);
             if (message.contains("system prompt") || message.contains("시스템 프롬프트")
                     || message.contains("정답은") || message.contains("<|system|>")
                     || message.contains("<|assistant|>")) {

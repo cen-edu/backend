@@ -12,7 +12,7 @@ public record ProblemEditAgentResultEnvelope(
     public static final String RESPONSE_KEY = "problemEditResult";
 
     public ProblemEditAgentResultEnvelope {
-        if (schemaVersion != CURRENT_SCHEMA_VERSION && schemaVersion != 1) {
+        if (schemaVersion != CURRENT_SCHEMA_VERSION) {
             throw new IllegalArgumentException("지원하지 않는 문제 수정 응답 버전입니다.");
         }
         Objects.requireNonNull(problemEditResult, "problemEditResult");

@@ -1725,7 +1725,7 @@ Run: `bash gradlew test --tests '*ProblemEditAgentTest' --tests '*ProblemEditOut
 
 Expected: PASS; architecture tests prove domain code does not call `ai.client`, and no domain code references `ai.problem.agent` directly.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/authoring/edit/ProblemEditAgentPayload.java \
