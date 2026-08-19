@@ -1,6 +1,7 @@
 package com.cenedu.backend.domain.analysis.service;
 
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,7 @@ import com.cenedu.backend.domain.analysis.entity.enums.DifficultyBand;
 import com.cenedu.backend.domain.analysis.repository.CustomLearningQueryRepository;
 import com.cenedu.backend.domain.analysis.repository.row.CustomLearningSessionRow;
 import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.domain.worksheet.service.CustomSessionNumbering;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -39,22 +41,60 @@ public class CustomLearningQueryService {
             throw new BusinessException(ErrorCode.ANALYSIS_STUDENT_NOT_ASSIGNED);
         }
 
-        Map<Long, List<CustomLearningSessionRow>> rowsBySession = repository
-                .findSessions(assignmentId, studentId)
-                .stream()
+        List<CustomLearningSessionRow> rows = repository.findSessions(assignmentId, studentId);
+        if (rows.isEmpty()) {
+            return new CustomLearningSessionListResponse(List.of());
+        }
+
+        Map<Long, List<CustomLearningSessionRow>> rowsBySession = rows.stream()
                 .collect(Collectors.groupingBy(
                         CustomLearningSessionRow::customAssignmentId,
                         LinkedHashMap::new,
                         Collectors.toList()));
+        Map<Long, Integer> sessionNumbers = sessionNumbers(rows);
+
         List<CustomLearningSessionListResponse.CustomLearningSession> sessions =
                 rowsBySession.values().stream()
-                        .map(this::toSession)
+                        .map(sessionRows -> toSession(sessionRows, sessionNumbers))
+                        .sorted(Comparator
+                                .comparingInt(CustomLearningQueryService::sortKey)
+                                .thenComparingLong(
+                                        CustomLearningSessionListResponse
+                                                .CustomLearningSession::customAssignmentId))
                         .toList();
         return new CustomLearningSessionListResponse(sessions);
     }
 
+    /**
+     * 학습지 ID 로 차수를 매긴다.
+     *
+     * <p>차수 규칙은 worksheet 도메인의 {@code CustomSessionNumbering} 이 정본이다. 여기서 다시
+     * 구현하면 같은 학습지가 학습 현황·평가 결과 화면과 다른 차수로 보인다.
+     *
+     * <p>한 학습지가 여러 배정으로 나뉘어 오므로 학습지 축으로 접어서 넘긴다.
+     */
+    private Map<Long, Integer> sessionNumbers(List<CustomLearningSessionRow> rows) {
+        return CustomSessionNumbering.depthByWorksheetId(
+                rows.getFirst().rootWorksheetId(),
+                rows.stream()
+                        .collect(Collectors.toMap(
+                                CustomLearningSessionRow::worksheetId,
+                                row -> new CustomSessionNumbering.Node(
+                                        row.worksheetId(), row.parentWorksheetId()),
+                                (left, right) -> left))
+                        .values());
+    }
+
+    /** 차수 미상(계보가 끊긴 데이터)은 맨 뒤로 보낸다. 1차인 척 앞에 세우면 화면이 거짓말을 한다. */
+    private static int sortKey(
+            CustomLearningSessionListResponse.CustomLearningSession session
+    ) {
+        return session.sessionNumber() == 0 ? Integer.MAX_VALUE : session.sessionNumber();
+    }
+
     private CustomLearningSessionListResponse.CustomLearningSession toSession(
-            List<CustomLearningSessionRow> rows
+            List<CustomLearningSessionRow> rows,
+            Map<Long, Integer> sessionNumbers
     ) {
         CustomLearningSessionRow session = rows.getFirst();
         Map<Long, List<CustomLearningSessionRow>> rowsBySubcategory = rows.stream()
@@ -69,6 +109,7 @@ public class CustomLearningQueryService {
 
         return new CustomLearningSessionListResponse.CustomLearningSession(
                 session.customAssignmentId(),
+                sessionNumbers.getOrDefault(session.worksheetId(), 0),
                 overallResolutionStatus(subcategories),
                 session.assignedAt(),
                 session.completedAt(),

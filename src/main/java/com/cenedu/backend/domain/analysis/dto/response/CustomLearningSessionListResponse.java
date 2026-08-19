@@ -16,8 +16,13 @@ public record CustomLearningSessionListResponse(
         sessions = List.copyOf(sessions);
     }
 
+    /**
+     * @param sessionNumber 맞춤 학습 차수(1부터). 계보가 끊겨 차수를 매길 수 없으면 0 이다 —
+     *                      학습 현황·평가 결과 화면과 같은 표기다
+     */
     public record CustomLearningSession(
             long customAssignmentId,
+            int sessionNumber,
             CustomResolutionStatus overallResolutionStatus,
             OffsetDateTime assignedAt,
             OffsetDateTime completedAt,
