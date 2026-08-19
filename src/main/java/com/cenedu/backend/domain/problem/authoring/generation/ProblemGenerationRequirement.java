@@ -8,12 +8,12 @@ public record ProblemGenerationRequirement(Long subUnitId, short difficulty,
                                            QuestionType questionType, int count,
                                            GenerationPurpose purpose,
                                            GenerationSpecification specification,
-                                           CurriculumContext curriculumContext,
+                                           CurriculumScope curriculum,
                                            List<GenerationReference> references,
                                            List<GenerationConceptEvidence> conceptEvidence) {
     public ProblemGenerationRequirement {
         if (subUnitId == null || count < 1 || purpose == null || specification == null
-                || curriculumContext == null) throw new IllegalArgumentException("생성 조건이 올바르지 않습니다.");
+                || curriculum == null) throw new IllegalArgumentException("생성 조건이 올바르지 않습니다.");
         references = references == null ? List.of() : List.copyOf(references);
         conceptEvidence = conceptEvidence == null ? List.of() : List.copyOf(conceptEvidence);
     }

@@ -1,6 +1,7 @@
 package com.cenedu.backend.ai.chat.agent.loop;
 
 import com.cenedu.backend.ai.client.OpenAiProperties;
+import com.cenedu.backend.ai.client.OpenAiClientConfig;
 import com.openai.client.OpenAIClient;
 
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -34,14 +35,16 @@ public class LoopChatModelConfig {
      */
     @Bean
     public OpenAiChatOptions loopChatOptions(OpenAiProperties properties) {
-        return OpenAiChatOptions.builder()
+        OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
                 .model(properties.model())
-                .reasoningEffort(properties.reasoningEffort())
                 .maxCompletionTokens(Math.toIntExact(properties.maxCompletionTokens()))
                 .apiKey(properties.apiKey())
                 .timeout(properties.timeout())
-                .maxRetries(properties.maxRetries())
-                .build();
+                .maxRetries(properties.maxRetries());
+        if (OpenAiClientConfig.supportsReasoningEffort(properties.model())) {
+            builder.reasoningEffort(properties.reasoningEffort());
+        }
+        return builder.build();
     }
 
     /**

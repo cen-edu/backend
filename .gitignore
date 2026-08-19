@@ -53,3 +53,6 @@ CLAUDE.local.md
 
 ### tools ###
 /tools/bruno
+
+### Git worktrees ###
+/.worktrees/

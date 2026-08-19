@@ -42,8 +42,8 @@ public class SpringAiProblemGenerationAdapter implements ProblemGenerationPort {
     @Override
     public ProblemCandidateDraft generate(ProblemGenerationCommand command) {
         try {
-            String response = llmClient.completeStructured(promptFactory.create(command),
-                    List.of(new ChatMessage(ChatMessage.Role.USER, "조건에 맞는 문제 JSON을 생성하라.")),
+            ProblemGenerationPrompt prompt = promptFactory.create(command);
+            String response = llmClient.completeStructured(prompt.systemPrompt(), prompt.messages(),
                     ProblemStructuredOutputSchemas.CANDIDATE).text();
             ProblemGenerationOutput output = objectMapper.readValue(response, ProblemGenerationOutput.class);
             ProblemCandidateDraft candidate = outputMapper.map(command, output);

@@ -100,4 +100,36 @@ class AiClientAccessTest {
 
         rule.check(classes);
     }
+
+    @Test
+    @DisplayName("Problem 도메인은 검색 인프라와 임베딩 구현을 직접 참조하지 않는다")
+    void problemDomainMustNotDependOnInfrastructureOrEmbedding() {
+        ArchRule rule = ArchRuleDefinition.noClasses()
+                .that().resideInAPackage("..domain.problem..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "..infra.vector..", "..ai.embedding..", "com.openai..",
+                        "org.springframework.ai..")
+                .allowEmptyShould(true);
+        rule.check(classes);
+    }
+
+    @Test
+    @DisplayName("검색 인프라는 OpenAI SDK를 직접 참조하지 않는다")
+    void vectorInfrastructureMustNotDependOnOpenAi() {
+        ArchRule rule = ArchRuleDefinition.noClasses()
+                .that().resideInAPackage("..infra.vector..")
+                .should().dependOnClassesThat().resideInAPackage("com.openai..")
+                .allowEmptyShould(true);
+        rule.check(classes);
+    }
+
+    @Test
+    @DisplayName("OpenAI SDK 참조는 AI provider 경계에만 둔다")
+    void openAiSdkMustStayInProviderBoundary() {
+        ArchRule rule = ArchRuleDefinition.noClasses()
+                .that().resideOutsideOfPackages("..ai.client..", "..ai.embedding..", "..ai.chat.agent.loop..")
+                .should().dependOnClassesThat().resideInAPackage("com.openai..")
+                .allowEmptyShould(true);
+        rule.check(classes);
+    }
 }

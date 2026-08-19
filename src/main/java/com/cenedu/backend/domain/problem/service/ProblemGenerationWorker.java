@@ -9,6 +9,7 @@ import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProcessing
 import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationWorkItem;
+import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemRetrievalTracePort;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemGenerationPort;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationExpectation;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationOperationType;
@@ -29,6 +30,7 @@ public class ProblemGenerationWorker {
     private final ProblemCandidateProcessingService candidateProcessingService;
     private final ObjectProvider<ProblemGenerationPort> generationPortProvider;
     private final ProblemAiConcurrencyLimiter concurrencyLimiter;
+    private final ObjectProvider<ProblemRetrievalTracePort> tracePort;
 
     public ProblemGenerationWorker(
             ProblemGenerationJobService jobService,
@@ -36,10 +38,23 @@ public class ProblemGenerationWorker {
             ObjectProvider<ProblemGenerationPort> generationPortProvider,
             ProblemAiConcurrencyLimiter concurrencyLimiter
     ) {
+        this(jobService, candidateProcessingService, generationPortProvider, concurrencyLimiter, null);
+    }
+
+    /** retrieval trace 연결 Port를 선택적으로 주입한다. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public ProblemGenerationWorker(
+            ProblemGenerationJobService jobService,
+            ProblemCandidateProcessingService candidateProcessingService,
+            ObjectProvider<ProblemGenerationPort> generationPortProvider,
+            ProblemAiConcurrencyLimiter concurrencyLimiter,
+            ObjectProvider<ProblemRetrievalTracePort> tracePort
+    ) {
         this.jobService = jobService;
         this.candidateProcessingService = candidateProcessingService;
         this.generationPortProvider = generationPortProvider;
         this.concurrencyLimiter = concurrencyLimiter;
+        this.tracePort = tracePort;
     }
 
     /** 선점한 Item을 생성·검증하고 의미 실패 시 최대 두 번 같은 명령으로 재생성한다. */
@@ -89,6 +104,7 @@ public class ProblemGenerationWorker {
             }
 
             if (result.promoted()) {
+                linkAuthoringVersion(workItem.command(), result.versionId());
                 jobService.succeed(workItem);
                 return;
             }
@@ -104,13 +120,21 @@ public class ProblemGenerationWorker {
         }
     }
 
+    private void linkAuthoringVersion(ProblemGenerationCommand command, Long versionId) {
+        if (command.retrievalRequestId() == null || versionId == null || tracePort == null) return;
+        ProblemRetrievalTracePort trace = tracePort.getIfAvailable();
+        if (trace == null) return;
+        try { trace.linkAuthoringVersion(command.retrievalRequestId(), versionId); }
+        catch (RuntimeException exception) { log.debug("검색 trace version 연결 실패 — errorType={}", exception.getClass().getSimpleName()); }
+    }
+
     /** 첫 시도는 원 요청 ID를 유지하고 재생성 후보에는 결정적인 별도 ID를 부여한다. */
     private ProblemGenerationCommand commandForAttempt(ProblemGenerationCommand command, int attempt) {
         if (attempt == 0) return command;
         UUID attemptRequestId = UUID.nameUUIDFromBytes(
                 (command.requestId() + ":attempt:" + attempt).getBytes(StandardCharsets.UTF_8));
-        return new ProblemGenerationCommand(attemptRequestId, command.purpose(), command.specification(),
-                command.curriculumContext(), command.references(), command.conceptEvidence());
+        return new ProblemGenerationCommand(attemptRequestId, command.retrievalRequestId(), command.purpose(),
+                command.specification(), command.curriculum(), command.references(), command.conceptEvidence());
     }
 
     private String safeMessage(RuntimeException exception) {
@@ -130,7 +154,7 @@ public class ProblemGenerationWorker {
         VerificationExpectation expectation = new VerificationExpectation(
                 command.specification().questionType(),
                 command.specification().difficulty(),
-                command.curriculumContext(),
+                command.curriculum(),
                 command.specification().targetEvaluationArea(),
                 command.specification().targetDiagnosticTypes(),
                 requiredAssetKeys);

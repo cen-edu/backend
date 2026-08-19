@@ -9,6 +9,11 @@ public record CurriculumPathResponse(
     String middleUnitName,
     Long subUnitId,
     String subUnitName
+    ,String curriculumRevision,
+    String schoolLevel,
+    short grade,
+    Short semester,
+    String achievementStandardId
 ) {
 
     /**
@@ -25,7 +30,9 @@ public record CurriculumPathResponse(
             middleUnit.getId(),
             middleUnit.getName(),
             subUnit.getId(),
-            subUnit.getName()
+            subUnit.getName(),
+            subUnit.getCurriculumRevision(), subUnit.getSchoolLevel(), subUnit.getGrade(),
+            subUnit.getSemester(), subUnit.getAchievementStandardId()
         );
     }
 }

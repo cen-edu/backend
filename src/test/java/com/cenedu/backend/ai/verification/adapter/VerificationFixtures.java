@@ -7,7 +7,7 @@ import com.cenedu.backend.domain.problem.authoring.asset.DraftAssetManifest;
 import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditInstruction;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditTargetRef;
-import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.verification.EditVerificationContext;
 import com.cenedu.backend.domain.problem.authoring.verification.GenerationVerificationContext;
@@ -327,7 +327,8 @@ final class VerificationFixtures {
         return new VerificationExpectation(
                 metadata.questionType(),
                 metadata.difficulty(),
-                new CurriculumContext(metadata.subUnitId(), 1, 1, "수와 연산", "소인수분해", "소인수분해"),
+                new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null,
+                        metadata.subUnitId(), "수와 연산", "소인수분해", "소인수분해"),
                 metadata.evaluationArea(),
                 diagnosticTypes,
                 List.of());
@@ -348,11 +349,12 @@ final class VerificationFixtures {
     static VerificationExpectation withExpectedSubUnitId(
             VerificationExpectation expectation, Long subUnitId
     ) {
-        CurriculumContext base = expectation.expectedCurriculum();
+        CurriculumScope base = expectation.expectedCurriculum();
         return new VerificationExpectation(
                 expectation.expectedQuestionType(),
                 expectation.expectedDifficulty(),
-                new CurriculumContext(subUnitId, base.grade(), base.semester(),
+                new CurriculumScope(base.curriculumRevision(), base.schoolLevel(), base.grade(),
+                        base.semester(), base.achievementStandardId(), subUnitId,
                         base.majorUnitName(), base.middleUnitName(), base.subUnitName()),
                 expectation.targetEvaluationArea(),
                 expectation.targetDiagnosticTypes(),

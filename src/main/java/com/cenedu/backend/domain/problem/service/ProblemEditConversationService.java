@@ -32,6 +32,11 @@ public class ProblemEditConversationService {
     private final ProblemAuthoringVersionRepository versionRepository;
     private final ProblemAuthoringJsonCodec jsonCodec;
     private final ProblemEditPolicy editPolicy;
+    private ProblemTeacherDecisionEventService decisionEventService;
+
+    /** 교사 결정 이벤트 기록기를 선택적으로 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setDecisionEventService(ProblemTeacherDecisionEventService service) { this.decisionEventService = service; }
 
     /** current PASSED Version이 있는 Session에서 수정 요청 수집을 시작한다. */
     @Transactional
@@ -88,10 +93,18 @@ public class ProblemEditConversationService {
         if (plan.action() == EditAction.RESTORE) {
             session.completeConfirmedRestore(
                     restoreVersion.getId(), restoreVersion.getVerificationStatus());
+            if (decisionEventService != null) {
+                decisionEventService.recordRestore(ownerTeacherId, session.getId(), restoreVersion.getId(),
+                        confirmedCommand.requestId());
+            }
         } else {
             session.activateEdit(
                     plan.requestId(), plan.baseVersionId(),
                     jsonCodec.write(plan), EDIT_SCHEMA_VERSION);
+            if (decisionEventService != null) {
+                decisionEventService.recordModificationStarted(ownerTeacherId, session.getId(),
+                        plan.baseVersionId(), plan.requestId(), plan.instructions());
+            }
         }
         return plan;
     }

@@ -27,6 +27,23 @@ server:
   port: ${SERVER_PORT:8080}
 
 app:
+  problem:
+    rag:
+      enabled: ${PROBLEM_RAG_ENABLED:false}
+      policy-version: A_DENSE_MMR_V1
+      candidate-limit: 40
+      standard-selection-limit: 3
+      personalized-selection-limit: 4
+      default-lambda: 0.70
+      application-lambda: 0.55
+      search-timeout: 2s
+      indexing:
+        enabled: ${PROBLEM_RAG_INDEXING_ENABLED:false}
+        batch-size: 20
+        max-attempts: 3
+        retry-delay: 30s
+        worker-delay: 5s
+        backfill-delay: 60s
   storage:
     s3:
       enabled: ${S3_ENABLED:false}
@@ -39,6 +56,9 @@ app:
       access-key-id: ${AWS_ACCESS_KEY_ID:}
       secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
   ai:
+    embedding:
+      model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      dimensions: 1024
     guard:
       input:
         max-length: ${AI_INPUT_MAX_LENGTH:500}
@@ -46,10 +66,10 @@ app:
       # 키가 없어도 기동되도록 빈 문자열을 기본값으로 둔다. 챗봇을 쓰지 않는 팀원이
       # 키 없이 개발할 수 있어야 한다. 키가 비면 호출 시점에 실패한다.
       api-key: ${OPENAI_API_KEY:}
-      model: ${OPENAI_MODEL:gpt-5-mini}
+      model: ${OPENAI_MODEL:gpt-5.6-luna}
       # GPT-5 계열은 추론 토큰이 max-completion-tokens 에서 차감된다. 한도가 낮으면
       # content 가 빈 문자열로 잘려 돌아온다. minimal + 3000 은 실측으로 정한 값이다.
-      reasoning-effort: ${OPENAI_REASONING_EFFORT:minimal}
+      reasoning-effort: ${OPENAI_REASONING_EFFORT:medium}
       max-completion-tokens: ${OPENAI_MAX_COMPLETION_TOKENS:3000}
       timeout: ${OPENAI_TIMEOUT:60s}
       max-retries: ${OPENAI_MAX_RETRIES:2}

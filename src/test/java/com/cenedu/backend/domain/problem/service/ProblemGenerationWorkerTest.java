@@ -16,7 +16,7 @@ import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProcessing
 import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProvenance;
 import com.cenedu.backend.domain.problem.authoring.candidate.CandidateSourceType;
 import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
-import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
@@ -49,11 +49,13 @@ class ProblemGenerationWorkerTest {
                 new ProblemAiConcurrencyLimiter(4, 30));
         ProblemGenerationCommand command = new ProblemGenerationCommand(
                 UUID.randomUUID(),
+                null,
                 GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
                 new GenerationSpecification(
                         QuestionType.SHORT_INPUT, "mid", null, List.of()),
-                new CurriculumContext(
-                        1L, 1, 1, "수와 연산", "사칙연산", "덧셈"),
+                new CurriculumScope(
+                        "2022_REVISED", "MIDDLE", 1, 1, null, 1L,
+                        "수와 연산", "사칙연산", "덧셈"),
                 List.of(), List.of());
         workItem = new ProblemGenerationWorkItem(1L, 2L, 7L, 3L, command);
         when(jobService.tryClaim(1L)).thenReturn(Optional.of(workItem));
