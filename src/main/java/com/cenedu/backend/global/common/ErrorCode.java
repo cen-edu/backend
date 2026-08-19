@@ -138,6 +138,7 @@ public enum ErrorCode {
     ANALYSIS_LEARNING_ASSESSMENT_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "학습평가 학습지만 조회할 수 있습니다."),
     ANALYSIS_STUDENT_NOT_ASSIGNED(HttpStatus.NOT_FOUND, "해당 학습지를 배정받은 학생을 찾을 수 없습니다."),
     ANALYSIS_REPORT_NOT_GRADED(HttpStatus.BAD_REQUEST, "채점이 완료된 뒤에 AI 분석 문장을 생성할 수 있습니다."),
+    ANALYSIS_REISSUE_NOT_GRADED(HttpStatus.BAD_REQUEST, "채점이 완료된 뒤에 재출제를 제안할 수 있습니다."),
 
     // ===== dashboard (모수환) =====
     DASHBOARD_CLASS_NOT_FOUND(HttpStatus.NOT_FOUND, "대시보드에서 조회할 반을 찾을 수 없습니다."),
