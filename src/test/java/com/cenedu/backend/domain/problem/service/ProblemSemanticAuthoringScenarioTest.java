@@ -70,6 +70,47 @@ class ProblemSemanticAuthoringScenarioTest {
         assertThat(afterHash).isNotEqualTo(beforeHash);
     }
 
+    @Test
+    void geometry_and_table_scenarios_recompute_rendered_output() {
+        var viewport = new DiagramViewport(640, 240, 16);
+        var style = new DiagramStyle("#000000", "#FFFFFF", "#FF0000", 1, "sans-serif", 12);
+        var renderer = new ProblemDiagramRenderer(new SafeSvgSanitizer());
+
+        var line = new NumberLineDiagramSpecV1(1, "N", DiagramKind.NUMBER_LINE, viewport, style,
+                "MIN", "MAX", "STEP", List.of(new NumberLinePointSpec("P", "P", "point", PointMarker.CLOSED_CIRCLE)),
+                List.of(), true, true);
+        var lineBefore = renderer.render(line, new DiagramRenderContext(values(Map.of("MIN", "-10", "MAX", "10", "STEP", "2", "P", "-2")))).sha256();
+        var lineAfter = renderer.render(line, new DiagramRenderContext(values(Map.of("MIN", "-10", "MAX", "10", "STEP", "2", "P", "4")))).sha256();
+        assertThat(lineAfter).isNotEqualTo(lineBefore);
+
+        var plane = new PlaneGeometryDiagramSpecV1(1, "P", DiagramKind.PLANE_GEOMETRY, viewport, style,
+                List.of(new PlanePointSpec("A", "AX", "AY", "A"), new PlanePointSpec("B", "BX", "BY", "B"),
+                        new PlanePointSpec("C", "CX", "CY", "C")), List.of(), List.of(),
+                List.of(new PlanePolygonSpec("T", List.of("A", "B", "C"), true, "triangle")), List.of(), List.of(), List.of());
+        var planeBefore = renderer.render(plane, new DiagramRenderContext(values(Map.of("AX", "1", "AY", "1", "BX", "4", "BY", "1", "CX", "2", "CY", "3")))).sha256();
+        var planeAfter = renderer.render(plane, new DiagramRenderContext(values(Map.of("AX", "1", "AY", "1", "BX", "5", "BY", "1", "CX", "2", "CY", "3")))).sha256();
+        assertThat(planeAfter).isNotEqualTo(planeBefore);
+
+        var solid = new SolidGeometryDiagramSpecV1(1, "S", DiagramKind.SOLID_GEOMETRY, viewport, style,
+                SolidGeometryKind.CYLINDER, "W", "D", "H", "R", null, null,
+                List.of(new SolidLabelSpec("radius", "R", "radius")));
+        var solidSvg = renderer.render(solid, new DiagramRenderContext(values(Map.of("R", "5", "H", "10", "W", "8", "D", "4")))).svg();
+        assertThat(solidSvg).contains("radius 5").contains("<ellipse");
+
+        var table = new DataTableDiagramSpecV1(1, "T", DiagramKind.DATA_TABLE, viewport, style,
+                List.of("row"), List.of("column"), List.of(new TableCellSpec(0, 0, "CELL", "fallback")),
+                Set.of(new TableCellAddress(0, 0)));
+        var tableSvg = renderer.render(table, new DiagramRenderContext(values(Map.of("CELL", "7")))).svg();
+        assertThat(tableSvg).contains("row").contains("column").contains("7");
+    }
+
+    private Map<String, SemanticResolvedValue> values(Map<String, String> source) {
+        var result = new LinkedHashMap<String, SemanticResolvedValue>();
+        source.forEach((key, value) -> result.put(key,
+                new SemanticResolvedValue(SemanticValueType.INTEGER, value, null)));
+        return result;
+    }
+
     private SemanticEvaluation evaluate(String k, String x) {
         var model = new ProblemSemanticModelV1(1, null,
                 new SemanticProblemIntent(com.cenedu.backend.global.common.enums.QuestionType.SHORT_INPUT,
