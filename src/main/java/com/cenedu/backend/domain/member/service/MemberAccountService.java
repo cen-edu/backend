@@ -4,9 +4,12 @@ import java.util.Optional;
 
 import com.cenedu.backend.domain.member.dto.response.MemberAccountCredentials;
 import com.cenedu.backend.domain.member.dto.response.MemberAccountResponse;
+import com.cenedu.backend.domain.member.dto.response.StudentAccountResponse;
 import com.cenedu.backend.domain.member.dto.response.TeacherAccountResponse;
 import com.cenedu.backend.domain.member.entity.MemberAccount;
+import com.cenedu.backend.domain.member.entity.MemberStudentProfile;
 import com.cenedu.backend.domain.member.repository.MemberAccountRepository;
+import com.cenedu.backend.domain.member.repository.MemberStudentProfileRepository;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.UserRole;
@@ -23,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberAccountService {
 
     private final MemberAccountRepository memberAccountRepository;
+    private final MemberStudentProfileRepository studentProfileRepository;
 
     /** 로그인 아이디가 이미 등록되어 있는지 확인한다. */
     public boolean existsByLoginId(String loginId) {
@@ -43,6 +47,14 @@ public class MemberAccountService {
     /** 활성 교사의 마이페이지 계정 정보를 반환한다. */
     public TeacherAccountResponse getTeacherAccount(long teacherId) {
         return TeacherAccountResponse.from(getRequiredTeacher(teacherId));
+    }
+
+    /** 활성 학생의 마이페이지 계정 정보를 반환한다. */
+    public StudentAccountResponse getStudentAccount(long studentId) {
+        MemberAccount student = getRequiredStudent(studentId);
+        MemberStudentProfile profile = studentProfileRepository.findByUserId(studentId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_FOUND));
+        return StudentAccountResponse.from(student, profile);
     }
 
     /** 활성 교사의 비밀번호 검증용 계정 정보를 반환한다. */
