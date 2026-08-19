@@ -932,11 +932,11 @@ Run: `bash gradlew test --tests '*ProblemDiagramRendererTest' --tests '*SafeSvgS
 
 Expected: FAIL because typed renderers do not exist and the current regex sanitizer does not enforce an XML allowlist.
 
-- [x] **Step 3: Implement common writer/layout, five renderers, sanitizer, and local adapter delegation** *(기본 결정적 렌더러·sanitizer 구현; 전체 5종 렌더러 및 adapter 연동은 미완료)*
+- [x] **Step 3: Implement common writer/layout, five renderers, sanitizer, and local adapter delegation** *(5종 family semantic 렌더링 및 sanitizer 허용 요소 보강 완료)*
 
 Each family renderer has only geometry/layout logic. `ProblemDiagramRenderer` validates, dispatches, sanitizes, hashes, and constructs `RenderedDiagram`. No renderer writes files or calls the network.
 
-- [x] **Step 4: Run GREEN** *(기본 결정성·sanitizer 테스트 통과)*
+- [x] **Step 4: Run GREEN** *(5종 family 상세 테스트와 기존 renderer/sanitizer 회귀 테스트 통과)*
 
 Run: `bash gradlew test --tests '*ProblemDiagramRendererTest' --tests '*SafeSvgSanitizerTest' --tests '*LocalDraftAssetProductionAdapterTest'`
 
