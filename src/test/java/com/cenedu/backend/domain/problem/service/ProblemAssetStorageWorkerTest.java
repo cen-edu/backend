@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Optional;
 
@@ -38,7 +39,8 @@ class ProblemAssetStorageWorkerTest {
         ImageStorageService storage = mock(ImageStorageService.class);
         when(repository.findByIdForUpdate(1L)).thenReturn(Optional.of(task));
         ProblemAssetStorageWorker worker = new ProblemAssetStorageWorker(repository, storage,
-                new S3Properties("ap-northeast-2", "problem", "answer", "key", "secret"),
+                new S3Properties("ap-northeast-2", "problem", "answer", "key", "secret",
+                        Duration.ofHours(2), Duration.ofHours(6)),
                 draftRoot.toString());
 
         worker.runOne(1L);
@@ -63,7 +65,8 @@ class ProblemAssetStorageWorkerTest {
         ImageStorageService storage = mock(ImageStorageService.class);
         when(repository.findByIdForUpdate(2L)).thenReturn(Optional.of(task));
         ProblemAssetStorageWorker worker = new ProblemAssetStorageWorker(repository, storage,
-                new S3Properties("ap-northeast-2", "problem", "answer", "key", "secret"),
+                new S3Properties("ap-northeast-2", "problem", "answer", "key", "secret",
+                        Duration.ofHours(2), Duration.ofHours(6)),
                 draftRoot.toString());
 
         worker.runOne(2L);

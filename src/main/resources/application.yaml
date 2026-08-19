@@ -50,6 +50,9 @@ app:
       region: ${AWS_REGION:ap-northeast-2}
       problem-bucket: ${AWS_S3_PROBLEM_BUCKET:}
       answer-bucket: ${AWS_S3_ANSWER_BUCKET:}
+      # 화면을 열어둔 채 이미지를 다시 그릴 때까지 서명이 살아 있어야 한다. 짧으면 S3가 403을 준다.
+      answer-url-expiration: ${AWS_S3_ANSWER_URL_EXPIRATION:2h}
+      problem-url-expiration: ${AWS_S3_PROBLEM_URL_EXPIRATION:6h}
       access-key-id: ${AWS_ACCESS_KEY_ID:}
       secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
   ai:
@@ -79,6 +82,13 @@ app:
           model: ${OPENAI_VERIFICATION_MODEL:gpt-5}
           reasoning-effort: ${OPENAI_VERIFICATION_REASONING_EFFORT:medium}
           max-completion-tokens: ${OPENAI_VERIFICATION_MAX_COMPLETION_TOKENS:6000}
+        # 분석 문장은 문항마다 문장 세 개를 한 번에 받아 출력이 길다. 실측으로 문항당
+        # 약 110 토큰이라 25문항 근처에서 기본 상한에 닿고, 넘으면 JSON 이 잘려 실패한다.
+        # 모델과 추론 강도는 기본값과 같게 두고 상한만 올린다.
+        analysis_report:
+          model: ${OPENAI_ANALYSIS_REPORT_MODEL:gpt-5-mini}
+          reasoning-effort: ${OPENAI_ANALYSIS_REPORT_REASONING_EFFORT:minimal}
+          max-completion-tokens: ${OPENAI_ANALYSIS_REPORT_MAX_COMPLETION_TOKENS:8000}
     verification:
       content-check:
         # 정답이 든 원본으로 해설 정합·개념 안내 누출을 본다. 끄면 문항당 LLM 호출이 절반이 된다.
