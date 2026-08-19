@@ -38,7 +38,7 @@ public class ProblemSemanticPatchApplier {
     private void applyOne(JsonNode root, SemanticPatchOperation op, ProblemSemanticModelV1 model) {
         if (!ProblemSemanticPatchPath.isAllowed(op.path())) throw new IllegalArgumentException("허용되지 않은 path: "+op.path());
         JsonNode target=find(root, op.path()); String actual=target==null||target.isNull()?null:target.asText();
-        if (op.expectedOldValue()!=null && !java.util.Objects.equals(op.expectedOldValue(), actual)) throw new SemanticPatchConflictException(op.path(), op.expectedOldValue(), actual);
+        if (!java.util.Objects.equals(op.expectedOldValue(), actual)) throw new SemanticPatchConflictException(op.path(), op.expectedOldValue(), actual);
         if (target==null || !target.isValueNode()) throw new IllegalArgumentException("scalar path가 아닙니다: "+op.path());
         if (ProblemSemanticPatchPath.isParameter(op.path())) {
             for (JsonNode parameter : root.path("parameters")) if (op.path().contains("/" + parameter.path("key").asText() + "/")

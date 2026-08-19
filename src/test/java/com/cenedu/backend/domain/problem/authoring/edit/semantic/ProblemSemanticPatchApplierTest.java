@@ -13,6 +13,11 @@ class ProblemSemanticPatchApplierTest {
         assertThatThrownBy(()->new ProblemSemanticPatchApplier().apply(model,patch)).isInstanceOf(SemanticPatchConflictException.class);
         assertThat(model.parameters().getFirst().value()).isEqualTo("3");
     }
+    @Test void expectedOldValue_null도_실제값과_엄격히_비교한다(){
+        var model=model(); var patch=new ProblemSemanticPatch(1,UUID.randomUUID(),1L,SemanticEditMode.PARAMETRIC_PATCH,List.of(new SemanticPatchOperation(SemanticPatchOperationType.SET_PARAMETER_VALUE,"/parameters/A/value",null,"5")),"x");
+        assertThatThrownBy(()->new ProblemSemanticPatchApplier().apply(model,patch))
+                .isInstanceOf(SemanticPatchConflictException.class);
+    }
     @Test void editable_parameter를_copy_on_write로_적용한다(){
         var model=model(); var patch=new ProblemSemanticPatch(1,UUID.randomUUID(),1L,SemanticEditMode.PARAMETRIC_PATCH,List.of(new SemanticPatchOperation(SemanticPatchOperationType.SET_PARAMETER_VALUE,"/parameters/A/value","3","5")),"x");
         var changed=new ProblemSemanticPatchApplier().apply(model,patch);
