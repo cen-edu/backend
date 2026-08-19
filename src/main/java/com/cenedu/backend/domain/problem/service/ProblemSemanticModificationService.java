@@ -57,6 +57,19 @@ public class ProblemSemanticModificationService {
                             || operation.type() == SemanticPatchOperationType.SET_LABEL_TEXT);
             if (!styleOrLabelOnly && !java.util.Objects.equals(baseModel.diagrams(), changed.diagrams()))
                 throw new BusinessException(ErrorCode.PROBLEM_DIAGRAM_RENDER_FAILED);
+            if (styleOrLabelOnly) {
+                java.util.Set<String> changedAssets = new java.util.HashSet<>();
+                for (int i = 0; i < baseModel.diagrams().size(); i++) {
+                    if (!java.util.Objects.equals(baseModel.diagrams().get(i), changed.diagrams().get(i)))
+                        changedAssets.add(baseModel.diagrams().get(i).assetKey());
+                }
+                java.util.Set<String> targetedAssets = patch.operations().stream()
+                        .map(operation -> operation.path().split("/"))
+                        .filter(parts -> parts.length > 2 && "diagrams".equals(parts[1]))
+                        .map(parts -> parts[2]).collect(java.util.stream.Collectors.toSet());
+                if (!targetedAssets.containsAll(changedAssets))
+                    throw new BusinessException(ErrorCode.PROBLEM_DIAGRAM_RENDER_FAILED);
+            }
         }
         QuestionSnapshotV1 baseSnapshot = jsonCodec.read(baseVersion.getSnapshot(), QuestionSnapshotV1.class);
         ProblemCandidateDraft candidate = new ProblemCandidateDraft(patch.requestId(), materialized.snapshot(),

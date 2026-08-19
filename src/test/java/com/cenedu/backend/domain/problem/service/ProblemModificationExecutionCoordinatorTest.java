@@ -41,11 +41,10 @@ class ProblemModificationExecutionCoordinatorTest {
                 mock(ProblemQuestionSelector.class), mock(ProblemBankSnapshotQueryService.class),
                 mock(ProblemAuthoringSessionRepository.class), versions, mock(ProblemAuthoringJsonCodec.class),
                 mock(PlatformTransactionManager.class));
-        var instruction = new ProblemEditInstruction(EditTargetType.QUESTION_BODY, null, EditChangeNature.SEMANTIC, "수치 변경");
         var patch = new ProblemSemanticPatch(1, java.util.UUID.randomUUID(), 20L, SemanticEditMode.PARAMETRIC_PATCH,
                 java.util.List.of(), "확인");
         var plan = new ProblemEditExecutionPlan(java.util.UUID.randomUUID(), 31L, 20L, EditAction.MODIFY,
-                ReplacementSourcePolicy.NONE, null, java.util.List.of(instruction), patch,
+                ReplacementSourcePolicy.NONE, null, java.util.List.of(), patch,
                 java.util.List.of(), java.util.List.of(), java.util.List.of(), null);
 
         var result = (ProblemModificationExecutionResult) coordinator.execute(7L, plan, ProblemSnapshotFixtures.shortInput());

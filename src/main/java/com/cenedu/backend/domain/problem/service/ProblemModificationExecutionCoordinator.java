@@ -110,7 +110,7 @@ public class ProblemModificationExecutionCoordinator {
                     return legacyFallbackResult(plan, fallback);
                 }
             }
-            if (baseVersion.getSemanticModel() == null && plan.instructions() != null && !plan.instructions().isEmpty()) {
+            if (baseVersion.getSemanticModel() == null) {
                 Object fallback = modificationWorker.execute(teacherId,
                         new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
                                 plan.requestId(), plan, baseSnapshot, null));
