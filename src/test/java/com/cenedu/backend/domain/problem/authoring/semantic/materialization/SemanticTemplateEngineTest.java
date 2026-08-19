@@ -1,0 +1,3 @@
+package com.cenedu.backend.domain.problem.authoring.semantic.materialization;
+import static org.assertj.core.api.Assertions.*; import com.cenedu.backend.domain.problem.authoring.semantic.evaluation.*; import com.cenedu.backend.domain.problem.authoring.semantic.model.*; import java.util.*; import org.junit.jupiter.api.Test;
+class SemanticTemplateEngineTest { @Test void rendersValueAndUnitAndRejectsUnknown(){var v=Map.of("RADIUS",new SemanticResolvedValue(SemanticValueType.INTEGER,"3","cm"));var e=new SemanticTemplateEngine();assertThat(e.render("반지름 ${RADIUS}${RADIUS_UNIT}",v)).isEqualTo("반지름 3cm");assertThatThrownBy(()->e.render("${MISSING}",v)).isInstanceOf(SemanticMaterializationException.class);} }
