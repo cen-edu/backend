@@ -9,13 +9,17 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.cenedu.backend.domain.grading.dto.request.GradingListRequest;
 import com.cenedu.backend.domain.grading.dto.response.GradingAnswerUnitResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingCellResponse;
+import com.cenedu.backend.domain.grading.dto.response.GradingChoiceResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingContentBlockResponse;
+import com.cenedu.backend.domain.grading.dto.response.GradingSegmentResponse;
+import com.cenedu.backend.domain.grading.dto.response.GradingStepResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingDetailItemResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingQuestionResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingResponseFormatter;
@@ -30,10 +34,12 @@ import com.cenedu.backend.domain.member.service.SchoolClassService;
 import com.cenedu.backend.domain.member.service.StudentListQueryService;
 import com.cenedu.backend.domain.problem.dto.response.ProblemAssetResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemContentBlockResponse;
+import com.cenedu.backend.domain.problem.dto.response.ProblemStepSegmentResponse;
 import com.cenedu.backend.domain.problem.entity.ProblemAnswerUnit;
 import com.cenedu.backend.domain.problem.entity.ProblemChoice;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.entity.ProblemRubricItem;
+import com.cenedu.backend.domain.problem.entity.ProblemStep;
 import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
 import com.cenedu.backend.domain.submission.entity.SubmissionAnswer;
 import com.cenedu.backend.domain.submission.entity.SubmissionQuestionTime;
@@ -360,6 +366,13 @@ public class GradingQueryService {
                 : gradingRubricResultRepository.findByStudentAnswerIdIn(answerIds).stream()
                         .collect(Collectors.groupingBy(GradingRubricResult::getStudentAnswerId));
 
+        // 빈칸형 문항이 없으면 조회하지 않는다 — 객관식·서술형만 있는 학습지가 흔하다.
+        Map<Long, List<ProblemStep>> stepsByQuestionId = questionsById.values().stream()
+                .anyMatch(question -> question.getQuestionType() == QuestionType.STEP_FILL)
+                ? gradingRubricResultRepository.findStepsByQuestionIdIn(questionIds).stream()
+                        .collect(Collectors.groupingBy(step -> step.getQuestion().getId()))
+                : Map.of();
+
         Map<Long, String> handwritingUrls = createHandwritingUrls(
                 teacherId, assignmentStudentId, answersByUnitId);
 
@@ -398,6 +411,10 @@ public class GradingQueryService {
                         unit.getDisplayOrder(),
                         resolveCorrectAnswer(question.getQuestionType(), unit, choices),
                         resolveStudentAnswer(question.getQuestionType(), answer, choices),
+                        resolveCorrectChoiceId(question.getQuestionType(), unit, choices),
+                        question.getQuestionType() == QuestionType.MULTIPLE_CHOICE && answer != null
+                                ? answer.getSelectedChoiceId()
+                                : null,
                         answer == null ? null : handwritingUrls.get(unit.getId()),
                         answer == null ? unit.getCompareMethod().name() : answer.getCompareMethod().name(),
                         gradingStatus.name(),
@@ -421,6 +438,9 @@ public class GradingQueryService {
                     timesByItemId.get(item.getId()),
                     GradingResponseFormatter.aggregateItemResult(unitResults),
                     unitResponses,
+                    buildChoices(question.getQuestionType(), choices),
+                    buildSteps(question.getQuestionType(), units,
+                            stepsByQuestionId.getOrDefault(question.getId(), List.of())),
                     assetsByQuestionId.getOrDefault(question.getId(), List.of())));
         }
 
@@ -453,8 +473,12 @@ public class GradingQueryService {
     }
 
     /**
-     * 서술형 채점 기준과 판정. 판정 행이 없으면 빈 배열이다 — 행 부재는 "판정 안 함"이지
-     * "미충족"이 아니다({@code GradingRubricResult} 자바독).
+     * 서술형 채점 기준과 판정. <b>판정 전에도 기준 목록은 내려보낸다</b> — 교사가 손으로 체크하려면
+     * 기준이 화면에 있어야 한다.
+     *
+     * <p>판정 행이 없는 항목은 {@code satisfied}가 {@code null}이다. 행 부재는 "판정 안 함"이지
+     * "미충족"이 아니라서 {@code false}로 채우지 않는다({@code GradingRubricResult} 자바독).
+     * 기준 자체가 없는 문항만 빈 배열이다.
      */
     private List<GradingAnswerUnitResponse.RubricItem> buildRubric(
             ProblemQuestion question, SubmissionAnswer answer,
@@ -465,14 +489,12 @@ public class GradingQueryService {
         }
         List<ProblemRubricItem> rubricItems =
                 rubricItemsByQuestionId.getOrDefault(question.getId(), List.of());
-        if (rubricItems.isEmpty() || answer == null) {
+        if (rubricItems.isEmpty()) {
             return List.of();
         }
-        List<GradingRubricResult> results =
-                rubricResultsByAnswerId.getOrDefault(answer.getId(), List.of());
-        if (results.isEmpty()) {
-            return List.of();
-        }
+        List<GradingRubricResult> results = answer == null
+                ? List.of()
+                : rubricResultsByAnswerId.getOrDefault(answer.getId(), List.of());
         Map<Long, GradingRubricResult> resultByRubricItemId = results.stream()
                 .collect(Collectors.toMap(GradingRubricResult::getRubricItemId, result -> result));
         return rubricItems.stream()
@@ -484,10 +506,50 @@ public class GradingQueryService {
                             // 컬럼 이름은 label 이고 명세의 필드 이름은 description 이다.
                             rubricItem.getLabel(),
                             BigDecimal.valueOf(rubricItem.getWeight()),
-                            result != null && result.isSatisfied(),
+                            result == null ? null : result.isSatisfied(),
                             result == null ? null : result.getEvidence());
                 })
                 .toList();
+    }
+
+    /** 객관식 보기 전체. 다른 형식이면 {@code null}이다 — 빈 배열은 "보기가 비어 있는 객관식"과 섞인다. */
+    private List<GradingChoiceResponse> buildChoices(QuestionType questionType,
+                                                     List<ProblemChoice> choices) {
+        if (questionType != QuestionType.MULTIPLE_CHOICE) {
+            return null;
+        }
+        return choices.stream().map(GradingChoiceResponse::from).toList();
+    }
+
+    /**
+     * 빈칸형 풀이 단계. 다른 형식이면 {@code null}이다.
+     *
+     * <p>{@code segments} JSON의 빈칸은 {@code answerUnitId}가 아니라 {@code unitKey}(예: "B1")로
+     * 표시된다. 문항 안에서 {@code unitKey}가 유일하므로 이걸로 채점 칸 ID를 찾아 붙인다.
+     */
+    private List<GradingStepResponse> buildSteps(QuestionType questionType,
+                                                 List<ProblemAnswerUnit> units,
+                                                 List<ProblemStep> steps) {
+        if (questionType != QuestionType.STEP_FILL) {
+            return null;
+        }
+        Map<String, Long> answerUnitIdByUnitKey = units.stream()
+                .collect(Collectors.toMap(ProblemAnswerUnit::getUnitKey, ProblemAnswerUnit::getId));
+        return steps.stream()
+                .map(step -> GradingStepResponse.from(
+                        step, parseSegments(step.getSegments(), answerUnitIdByUnitKey)))
+                .toList();
+    }
+
+    /** 정답 보기 ID. {@code answer_raw}가 1-based 보기 순번이라 그 순번의 보기를 찾는다. */
+    private Long resolveCorrectChoiceId(QuestionType questionType, ProblemAnswerUnit unit,
+                                        List<ProblemChoice> choices) {
+        if (questionType != QuestionType.MULTIPLE_CHOICE || unit.getAnswerRaw() == null) {
+            return null;
+        }
+        return findChoiceByOneBasedOrder(choices, Integer.parseInt(unit.getAnswerRaw()))
+                .map(ProblemChoice::getId)
+                .orElse(null);
     }
 
     /**
@@ -503,7 +565,9 @@ public class GradingQueryService {
         if (questionType != QuestionType.MULTIPLE_CHOICE) {
             return answerRaw;
         }
-        return findChoiceByOneBasedOrder(choices, Integer.parseInt(answerRaw));
+        return findChoiceByOneBasedOrder(choices, Integer.parseInt(answerRaw))
+                .map(ProblemChoice::getContent)
+                .orElse(null);
     }
 
     /**
@@ -527,12 +591,25 @@ public class GradingQueryService {
                 .orElse(null);
     }
 
-    private String findChoiceByOneBasedOrder(List<ProblemChoice> choices, int oneBasedOrder) {
+    private Optional<ProblemChoice> findChoiceByOneBasedOrder(List<ProblemChoice> choices,
+                                                              int oneBasedOrder) {
         return choices.stream()
                 .filter(choice -> choice.getDisplayOrder() + 1 == oneBasedOrder)
-                .findFirst()
-                .map(ProblemChoice::getContent)
-                .orElse(null);
+                .findFirst();
+    }
+
+    private List<GradingSegmentResponse> parseSegments(String segments,
+                                                       Map<String, Long> answerUnitIdByUnitKey) {
+        try {
+            List<ProblemStepSegmentResponse> parsed = objectMapper.readValue(
+                    segments, new TypeReference<List<ProblemStepSegmentResponse>>() {
+                    });
+            return parsed.stream()
+                    .map(segment -> GradingSegmentResponse.from(segment, answerUnitIdByUnitKey))
+                    .toList();
+        } catch (JacksonException e) {
+            throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
+        }
     }
 
     private List<GradingContentBlockResponse> parseContentBlocks(ProblemQuestion question) {

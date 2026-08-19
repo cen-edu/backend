@@ -110,6 +110,88 @@ class GradingControllerTest {
     }
 
     @Test
+    @DisplayName("객관식 채점 상세에는 보기 전체와 정답·선택 보기 ID가 내려간다")
+    void getStudentDetail_multipleChoice_includesChoicesAndChoiceIds() throws Exception {
+        long questionId = insertQuestion("MULTIPLE_CHOICE");
+        long choice1 = insertChoice(questionId, 0, "2");
+        long choice2 = insertChoice(questionId, 1, "6");
+        insertChoice(questionId, 2, "12");
+        // answer_raw 는 1-based 보기 순번이라 "2" 는 displayOrder 1(=choice2)을 가리킨다.
+        long answerUnitId = insertAnswerUnit(questionId, "CHOICE", "2");
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, new BigDecimal("10.00"));
+        long assignmentId = insertAssignment(worksheetId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "SUBMITTED");
+        // 학생은 1번 보기를 골랐다 — 오답이다.
+        insertChoiceAnswer(assignmentStudentId, answerUnitId, choice1);
+
+        mockMvc.perform(get("/api/teacher/grading/" + assignmentId
+                        + "/students/" + assignmentStudentId)
+                        .header("Authorization", "Bearer " + teacherToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].choices.length()").value(3))
+                .andExpect(jsonPath("$.data.items[0].choices[1].choiceId").value(choice2))
+                .andExpect(jsonPath("$.data.items[0].choices[1].text").value("6"))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctChoiceId").value(choice2))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].selectedChoiceId").value(choice1))
+                .andExpect(jsonPath("$.data.items[0].steps").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("빈칸형 채점 상세에는 단계 구조가 내려가고 빈칸은 answerUnitId로 칸과 이어진다")
+    void getStudentDetail_stepFill_includesSteps() throws Exception {
+        long questionId = insertQuestion("STEP_FILL");
+        long stepId = insertStepWithSegments(questionId, 0, "1단계", """
+                [{"type":"TEXT","value":"84 = "},{"type":"BLANK","unitKey":"B1"}]
+                """);
+        long unitB1 = insertStepAnswerUnit(questionId, stepId, "B1", 0, "VALUE", "2^2 x 3 x 7");
+        long worksheetId = insertWorksheet("GENERAL_LEARNING");
+        insertWorksheetItem(worksheetId, questionId, new BigDecimal("10.00"));
+        long assignmentId = insertAssignment(worksheetId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "SUBMITTED");
+        insertAnswer(assignmentStudentId, unitB1, "VALUE", "GRADED", new BigDecimal("10.00"), null);
+
+        mockMvc.perform(get("/api/teacher/grading/" + assignmentId
+                        + "/students/" + assignmentStudentId)
+                        .header("Authorization", "Bearer " + teacherToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].steps.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].steps[0].label").value("1단계"))
+                .andExpect(jsonPath("$.data.items[0].steps[0].segments[0].type").value("text"))
+                .andExpect(jsonPath("$.data.items[0].steps[0].segments[0].value").value("84 = "))
+                .andExpect(jsonPath("$.data.items[0].steps[0].segments[1].type").value("blank"))
+                .andExpect(jsonPath("$.data.items[0].steps[0].segments[1].answerUnitId").value(unitB1))
+                .andExpect(jsonPath("$.data.items[0].choices").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("서술형은 판정 전에도 기준 목록이 내려가고 satisfied는 미판정이다")
+    void getStudentDetail_essayBeforeJudgement_returnsUnjudgedRubric() throws Exception {
+        long questionId = insertQuestion("ESSAY");
+        long answerUnitId = insertAnswerUnit(questionId, "RUBRIC", null);
+        long rubricA = insertRubricItem(questionId, 0, "풀이 과정이 드러나 있음", 4);
+        insertRubricItem(questionId, 1, "답이 맞음", 6);
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, new BigDecimal("10.00"));
+        long assignmentId = insertAssignment(worksheetId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "SUBMITTED");
+        // 답안은 있으나 루브릭 판정 행이 아직 없다.
+        insertAnswer(assignmentStudentId, answerUnitId, "RUBRIC", "NOT_GRADED", null, null);
+
+        mockMvc.perform(get("/api/teacher/grading/" + assignmentId
+                        + "/students/" + assignmentStudentId)
+                        .header("Authorization", "Bearer " + teacherToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].rubric.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].rubric[0].rubricItemId").value(rubricA))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].rubric[0].description")
+                        .value("풀이 과정이 드러나 있음"))
+                // 판정 행이 없으므로 "미충족(false)"이 아니라 "미판정(null)"이다.
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].rubric[0].satisfied").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].rubric[1].satisfied").doesNotExist());
+    }
+
+    @Test
     @DisplayName("교사 전용 필드는 학생 결과 조회에 나가지 않는다")
     void studentResult_hasNoTeacherOnlyFields() throws Exception {
         long questionId = insertQuestion("SHORT_INPUT");
@@ -301,6 +383,44 @@ class GradingControllerTest {
                 VALUES (?, 'MAIN', 0, ?, ?, ?)
                 RETURNING id
                 """, Long.class, questionId, compareMethod, answerRaw, answerRaw);
+    }
+
+    private long insertChoice(long questionId, int displayOrder, String content) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO problem_choice(question_id, display_order, content)
+                VALUES (?, ?, ?)
+                RETURNING id
+                """, Long.class, questionId, displayOrder, content);
+    }
+
+    private long insertStepWithSegments(long questionId, int displayOrder, String label, String segmentsJson) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO problem_step(question_id, display_order, label, segments)
+                VALUES (?, ?, ?, ?::jsonb)
+                RETURNING id
+                """, Long.class, questionId, displayOrder, label, segmentsJson);
+    }
+
+    private long insertStepAnswerUnit(long questionId, long stepId, String unitKey, int displayOrder,
+                                      String compareMethod, String answerRaw) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO problem_answer_unit(
+                    question_id, step_id, unit_key, display_order,
+                    compare_method, answer_raw, answer_normalized)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                RETURNING id
+                """, Long.class, questionId, stepId, unitKey, displayOrder,
+                compareMethod, answerRaw, answerRaw);
+    }
+
+    private long insertChoiceAnswer(long assignmentStudentId, long answerUnitId, long selectedChoiceId) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO submission_answer(
+                    assignment_student_id, answer_unit_id, input_mode, selected_choice_id,
+                    compare_method, grading_status)
+                VALUES (?, ?, 'CHOICE', ?, 'CHOICE', 'NOT_GRADED')
+                RETURNING id
+                """, Long.class, assignmentStudentId, answerUnitId, selectedChoiceId);
     }
 
     private long insertRubricItem(long questionId, int displayOrder, String label, int weight) {

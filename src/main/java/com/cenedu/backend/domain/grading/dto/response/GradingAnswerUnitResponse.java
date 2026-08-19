@@ -19,6 +19,13 @@ public record GradingAnswerUnitResponse(
         int displayOrder,
         String correctAnswer,
         String studentAnswer,
+
+        @Schema(description = "정답 보기 ID. 객관식이 아니거나 정답을 풀지 못하면 null")
+        Long correctChoiceId,
+
+        @Schema(description = "학생이 고른 보기 ID. 객관식이 아니거나 미제출이면 null")
+        Long selectedChoiceId,
+
         String handwritingUrl,
 
         @Schema(allowableValues = {"CHOICE", "VALUE", "EXACT", "SET", "SUBST", "RUBRIC"})
@@ -34,12 +41,17 @@ public record GradingAnswerUnitResponse(
         BigDecimal finalScore,
         String failureReason,
 
-        @Schema(description = "서술형만 값이 있다. 판정 전이면 빈 배열")
+        @Schema(description = "서술형만 값이 있다. 판정 전에도 기준 목록은 내려간다 — "
+                + "각 항목의 satisfied 가 null 이면 아직 판정하지 않은 것이다")
         List<RubricItem> rubric
 ) {
 
     /**
      * 서술형 채점 기준 항목의 판정.
+     *
+     * <p>{@code satisfied}는 <b>3상태</b>다. {@code null}이면 아직 판정하지 않은 것이고,
+     * {@code false}는 보고서 미충족으로 판정한 것이다. 이 둘을 합치면 교사 화면에서
+     * "채점 안 된 답안"이 "전부 틀린 답안"으로 보인다.
      *
      * @param evidence LLM 판정 근거. <b>task_06b 전까지는 항상 {@code null}</b> — 교사가 손으로
      *                 체크한 판정에는 근거 문자열이 없다(명세 6절)
@@ -48,7 +60,10 @@ public record GradingAnswerUnitResponse(
             Long rubricItemId,
             String description,
             BigDecimal weight,
-            boolean satisfied,
+
+            @Schema(description = "null 이면 미판정, true/false 는 판정 결과")
+            Boolean satisfied,
+
             String evidence
     ) {
     }
