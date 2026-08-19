@@ -63,7 +63,9 @@ public class ProblemEditApplicationService {
             List<ProblemEditInstruction> merged = new ArrayList<>(accumulated);
             if (result.instructionDeltas() != null) merged.addAll(result.instructionDeltas());
             conversationService.requestConfirmation(teacherId, new PendingProblemEditCommand(
-                    UUID.randomUUID(), sessionId, baseVersionId, List.copyOf(merged),
+                    result.semanticPatch() == null ? UUID.randomUUID() : result.semanticPatch().requestId(),
+                    sessionId, baseVersionId, List.copyOf(merged),
+                    result.semanticPatch(),
                     null, null, ReplacementSourcePolicy.NONE));
         } else if (result.action() == EditConversationAction.CANCEL) {
             conversationService.cancel(teacherId, sessionId);
@@ -76,6 +78,7 @@ public class ProblemEditApplicationService {
             ProblemEditExecutionPlan plan = conversationService.confirm(teacherId,
                     new ConfirmedProblemEditCommand(pending.requestId(), UUID.randomUUID(),
                             pending.sessionId(), pending.baseVersionId(), pending.instructions(),
+                            pending.semanticPatch(),
                             pending.requestedSpecification(), pending.restoreReference(),
                             pending.replacementSourcePolicy()));
             if (plan.action() != EditAction.RESTORE) {

@@ -122,6 +122,10 @@ public enum ErrorCode {
     PROBLEM_VERIFICATION_FAILED(HttpStatus.CONFLICT, "문항 검증에 실패했습니다. 다른 문항을 생성해 주세요."),
     PROBLEM_ASSET_NOT_READY(HttpStatus.CONFLICT, "문항 자료가 아직 준비되지 않았습니다."),
     PROBLEM_EDIT_COMMAND_STALE(HttpStatus.CONFLICT, "현재 문항과 일치하지 않는 수정 요청입니다."),
+    PROBLEM_SEMANTIC_EDIT_REJECTED(HttpStatus.BAD_REQUEST, "지원하지 않는 의미 수정 요청입니다."),
+    PROBLEM_SEMANTIC_MODEL_UNSUPPORTED(HttpStatus.CONFLICT, "현재 문항의 의미 모델을 사용할 수 없습니다."),
+    PROBLEM_SEMANTIC_MODEL_INVALID(HttpStatus.UNPROCESSABLE_ENTITY, "문항 의미 모델이 올바르지 않습니다."),
+    PROBLEM_DIAGRAM_RENDER_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "문항 도형을 렌더링하지 못했습니다."),
     // ===== analysis (모수환) =====
     ASSESSMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "평가를 찾을 수 없습니다."),
     STUDENT_ATTEMPT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 풀이를 찾을 수 없습니다."),
