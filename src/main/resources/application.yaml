@@ -93,6 +93,17 @@ app:
           model: ${OPENAI_ANALYSIS_REPORT_MODEL:gpt-5-mini}
           reasoning-effort: ${OPENAI_ANALYSIS_REPORT_REASONING_EFFORT:minimal}
           max-completion-tokens: ${OPENAI_ANALYSIS_REPORT_MAX_COMPLETION_TOKENS:8000}
+        # 도구를 싣는 두 경로. 모델을 여기서 고정하는 이유는 조합이 거절될 수 있어서다 —
+        # gpt-5.6-luna 는 chat/completions 에서 도구와 reasoning_effort 를 함께 받지 않는다(400).
+        # 기본 모델이 바뀌어도 이 두 경로는 따라가지 않는다.
+        concept_chat_loop:
+          model: ${OPENAI_CONCEPT_CHAT_MODEL:gpt-5-mini}
+          reasoning-effort: ${OPENAI_CONCEPT_CHAT_REASONING_EFFORT:minimal}
+          max-completion-tokens: ${OPENAI_CONCEPT_CHAT_MAX_COMPLETION_TOKENS:3000}
+        essay_grading:
+          model: ${OPENAI_ESSAY_GRADING_MODEL:gpt-5-mini}
+          reasoning-effort: ${OPENAI_ESSAY_GRADING_REASONING_EFFORT:medium}
+          max-completion-tokens: ${OPENAI_ESSAY_GRADING_MAX_COMPLETION_TOKENS:3000}
     verification:
       content-check:
         # 정답이 든 원본으로 해설 정합·개념 안내 누출을 본다. 끄면 문항당 LLM 호출이 절반이 된다.

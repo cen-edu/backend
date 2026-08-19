@@ -16,6 +16,7 @@ import com.cenedu.backend.domain.grading.port.EssayGradingResult;
 import com.cenedu.backend.domain.grading.port.EssayGradingStatus;
 import com.cenedu.backend.domain.grading.port.RubricCriterion;
 import com.cenedu.backend.domain.grading.port.RubricJudgement;
+import com.cenedu.backend.ai.client.LlmModelOptions;
 import com.cenedu.backend.ai.client.OpenAiDiagnostics;
 import com.cenedu.backend.domain.grading.port.RubricVerdict;
 
@@ -87,15 +88,17 @@ public class EssayGradingAdapter implements EssayGradingPort {
     private final Map<String, ToolCallback> toolsByName;
 
     /**
-     * <b>파라미터 이름이 빈 이름이다.</b> {@code OpenAiChatModel} 빈이 둘이라 Spring 이 타입으로
-     * 고르지 못하고 파라미터 이름으로 고른다. 이름이 어긋나면 기동이 실패한다.
+     * <b>파라미터 이름이 빈 이름이다.</b> {@code OpenAiChatModel} 도 {@code OpenAiChatOptions} 도
+     * 빈이 둘이라 Spring 이 타입으로 고르지 못하고 파라미터 이름으로 고른다. 이름이 어긋나면
+     * 기동이 실패한다 — 특히 {@code essayGradingChatOptions} 를 {@code loopChatOptions} 로 쓰면
+     * <b>개념 챗봇 설정으로 채점이 돈다.</b>
      */
     public EssayGradingAdapter(OpenAiChatModel loopChatModel,
-                               OpenAiChatOptions loopChatOptions,
+                               OpenAiChatOptions essayGradingChatOptions,
                                ObjectMapper objectMapper,
                                GradingMathTools gradingMathTools) {
         this.chatModel = loopChatModel;
-        this.baseOptions = loopChatOptions;
+        this.baseOptions = essayGradingChatOptions;
         this.objectMapper = objectMapper;
         this.toolCallbacks = List.of(ToolCallbacks.from(gradingMathTools));
 
@@ -127,6 +130,24 @@ public class EssayGradingAdapter implements EssayGradingPort {
      * @param seed {@code null} 이면 싣지 않는다
      */
     public EssayGradingRun run(EssayGradingCommand command, boolean withTools, Integer seed) {
+        return run(command, withTools, seed, null);
+    }
+
+    /**
+     * 모델 설정까지 못 박아 부르는 측정용 진입점.
+     *
+     * <p><b>기본값 상속에 기대지 않는다.</b> 설정된 값은 팀 공용이라 다른 작업의 판단으로 바뀐다.
+     * 단계 4 와 단계 5 사이에 그 값이 조용히 바뀌면 두 단계의 군을 비교할 수 없게 되는데, 바뀐
+     * 사실이 어디에도 남지 않아 알아채지도 못한다.
+     *
+     * <p><b>모델만 받지 않는다.</b> 모델과 추론 강도를 따로 고를 수 없는 모델이 있다 —
+     * {@code gpt-5.6-luna} 는 도구를 실으면 {@code reasoning_effort} 가 {@code none} 이어야 한다.
+     * 모델만 갈아끼우는 문을 열어 두면 그 조합이 400 으로 돌아온다.
+     *
+     * @param overrides {@code null} 이면 설정된 값을 그대로 쓴다. 채운 값만 덮는다
+     */
+    public EssayGradingRun run(EssayGradingCommand command, boolean withTools, Integer seed,
+                               LlmModelOptions overrides) {
         long startedAt = System.nanoTime();
 
         List<Message> messages = new ArrayList<>();
@@ -153,7 +174,7 @@ public class EssayGradingAdapter implements EssayGradingPort {
 
         for (int call = 1; call <= MAX_MODEL_CALLS; call++) {
             modelCalls = call;
-            ChatResponse response = call(new Prompt(messages, options(withTools, seed)), call);
+            ChatResponse response = call(new Prompt(messages, options(withTools, seed, overrides)), call);
             Generation generation = response.getResult();
             if (generation == null) {
                 throw new IllegalStateException("모델이 응답을 하나도 돌려주지 않았다");
@@ -260,11 +281,23 @@ public class EssayGradingAdapter implements EssayGradingPort {
      * 도구를 빼고 부르면 그것이 B 군이다. 프롬프트의 도구 문단은 그대로 둔다 — 프롬프트까지 바꾸면
      * 두 군의 차이가 도구 유무 하나로 남지 않는다(금지 16).
      */
-    private OpenAiChatOptions options(boolean withTools, Integer seed) {
+    private OpenAiChatOptions options(boolean withTools, Integer seed, LlmModelOptions overrides) {
+        // mutate 는 사본이라 덮지 않은 값은 그대로 남는다 — 여기서 새 빌더를 쓰면 나머지가 사라진다.
         OpenAiChatOptions.Builder builder = baseOptions.mutate()
                 .toolCallbacks(withTools ? toolCallbacks : List.of());
         if (seed != null) {
             builder.seed(seed);
+        }
+        if (overrides != null) {
+            if (overrides.model() != null) {
+                builder.model(overrides.model());
+            }
+            if (overrides.reasoningEffort() != null) {
+                builder.reasoningEffort(overrides.reasoningEffort());
+            }
+            if (overrides.maxCompletionTokens() != null) {
+                builder.maxCompletionTokens(Math.toIntExact(overrides.maxCompletionTokens()));
+            }
         }
         return builder.build();
     }

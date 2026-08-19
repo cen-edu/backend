@@ -3,6 +3,7 @@ package com.cenedu.backend.ai.grading.adapter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
+import com.cenedu.backend.ai.client.LlmModelOptions;
 import com.cenedu.backend.domain.grading.port.EssayGradingCommand;
 import com.cenedu.backend.domain.grading.port.RubricCriterion;
 import com.cenedu.backend.domain.grading.port.RubricJudgement;
@@ -51,18 +53,57 @@ class EssayGradingToolAbLiveTest {
     private static final Path GOLDENSET = Path.of(
             System.getenv().getOrDefault("GOLDENSET_HOME", "../EduCenDocs/tools/goldenset/handmade"));
 
-    /** 기대 판정 라벨. <b>사람이 만든다</b> — 이 파일이 없으면 채점할 기준이 없다. */
-    private static final Path LABELS = GOLDENSET.resolve("goldenset-answer-labels.json");
+    /**
+     * 필기 이미지와 기대 판정 라벨이 있는 곳. 문항(골든셋)과 <b>따로 둔다</b> — 답안은 이 측정을
+     * 위해 새로 만든 재료라 골든셋 저장소에 섞지 않는다.
+     */
+    private static final Path ANSWERS = Path.of(
+            System.getenv().getOrDefault("GOLDENSET_ANSWERS", "../EduCenDocs/tools/goldenset/answers"));
 
+    /** 기대 판정 라벨. <b>사람이 만든다</b> — 이 파일이 없으면 채점할 기준이 없다. */
+    private static final Path LABELS = ANSWERS.resolve("goldenset-answer-labels.json");
+
+    /**
+     * 표에서 눈에 띄게 둘 케이스의 {@code caseId} 접두어. 기본값 {@code A03} 은 도구 유무를 가르는
+     * 핵심 한 장이라 지시서가 지목한 것이다 — 과정은 전부 맞고 마지막 곱만 틀렸다.
+     */
+    private static final List<String> FOCUS = List.of(
+            System.getenv().getOrDefault("MEASUREMENT_FOCUS", "A03").split(","));
+
+    /**
+     * 측정 결과. 군을 바꿔 여러 번 돌리므로 {@code MEASUREMENT_REPORT} 로 파일을 가른다 —
+     * 같은 이름에 덮어쓰면 4-1 을 4-2 가 지운다.
+     */
     private static final Path REPORT = Path.of(
             System.getenv().getOrDefault("MEASUREMENTS_HOME", "../EduCenDocs/docs/measurements"),
-            "4_essay_grading_tool_ab.md");
+            System.getenv().getOrDefault("MEASUREMENT_REPORT", "4_essay_grading_tool_ab.md"));
 
     /**
      * 고정 seed(D18). 운영은 쓰지 않는다 — 두 군의 차이가 도구 유무에서 오는지, 그저 다시 굴린
      * 주사위에서 오는지 가르려고 측정에서만 고정한다.
      */
     private static final int SEED = 20260819;
+
+    /**
+     * <b>측정이 쓰는 모델을 여기서 못 박는다.</b>
+     *
+     * <p>{@code OpenAiProperties.model()} 을 그대로 따르면 팀 공용 기본값이 바뀔 때 측정도 같이
+     * 바뀐다. 실제로 단계 3~4 사이에 {@code gpt-5-mini} 에서 이 값으로 바뀌었다. 단계 5 는 단계 4
+     * 의 A 군을 재사용해 B′ 군과 비교하므로, 그 사이 기본값이 또 바뀌면 두 군을 비교할 수 없게
+     * 되는데 바뀐 사실이 어디에도 남지 않는다.
+     *
+     * <p>바꿀 때는 단계 4 와 단계 5 를 <b>같이</b> 다시 돌린다. 한쪽만 바꾸면 비교가 깨진다.
+     */
+    private static final String MODEL =
+            System.getenv().getOrDefault("MEASUREMENT_MODEL", "gpt-5-mini");
+
+    /**
+     * 추론 강도도 함께 못 박는다. <b>모델과 따로 고를 수 없는 조합이 있다</b> —
+     * {@code gpt-5.6-luna} 는 도구를 실으면 {@code none} 이어야 한다(그 외에는 400).
+     * 그래서 단계 4-2 의 모델 대조는 "모델 + 추론 강도" 가 함께 바뀐 대조다.
+     */
+    private static final String REASONING_EFFORT =
+            System.getenv().getOrDefault("MEASUREMENT_REASONING_EFFORT", "medium");
 
     @Autowired
     private EssayGradingAdapter adapter;
@@ -98,7 +139,9 @@ class EssayGradingToolAbLiveTest {
         }
 
         Files.createDirectories(REPORT.getParent());
-        Files.writeString(REPORT, new ReportWriter(cases, outcomes).render(), StandardCharsets.UTF_8);
+        Files.writeString(REPORT,
+                new ReportWriter(cases, outcomes, commitHash(), OffsetDateTime.now()).render(),
+                StandardCharsets.UTF_8);
     }
 
     /**
@@ -125,7 +168,8 @@ class EssayGradingToolAbLiveTest {
     private Outcome runGroup(Case testCase, boolean withTools) throws Exception {
         String dataUri = toDataUri(testCase.answerImage());
         EssayGradingCommand command = new EssayGradingCommand(dataUri, testCase.criteria());
-        EssayGradingRun run = adapter.run(command, withTools, SEED);
+        EssayGradingRun run = adapter.run(command, withTools, SEED,
+                new LlmModelOptions(MODEL, REASONING_EFFORT, null));
         return new Outcome(testCase, withTools, run);
     }
 
@@ -142,9 +186,9 @@ class EssayGradingToolAbLiveTest {
     private List<Case> readCases(JsonNode labels) throws Exception {
         List<Case> cases = new ArrayList<>();
         for (JsonNode node : labels.path("cases")) {
-            Path questionPath = GOLDENSET.resolve(node.path("question").asString(""));
+            String questionFile = node.path("questionFile").asString("");
             JsonNode question = objectMapper.readTree(
-                    Files.readString(questionPath, StandardCharsets.UTF_8));
+                    Files.readString(resolveQuestion(questionFile), StandardCharsets.UTF_8));
 
             List<RubricCriterion> criteria = new ArrayList<>();
             List<String> rubricKeys = new ArrayList<>();
@@ -159,14 +203,52 @@ class EssayGradingToolAbLiveTest {
                 expected.put(item.path("rubricKey").asString(""), item.path("verdict").asString(""));
             }
 
+            String caseId = node.path("caseId").asString("");
             cases.add(new Case(
-                    node.path("caseId").asString(""),
-                    node.path("question").asString(""),
-                    GOLDENSET.resolve(node.path("answerImage").asString("")),
+                    caseId,
+                    questionFile,
+                    ANSWERS.resolve(node.path("answerImage").asString("")),
                     node.path("note").asString(""),
+                    FOCUS.stream().anyMatch(prefix -> caseId.startsWith(prefix.strip())),
                     criteria, rubricKeys, expected));
         }
         return cases;
+    }
+
+    /**
+     * 문항 파일 이름 하나로 골든셋에서 찾는다. 라벨은 {@code normal-essay-001.json} 처럼 이름만
+     * 들고 있고 어느 하위 디렉터리인지 적지 않는다 — <b>디렉터리는 문항의 성격이지 라벨이 알 일이
+     * 아니다.</b>
+     *
+     * <p>찾지 못하면 던진다. 조용히 건너뛰면 세트가 줄어든 채로 표가 그려진다.
+     */
+    private static Path resolveQuestion(String questionFile) {
+        for (String directory : List.of("normal", "defect")) {
+            Path candidate = GOLDENSET.resolve(directory).resolve(questionFile);
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException(
+                "골든셋에서 문항을 찾지 못했다: " + questionFile + " (" + GOLDENSET.toAbsolutePath() + ")");
+    }
+
+    /**
+     * 이 측정을 돌린 커밋. <b>값만으로는 재현할 수 없어서</b> 남긴다 — 같은 프롬프트·같은 seed 라도
+     * 프롬프트 문구나 도구 가드가 바뀌면 다른 측정이 된다.
+     *
+     * <p>git 이 없으면 {@code "-"} 다. 측정 자체를 막을 이유는 아니다.
+     */
+    private static String commitHash() {
+        try {
+            Process process = new ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+                    .redirectErrorStream(true).start();
+            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            return process.waitFor() == 0 ? output.strip() : "-";
+        } catch (Exception exception) {
+            Thread.currentThread().interrupt();
+            return "-";
+        }
     }
 
     private static String toDataUri(Path image) throws Exception {
@@ -179,8 +261,13 @@ class EssayGradingToolAbLiveTest {
     // ===== 값 =====
 
     private record Case(String caseId, String question, Path answerImage, String note,
-                        List<RubricCriterion> criteria, List<String> rubricKeys,
+                        boolean focus, List<RubricCriterion> criteria, List<String> rubricKeys,
                         Map<String, String> expectedByRubricKey) {
+
+        /** 표에서 눈에 띄게 둘 케이스. 라벨이 지정한다 — 코드가 caseId 를 알 이유가 없다. */
+        String marker() {
+            return focus ? "⭐ " : "";
+        }
 
         /** 표시 순서로 붙인 id 를 {@code rubricKey} 로 되돌린다. */
         String rubricKeyOf(long rubricItemId) {
@@ -234,15 +321,22 @@ class EssayGradingToolAbLiveTest {
     // ===== 보고서 =====
 
     /** 표만 쓴다. 해석 문장을 넣지 않는다(§6). */
-    private record ReportWriter(List<Case> cases, List<Outcome> outcomes) {
+    private record ReportWriter(List<Case> cases, List<Outcome> outcomes, String commit,
+                                OffsetDateTime ranAt) {
 
         String render() {
             StringBuilder out = new StringBuilder();
             out.append("# 단계 4 — 도구가 값을 하는가 (A: math 도구 루프 / B: 도구 없음)\n\n")
-                    .append("- seed: ").append(SEED).append(" (D18 — 측정 전용)\n")
-                    .append("- 케이스: ").append(cases.size())
-                    .append(" · 라벨 항목: ").append(cases.stream().mapToInt(c -> c.expectedByRubricKey().size()).sum())
-                    .append("\n\n> 값만 적는다. 해석은 보고 이후에 붙인다.\n\n");
+                    .append("| | |\n|---|---|\n")
+                    .append("| 모델 | `").append(MODEL).append("` |\n")
+                    .append("| reasoning_effort | `").append(REASONING_EFFORT).append("` |\n")
+                    .append("| 커밋 | `").append(commit).append("` |\n")
+                    .append("| 실행 | ").append(ranAt).append(" |\n")
+                    .append("| seed | ").append(SEED).append(" (D18 — 측정 전용) |\n")
+                    .append("| 케이스 · 라벨 항목 | ").append(cases.size()).append(" · ")
+                    .append(cases.stream().mapToInt(c -> c.expectedByRubricKey().size()).sum())
+                    .append(" |\n\n")
+                    .append("> 값만 적는다. 해석은 보고 이후에 붙인다.\n\n");
             appendAccuracy(out);
             appendDivergence(out);
             appendUnreadable(out);
@@ -299,7 +393,8 @@ class EssayGradingToolAbLiveTest {
                         continue;
                     }
                     rows++;
-                    out.append("| ").append(testCase.caseId()).append(" | ").append(key)
+                    out.append("| ").append(testCase.marker()).append(testCase.caseId())
+                            .append(" | ").append(key)
                             .append(" | ").append(expected == null ? "-" : expected)
                             .append(" | ").append(bVerdict).append(" | ").append(aVerdict)
                             .append(" | ").append(testCase.note()).append(" |\n");
@@ -389,7 +484,8 @@ class EssayGradingToolAbLiveTest {
         private void appendPerCase(StringBuilder out) {
             out.append("## 6. 케이스별 원값\n\n");
             for (Case testCase : cases) {
-                out.append("### ").append(testCase.caseId()).append(" — ").append(testCase.question())
+                out.append("### ").append(testCase.marker()).append(testCase.caseId())
+                        .append(" — ").append(testCase.question())
                         .append("\n\n- 이미지: `").append(testCase.answerImage().getFileName()).append("`\n")
                         .append("- 비고: ").append(testCase.note()).append("\n\n")
                         .append("| 항목 | 라벨 | B | A |\n|---|---|---|---|\n");
