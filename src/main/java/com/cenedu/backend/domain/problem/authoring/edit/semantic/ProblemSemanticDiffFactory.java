@@ -6,6 +6,7 @@ public class ProblemSemanticDiffFactory {
         Map<String,com.cenedu.backend.domain.problem.authoring.semantic.model.SemanticParameter> after=new HashMap<>(); changed.parameters().forEach(p->after.put(p.key(),p));
         List<SemanticValueChange> changes=new ArrayList<>(); for(var p:base.parameters()){var q=after.get(p.key());if(q!=null&&(!Objects.equals(p.value(),q.value())||!Objects.equals(p.unit(),q.unit())))changes.add(new SemanticValueChange(p.key(),p.value(),q.value(),p.unit(),q.unit()));}
         EnumSet<SemanticImpactArea> areas=EnumSet.noneOf(SemanticImpactArea.class);
+        if (!changes.isEmpty()) { areas.add(SemanticImpactArea.ANSWERS); areas.add(SemanticImpactArea.EXPLANATION); }
         if(!Objects.equals(base.presentation().questionTemplate(),changed.presentation().questionTemplate())) areas.add(SemanticImpactArea.STEM);
         if(!Objects.equals(base.presentation().choices(),changed.presentation().choices())) areas.add(SemanticImpactArea.CHOICES);
         if(!Objects.equals(base.presentation().steps(),changed.presentation().steps())) areas.add(SemanticImpactArea.STEPS);
