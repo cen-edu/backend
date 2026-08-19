@@ -27,9 +27,11 @@ public class SafeSvgSanitizer {
             var f=DocumentBuilderFactory.newInstance(); f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING,true); f.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true); f.setFeature("http://xml.org/sax/features/external-general-entities",false); f.setFeature("http://xml.org/sax/features/external-parameter-entities",false); f.setExpandEntityReferences(false); f.setNamespaceAware(true);
             var root=f.newDocumentBuilder().parse(new java.io.ByteArrayInputStream(svg.getBytes(java.nio.charset.StandardCharsets.UTF_8))).getDocumentElement();
             if(!"svg".equals(root.getLocalName())&&!"svg".equals(root.getNodeName()))throw new IllegalArgumentException("SVG root가 아닙니다.");
+            if(!root.hasAttribute("viewBox"))throw new IllegalArgumentException("SVG viewBox가 없습니다.");
             var allowedAttrs=java.util.Set.of("xmlns","viewBox","x","y","x1","y1","x2","y2","cx","cy","r","rx","ry","width","height","fill","stroke","stroke-width","stroke-dasharray","points","d","font-size","text-anchor","transform","id","marker-end","marker-start");
-            var nodes=root.getElementsByTagName("*"); for(int i=0;i<nodes.getLength();i++){var e=(Element)nodes.item(i);var attrs=e.getAttributes();for(int j=0;j<attrs.getLength();j++)if(!allowedAttrs.contains(attrs.item(j).getNodeName()))throw new IllegalArgumentException("허용되지 않은 SVG 속성입니다.");}
+            validateAttributes(root,allowedAttrs); var nodes=root.getElementsByTagName("*"); for(int i=0;i<nodes.getLength();i++)validateAttributes((Element)nodes.item(i),allowedAttrs);
         } catch (IllegalArgumentException e){throw e;} catch(Exception e){throw new IllegalArgumentException("SVG XML이 올바르지 않습니다.",e);}
         return svg;
     }
+    private void validateAttributes(Element element,java.util.Set<String> allowed){var attrs=element.getAttributes();for(int i=0;i<attrs.getLength();i++)if(!allowed.contains(attrs.item(i).getNodeName()))throw new IllegalArgumentException("허용되지 않은 SVG 속성입니다.");}
 }

@@ -8,7 +8,7 @@ import java.util.*;
 public final class SolidGeometrySvgRenderer {
     public String render(SolidGeometryDiagramSpecV1 s){return render(s,Map.of());}
     public String render(SolidGeometryDiagramSpecV1 s,Map<String,SemanticResolvedValue> v){
-        int p=s.viewport().padding(), w=scaled(v,s.widthKey(),s.viewport().width()/3), d=scaled(v,s.depthKey(),42), h=scaled(v,s.heightKey(),s.viewport().height()/2), r=scaled(v,s.radiusKey(),Math.min(w,h)/3), x=p+20, base=s.viewport().height()-p-10, top=base-h;
+        int p=s.viewport().padding(), w=scaled(v,s.widthKey(),s.viewport().width()/3), d=scaled(v,s.depthKey(),42), h=scaled(v,s.heightKey(),s.viewport().height()/2), slant=scaled(v,s.slantHeightKey(),h), r=scaled(v,s.radiusKey(),Math.min(w,h)/3), x=p+20, base=s.viewport().height()-p-10, top=base-(s.solidKind()==SolidGeometryKind.CONE||s.solidKind()==SolidGeometryKind.PYRAMID?Math.min(h,slant):h);
         StringBuilder b=new StringBuilder();
         switch(s.solidKind()){
             case CYLINDER -> { b.append("<ellipse cx=\"").append(x+w/2).append("\" cy=\"").append(top).append("\" rx=\"").append(r).append("\" ry=\"12\" fill=\"none\" stroke=\"#000000\"/>"); b.append("<line x1=\"").append(x+w/2-r).append("\" y1=\"").append(top).append("\" x2=\"").append(x+w/2-r).append("\" y2=\"").append(base).append("\" stroke=\"#000000\"/><line x1=\"").append(x+w/2+r).append("\" y1=\"").append(top).append("\" x2=\"").append(x+w/2+r).append("\" y2=\"").append(base).append("\" stroke=\"#000000\"/><ellipse cx=\"").append(x+w/2).append("\" cy=\"").append(base).append("\" rx=\"").append(r).append("\" ry=\"12\" fill=\"none\" stroke=\"#000000\"/>"); }

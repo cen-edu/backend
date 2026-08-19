@@ -10,7 +10,11 @@ public final class CoordinateGraphSvgRenderer {
     public String render(CoordinateGraphDiagramSpecV1 s, Map<String, SemanticResolvedValue> v) {
         int p=s.viewport().padding(), w=s.viewport().width(), h=s.viewport().height();
         double xmin=num(v,s.xMinKey(),-10), xmax=num(v,s.xMaxKey(),10), ymin=num(v,s.yMinKey(),-10), ymax=num(v,s.yMaxKey(),10);
-        StringBuilder b=new StringBuilder("<line x1=\"").append(p).append("\" y1=\"").append(py(ymax,ymin,ymax,p,h-p)).append("\" x2=\"").append(w-p).append("\" y2=\"").append(py(ymax,ymin,ymax,p,h-p)).append("\" stroke=\"#000000\"/>");
+        int axisY=py(0,ymin,ymax,p,h-p), axisX=px(0,xmin,xmax,p,w-p);
+        StringBuilder b=new StringBuilder("<line x1=\"").append(p).append("\" y1=\"").append(axisY).append("\" x2=\"").append(w-p).append("\" y2=\"").append(axisY).append("\" stroke=\"#000000\"/><line x1=\"").append(axisX).append("\" y1=\"").append(p).append("\" x2=\"").append(axisX).append("\" y2=\"").append(h-p).append("\" stroke=\"#000000\"/>");
+        double xt=num(v,s.xTickKey(),0), yt=num(v,s.yTickKey(),0);
+        if(xt>0) for(double x=Math.ceil(xmin/xt)*xt;x<=xmax;x+=xt){int q=px(x,xmin,xmax,p,w-p);b.append("<line x1=\"").append(q).append("\" y1=\"").append(axisY-3).append("\" x2=\"").append(q).append("\" y2=\"").append(axisY+3).append("\" stroke=\"#000000\"/>");}
+        if(yt>0) for(double y=Math.ceil(ymin/yt)*yt;y<=ymax;y+=yt){int q=py(y,ymin,ymax,p,h-p);b.append("<line x1=\"").append(axisX-3).append("\" y1=\"").append(q).append("\" x2=\"").append(axisX+3).append("\" y2=\"").append(q).append("\" stroke=\"#000000\"/>");}
         for(var f:s.functions()) { double k=num(v,f.coefficientKey(),1); if(f.functionKind()==CoordinateFunctionKind.INVERSE_PROPORTION){b.append(path(f,p,w,h,xmin,xmax,ymin,ymax,k,Double.NEGATIVE_INFINITY,0));b.append(path(f,p,w,h,xmin,xmax,ymin,ymax,k,0,Double.POSITIVE_INFINITY));} else b.append(path(f,p,w,h,xmin,xmax,ymin,ymax,k,xmin,xmax)); }
         for(var point:s.points()){double x=num(v,point.xKey(),0),y=num(v,point.yKey(),0);b.append("<circle cx=\"").append(px(x,xmin,xmax,p,w-p)).append("\" cy=\"").append(py(y,ymin,ymax,p,h-p)).append("\" r=\"4\" fill=\"#000000\"/>");}
         return b.toString();
