@@ -14,6 +14,12 @@ public record StudentResultAnswerUnitResponse(
         String myAnswer,
         String correctAnswer,
 
+        @Schema(description = "내가 고른 보기 ID. 객관식이 아니거나 미제출이면 null")
+        Long selectedChoiceId,
+
+        @Schema(description = "정답 보기 ID. 객관식이 아니거나 공개 전이면 null — correctAnswer 와 같은 게이트다")
+        Long correctChoiceId,
+
         @Schema(description = "문항 판정", allowableValues = {"correct", "partial", "wrong", "empty", "pending"})
         String result,
 

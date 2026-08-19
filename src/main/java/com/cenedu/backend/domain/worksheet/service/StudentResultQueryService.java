@@ -176,6 +176,12 @@ public class StudentResultQueryService {
                         unit.getDisplayOrder(),
                         resolveMyAnswer(question.getQuestionType(), answer, choices),
                         disclose ? resolveCorrectAnswer(question.getQuestionType(), unit, choices) : null,
+                        question.getQuestionType() == QuestionType.MULTIPLE_CHOICE && answer != null
+                                ? answer.getSelectedChoiceId()
+                                : null,
+                        disclose
+                                ? resolveCorrectChoiceId(question.getQuestionType(), unit, choices)
+                                : null,
                         unitResult,
                         score,
                         answer != null && answer.getAnswerImageRef() != null));
@@ -411,6 +417,25 @@ public class StudentResultQueryService {
      * 1-based 표시 순서를 담고 있어(실측 확인) 보기 텍스트로 풀어야 한다 — 컬럼값을 그대로
      * 내보내면 학생 화면에 원시 순번이 나간다.
      */
+    /**
+     * 정답 보기 ID. {@code answer_raw}가 1-based 보기 순번이라 그 순번의 보기를 찾는다.
+     *
+     * <p>공개 게이트는 호출부가 건다 — {@code correctAnswer}와 같은 조건이어야 한다. 텍스트만
+     * 가리고 ID를 내보내면 프론트가 {@code choices}에서 정답을 그대로 짚을 수 있다.
+     */
+    private Long resolveCorrectChoiceId(QuestionType questionType, ProblemAnswerUnit unit,
+                                        List<ProblemChoice> choices) {
+        if (questionType != QuestionType.MULTIPLE_CHOICE || unit.getAnswerRaw() == null) {
+            return null;
+        }
+        int oneBasedOrder = Integer.parseInt(unit.getAnswerRaw());
+        return choices.stream()
+                .filter(choice -> choice.getDisplayOrder() + 1 == oneBasedOrder)
+                .findFirst()
+                .map(ProblemChoice::getId)
+                .orElse(null);
+    }
+
     private String resolveCorrectAnswer(QuestionType questionType, ProblemAnswerUnit unit, List<ProblemChoice> choices) {
         String answerRaw = unit.getAnswerRaw();
         if (answerRaw == null) {

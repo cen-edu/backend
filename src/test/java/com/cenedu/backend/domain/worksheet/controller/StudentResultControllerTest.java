@@ -316,8 +316,9 @@ class StudentResultControllerTest {
     void getResult_multipleChoice_includesChoices() throws Exception {
         long questionId = insertQuestion("MULTIPLE_CHOICE");
         insertChoice(questionId, 0, "2");
-        insertChoice(questionId, 1, "6");
+        long choice2 = insertChoice(questionId, 1, "6");
         insertChoice(questionId, 2, "12");
+        // answer_raw "2" 는 1-based 보기 순번이라 displayOrder 1(=choice2)이 정답이다.
         long answerUnitId = insertAnswerUnit(questionId, null, "MAIN", 0, "CHOICE", "2");
 
         long worksheetId = insertWorksheet("GENERAL_LEARNING");
@@ -335,6 +336,7 @@ class StudentResultControllerTest {
                 .andExpect(jsonPath("$.data.items[0].choices[1].displayOrder").value(1))
                 // 어느 보기가 정답인지는 보기 목록이 아니라 answerUnits가 가진다.
                 .andExpect(jsonPath("$.data.items[0].choices[0].correct").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctChoiceId").value(choice2))
                 .andExpect(jsonPath("$.data.items[0].steps").doesNotExist());
     }
 
@@ -390,7 +392,11 @@ class StudentResultControllerTest {
                 .andExpect(jsonPath("$.data.items[0].result").value("empty"))
                 .andExpect(jsonPath("$.data.items[0].score").value(0))
                 .andExpect(jsonPath("$.data.items[0].explanation").doesNotExist())
-                .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctAnswer").doesNotExist());
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctAnswer").doesNotExist())
+                // 보기 목록은 문제를 다시 보여주는 것이라 가리지 않는다 — 학생이 풀며 이미 본 것이다.
+                .andExpect(jsonPath("$.data.items[0].choices.length()").value(2))
+                // 정답은 텍스트만 가려선 안 된다. ID 로 새면 프론트가 choices 에서 그대로 짚는다.
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].correctChoiceId").doesNotExist());
     }
 
     @Test
