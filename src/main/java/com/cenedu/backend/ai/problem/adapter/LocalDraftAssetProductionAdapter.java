@@ -10,6 +10,8 @@ import java.util.HexFormat;
 
 import com.cenedu.backend.domain.problem.authoring.asset.*;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemAssetProductionPort;
+import com.cenedu.backend.ai.problem.render.ProblemDiagramRenderer;
+import com.cenedu.backend.domain.problem.authoring.diagram.DiagramRenderContext;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -18,12 +20,14 @@ import org.springframework.stereotype.Component;
 public class LocalDraftAssetProductionAdapter implements ProblemAssetProductionPort {
     private final Path draftRoot;
     private final SafeSvgSanitizer sanitizer;
+    private final ProblemDiagramRenderer renderer;
 
     public LocalDraftAssetProductionAdapter(
             @Value("${app.problem-authoring.draft-root:/tmp/cen-edu-problem-drafts}") String draftRoot,
-            SafeSvgSanitizer sanitizer) {
+            SafeSvgSanitizer sanitizer, ProblemDiagramRenderer renderer) {
         this.draftRoot = Path.of(draftRoot).toAbsolutePath().normalize();
         this.sanitizer = sanitizer;
+        this.renderer = renderer;
     }
 
     /** STRUCTURED_RENDER SVG를 안전한 임시 파일로 만든다. */
@@ -33,7 +37,9 @@ public class LocalDraftAssetProductionAdapter implements ProblemAssetProductionP
                 || plan.outputFormat() != AssetOutputFormat.SVG) {
             throw new IllegalArgumentException("현재 임시 자산 Adapter는 STRUCTURED_RENDER SVG만 지원합니다.");
         }
-        String svg = sanitizer.sanitize(renderSvg(plan));
+        String svg = plan.specification().diagramSpec() == null
+                ? sanitizer.sanitize(renderSvg(plan))
+                : renderer.render(plan.specification().diagramSpec(), new DiagramRenderContext(java.util.Map.of())).svg();
         byte[] bytes = svg.getBytes(StandardCharsets.UTF_8);
         Path directory = draftRoot.resolve(String.valueOf(context.sessionId()))
                 .resolve(String.valueOf(context.versionNo())).normalize();
