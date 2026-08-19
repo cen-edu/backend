@@ -1970,7 +1970,7 @@ Expected: FAIL because edit responses do not include patch/preview and the ten s
 
 `ProblemEditApplicationService.handleTurn` captures the coordinator result only for CONFIRM_EXECUTION and passes it to `ProblemEditTurnResponse.from(result, executionResult)`. REQUEST_CONFIRMATION returns the normalized semantic patch so the UI can show requested parameter names/values before confirmation; REJECTED maps through `BusinessException` and does not store a pending command.
 
-- [ ] **Step 4: Run GREEN including the web contract**
+- [x] **Step 4: Run GREEN including the web contract** *(service·semantic·MockMvc 계약 테스트 통과; 전체 회귀는 Task15에서 수행)*
 
 Run:
 
