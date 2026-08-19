@@ -28,6 +28,31 @@ class ProblemSemanticExtractionAdapterTest {
         assertThat(result.semanticModel()).isSameAs(model);
     }
 
+    @Test
+    void parser_실패는_invalid_source로_분류한다() {
+        LlmClient client = mock(LlmClient.class);
+        ProblemSemanticOutputParser parser = mock(ProblemSemanticOutputParser.class);
+        when(client.completeStructured(any(), any(), any())).thenReturn(new LlmResponse("{}", 1, 1, 0));
+        when(parser.parse("{}")).thenThrow(new IllegalArgumentException("bad json"));
+
+        var result = new ProblemSemanticExtractionAdapter(client,
+                new ProblemSemanticExtractionPromptFactory(), parser).extract(command());
+
+        assertThat(result.status()).isEqualTo(SemanticExtractionStatus.INVALID_SOURCE);
+    }
+
+    @Test
+    void provider_실패는_technical_error로_분류한다() {
+        LlmClient client = mock(LlmClient.class);
+        when(client.completeStructured(any(), any(), any())).thenThrow(new IllegalStateException("down"));
+
+        var result = new ProblemSemanticExtractionAdapter(client,
+                new ProblemSemanticExtractionPromptFactory(), mock(ProblemSemanticOutputParser.class))
+                .extract(command());
+
+        assertThat(result.status()).isEqualTo(SemanticExtractionStatus.TECHNICAL_ERROR);
+    }
+
     private SemanticExtractionCommand command() {
         return new SemanticExtractionCommand(UUID.randomUUID(), 41L,
                 new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L,

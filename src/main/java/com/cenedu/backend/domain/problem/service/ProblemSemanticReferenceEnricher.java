@@ -17,7 +17,7 @@ public class ProblemSemanticReferenceEnricher {
     public ProblemGenerationCommand enrich(ProblemGenerationCommand command) {
         var references = new ArrayList<GenerationReference>();
         int extractedExamples = 0;
-        boolean extractExamples = command.purpose() == GenerationPurpose.PERSONALIZED_APPLICATION;
+        boolean extractExamples = command.specification().requiresSolutionStructure();
         for (GenerationReference reference : command.references()) {
             if (reference.role() == GenerationReferenceRole.ORIGIN
                     && reference.semanticModel() == null && reference.sourceQuestionId() != null) {

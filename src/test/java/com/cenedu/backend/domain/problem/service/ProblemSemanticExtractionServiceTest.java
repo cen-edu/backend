@@ -39,6 +39,22 @@ class ProblemSemanticExtractionServiceTest {
         verifyNoInteractions(port);
     }
 
+    @Test
+    void version_extraction은_owner가_다르면_거부한다() {
+        var questions = mock(ProblemQuestionRepository.class);
+        var versions = mock(ProblemAuthoringVersionRepository.class);
+        var sessions = mock(com.cenedu.backend.domain.problem.repository.ProblemAuthoringSessionRepository.class);
+        var port = mock(ProblemSemanticExtractionPort.class);
+        var tx = mock(PlatformTransactionManager.class);
+        when(sessions.findByIdAndOwnerTeacherId(31L, 7L)).thenReturn(Optional.empty());
+        var service = new ProblemSemanticExtractionService(questions, versions, sessions, port,
+                mock(ProblemSemanticMaterializer.class), tx, new ObjectMapper());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.ensureVersionSemantic(
+                7L, 31L, 41L, scope())).isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(port, versions);
+    }
+
     private CurriculumScope scope() {
         return new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L,
                 "수와 연산", "사칙연산", "덧셈");
