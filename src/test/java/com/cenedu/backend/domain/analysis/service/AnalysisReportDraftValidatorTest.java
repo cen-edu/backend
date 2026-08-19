@@ -68,6 +68,16 @@ class AnalysisReportDraftValidatorTest {
     }
 
     @Test
+    @DisplayName("한자가 섞여도 저장을 막지는 않는다")
+    void doesNotRejectForeignScript() {
+        AnalysisReportDraft draft = draft("요약", "관찰", List.of(
+                new AnalysisReportDraft.ItemMessageDraft(
+                        11L, "확인된 점", "학습 포인트", "두세題 풀게 해 주세요.")));
+
+        assertThat(validator.validate(draft, List.of(11L))).hasSize(1);
+    }
+
+    @Test
     @DisplayName("채점 완료 문항이 없으면 문항 문장 없이도 통과한다")
     void acceptsEmptyItemMessages() {
         AnalysisReportDraft draft = draft("요약", "관찰", List.of());
