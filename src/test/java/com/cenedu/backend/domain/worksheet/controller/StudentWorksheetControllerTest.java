@@ -26,8 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
  * 최종 보고에 남긴다({@code application.yaml}에 영구히 켜두지 않는다).
  */
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-student-worksheet-controller-test-secret-32b",
-        "app.jwt.access-token-expiration=1h"
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
+        "app.jwt.access-token-expiration=1h",
+        // .env 의 S3_ENABLED 가 테스트까지 새어들어온다. 켜두면 presign 이 실제 버킷에
+        // headObject 를 날려 테스트가 네트워크와 실제 객체 존재에 묶인다.
+        "app.storage.s3.enabled=false"
 })
 @AutoConfigureMockMvc
 @Import(PostgresTestcontainer.class)
@@ -43,8 +46,10 @@ class StudentWorksheetControllerTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    private long teacherId;
     private long studentId;
     private String studentToken;
+    private long subUnitId;
     private long choiceQuestionId;
     private long stepQuestionId;
     private long answerRefQuestionId;
@@ -52,12 +57,12 @@ class StudentWorksheetControllerTest {
 
     @BeforeEach
     void setUp() {
-        long teacherId = insertAccount("TEACHER", "student-api-test-teacher", "테스트교사");
+        teacherId = insertAccount("TEACHER", "student-api-test-teacher", "테스트교사");
         studentId = insertAccount("STUDENT", "student-api-test-student", "학생1");
         insertStudentProfile(studentId, teacherId);
         studentToken = jwtProvider.issueAccessToken(studentId, UserRole.STUDENT).value();
 
-        long subUnitId = insertCurriculumUnit();
+        subUnitId = insertCurriculumUnit();
 
         // TEXT + FIGURE + TABLE 세 블록 종류를 한 문항에 다 넣어 stage-1 측정 요구 4번을 겸한다.
         choiceQuestionId = insertQuestion(subUnitId, "MULTIPLE_CHOICE", """
@@ -67,6 +72,7 @@ class StudentWorksheetControllerTest {
                   {"blockId":"T2","blockKind":"TABLE","displayOrder":2,"text":"","markup":"<table><tr><td>1</td></tr></table>"}
                 ]
                 """);
+        insertAsset(choiceQuestionId, "F1", 0, "questions/30/test_F1.png", 240, 188, "부채꼴 그림");
         long choiceId1 = insertChoice(choiceQuestionId, 1, "1");
         insertChoice(choiceQuestionId, 2, "4");
         insertAnswerUnit(choiceQuestionId, null, "MAIN", 0, "CHOICE", String.valueOf(choiceId1));
@@ -133,8 +139,15 @@ class StudentWorksheetControllerTest {
                 .andExpect(jsonPath("$.data.items[0].format").value("choice"))
                 .andExpect(jsonPath("$.data.items[0].contentBlocks[0].blockKind").value("TEXT"))
                 .andExpect(jsonPath("$.data.items[0].contentBlocks[1].blockKind").value("FIGURE"))
-                .andExpect(jsonPath("$.data.items[0].contentBlocks[1].imageUrl")
-                        .value("/api/images/problems/" + choiceQuestionId + "/assets/F1"))
+                .andExpect(jsonPath("$.data.items[0].contentBlocks[1].assetRef").value("F1"))
+                // 이미지 주소는 블록이 아니라 문항 단위 assets[] 에 있고 assetKey 로 맞춘다.
+                .andExpect(jsonPath("$.data.items[0].contentBlocks[1].imageUrl").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].assets[0].assetKey").value("F1"))
+                .andExpect(jsonPath("$.data.items[0].assets[0].widthPx").value(240))
+                .andExpect(jsonPath("$.data.items[0].assets[0].heightPx").value(188))
+                .andExpect(jsonPath("$.data.items[0].assets[0].altText").value("부채꼴 그림"))
+                // S3 를 끈 컨텍스트라 url 은 null 이다(빈 부재 시 null 반환 경로).
+                .andExpect(jsonPath("$.data.items[0].assets[0].url").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].contentBlocks[2].blockKind").value("TABLE"))
                 .andExpect(jsonPath("$.data.items[0].contentBlocks[2].markup").exists())
                 .andExpect(jsonPath("$.data.items[0].choices").isArray())
@@ -222,6 +235,120 @@ class StudentWorksheetControllerTest {
                         "$.components.schemas.StudentAssignmentResponse.properties.status.enum").isArray());
     }
 
+    @Test
+    @DisplayName("concept 지원 문항은 개념 정리를 세 키만 담아 풀이 화면에 내려보낸다")
+    void getAssignmentDetail_conceptMode_exposesOnlyThreeKeys() throws Exception {
+        // 세 키 외에 내부 출처·품질 등급을 일부러 채운다 — 채워져 있는데도 안 나가는 것이 요지다.
+        long questionId = insertQuestionWithLearningGuide(subUnitId, "SHORT_INPUT", """
+                [{"blockId":"T1","blockKind":"TEXT","displayOrder":0,"text":"84를 소인수분해하시오."}]
+                """, """
+                {"conceptTitle":"소인수분해",
+                 "summary":"자연수를 소수의 곱으로 나타내는 것",
+                 "keyPoints":["소수는 1과 자기 자신만을 약수로 갖는다","지수로 간단히 표기한다"],
+                 "questionSourceRef":"AIHUB30-1234",
+                 "source":{"datasets":["AIHUB_110"]},
+                 "status":"INTERNAL_APPROVED"}
+                """);
+        insertAnswerUnit(questionId, null, "MAIN", 0, "VALUE", "2^2 x 3 x 7");
+
+        long worksheetId = insertWorksheet(teacherId, "GENERAL_LEARNING", "STANDARD");
+        insertWorksheetItem(worksheetId, questionId, 1, "CONCEPT_GUIDE");
+
+        mockMvc.perform(get("/api/student/assignments/" + assignToStudent(worksheetId))
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].supportMode").value("concept"))
+                .andExpect(jsonPath("$.data.items[0].concept.title").value("소인수분해"))
+                .andExpect(jsonPath("$.data.items[0].concept.summary")
+                        .value("자연수를 소수의 곱으로 나타내는 것"))
+                .andExpect(jsonPath("$.data.items[0].concept.points[0]")
+                        .value("소수는 1과 자기 자신만을 약수로 갖는다"))
+                .andExpect(jsonPath("$.data.items[0].concept.points[1]").value("지수로 간단히 표기한다"))
+                // 내부 출처·품질 등급·명세에만 있던 키는 DTO에 자리가 없다.
+                .andExpect(jsonPath("$.data.items[0].concept.source").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].concept.status").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].concept.questionSourceRef").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("chat 지원과 지원 없음 문항은 learning_guide가 있어도 concept이 비어 있다")
+    void getAssignmentDetail_nonConceptMode_omitsConcept() throws Exception {
+        String contentBlocks = """
+                [{"blockId":"T1","blockKind":"TEXT","displayOrder":0,"text":"84를 소인수분해하시오."}]
+                """;
+        String learningGuide = """
+                {"conceptTitle":"소인수분해",
+                 "summary":"자연수를 소수의 곱으로 나타내는 것",
+                 "keyPoints":["지수로 간단히 표기한다"]}
+                """;
+        long chatQuestionId = insertQuestionWithLearningGuide(subUnitId, "SHORT_INPUT", contentBlocks, learningGuide);
+        insertAnswerUnit(chatQuestionId, null, "MAIN", 0, "VALUE", "2^2 x 3 x 7");
+        long plainQuestionId = insertQuestionWithLearningGuide(subUnitId, "SHORT_INPUT", contentBlocks, learningGuide);
+        insertAnswerUnit(plainQuestionId, null, "MAIN", 0, "VALUE", "2^2 x 3 x 7");
+
+        long worksheetId = insertWorksheet(teacherId, "GENERAL_LEARNING", "STANDARD");
+        insertWorksheetItem(worksheetId, chatQuestionId, 1, "CHATBOT");
+        insertWorksheetItem(worksheetId, plainQuestionId, 2);
+
+        mockMvc.perform(get("/api/student/assignments/" + assignToStudent(worksheetId))
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].supportMode").value("chat"))
+                .andExpect(jsonPath("$.data.items[0].concept").doesNotExist())
+                .andExpect(jsonPath("$.data.items[1].supportMode").doesNotExist())
+                .andExpect(jsonPath("$.data.items[1].concept").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("concept 지원인데 learning_guide가 없으면 concept만 비고 문항은 정상 조회된다")
+    void getAssignmentDetail_conceptModeWithoutLearningGuide_returnsItemWithoutConcept() throws Exception {
+        long questionId = insertQuestion(subUnitId, "SHORT_INPUT", """
+                [{"blockId":"T1","blockKind":"TEXT","displayOrder":0,"text":"84를 소인수분해하시오."}]
+                """);
+        insertAnswerUnit(questionId, null, "MAIN", 0, "VALUE", "2^2 x 3 x 7");
+
+        long worksheetId = insertWorksheet(teacherId, "GENERAL_LEARNING", "STANDARD");
+        insertWorksheetItem(worksheetId, questionId, 1, "CONCEPT_GUIDE");
+
+        mockMvc.perform(get("/api/student/assignments/" + assignToStudent(worksheetId))
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].questionId").value(questionId))
+                .andExpect(jsonPath("$.data.items[0].supportMode").value("concept"))
+                .andExpect(jsonPath("$.data.items[0].format").value("short"))
+                .andExpect(jsonPath("$.data.items[0].contentBlocks[0].text").value("84를 소인수분해하시오."))
+                .andExpect(jsonPath("$.data.items[0].answerUnits[0].inputMode").value("HANDWRITING"))
+                .andExpect(jsonPath("$.data.items[0].concept").doesNotExist());
+    }
+
+    /** learning_guide를 채운 문항. 기존 {@link #insertQuestion}은 이 컬럼을 비운다. */
+    private long insertQuestionWithLearningGuide(
+            long subUnitId, String questionType, String contentBlocks, String learningGuide
+    ) {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO problem_question(
+                    source_type, sub_unit_id, difficulty, question_type,
+                    presentation, content_blocks, prompt_text, learning_guide)
+                VALUES ('IMPORTED', ?, 1, ?, 'TEXT_ONLY', ?::jsonb, '검색용 원문 — 화면 표시 금지', ?::jsonb)
+                RETURNING id
+                """, Long.class, subUnitId, questionType, contentBlocks, learningGuide);
+    }
+
+    /** 지원 방식을 지정하는 학습지 문항. 3인자 오버로드는 support_mode를 비운다. */
+    private void insertWorksheetItem(long worksheetId, long questionId, int displayOrder, String supportMode) {
+        jdbcTemplate.update("""
+                INSERT INTO worksheet_item(worksheet_id, question_id, display_order, support_mode)
+                VALUES (?, ?, ?, ?)
+                """, worksheetId, questionId, displayOrder, supportMode);
+    }
+
+    /** 학습지를 새 반에 배정하고 학생의 배정 ID를 돌려준다. */
+    private long assignToStudent(long worksheetId) {
+        long classId = insertClass(teacherId);
+        long assignmentId = insertAssignment(worksheetId, classId);
+        return insertAssignmentStudent(assignmentId, studentId);
+    }
+
     private long insertAccount(String role, String loginId, String name) {
         return jdbcTemplate.queryForObject("""
                 INSERT INTO member_account(role, login_id, password_hash, name)
@@ -271,6 +398,16 @@ class StudentWorksheetControllerTest {
                 VALUES ('IMPORTED', ?, 1, ?, 'TEXT_ONLY', ?::jsonb, '검색용 원문 — 화면 표시 금지')
                 RETURNING id
                 """, Long.class, subUnitId, questionType, contentBlocks);
+    }
+
+    private void insertAsset(long questionId, String assetKey, int displayOrder,
+                             String storageKey, int widthPx, int heightPx, String altText) {
+        jdbcTemplate.update("""
+                INSERT INTO problem_asset(
+                    question_id, asset_key, role, display_order,
+                    storage_key, width_px, height_px, alt_text)
+                VALUES (?, ?, 'FIGURE', ?, ?, ?, ?, ?)
+                """, questionId, assetKey, displayOrder, storageKey, widthPx, heightPx, altText);
     }
 
     private long insertChoice(long questionId, int displayOrder, String content) {

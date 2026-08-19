@@ -27,8 +27,10 @@ import org.springframework.transaction.annotation.Transactional;
  * INSERT한 행을 별도로 기록·삭제할 필요가 없다(지침이 우려하는 공유 DB 오염과는 다른 상황).
  */
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-student-result-controller-test-secret-32byte",
-        "app.jwt.access-token-expiration=1h"
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
+        "app.jwt.access-token-expiration=1h",
+        // 명시하지 않으면 .env 의 S3_ENABLED 가 새어들어와 실제 버킷에 headObject 를 날린다.
+        "app.storage.s3.enabled=false"
 })
 @AutoConfigureMockMvc
 @Import(PostgresTestcontainer.class)
@@ -107,6 +109,33 @@ class StudentResultControllerTest {
                 .andExpect(jsonPath("$.data.items[0].explanation.concept").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].chatContext.subUnitId").value(subUnitId))
                 .andExpect(jsonPath("$.data.items[0].answerUnits[0].result").value("wrong"));
+    }
+
+    @Test
+    @DisplayName("결과 화면도 발문 이미지를 assets[]로 내려보낸다 — 블록은 assetRef만 가진다")
+    void getResult_carriesQuestionImagesAsAssets() throws Exception {
+        long questionId = insertQuestionWithFigureBlock();
+        insertAsset(questionId, "F1", 0, "questions/30/result_F1.png", 240, 188, "부채꼴 그림");
+        long answerUnitId = insertAnswerUnit(questionId, null, "MAIN", 0, "VALUE", "7");
+
+        long worksheetId = insertWorksheet("COMPREHENSIVE_ASSESSMENT");
+        insertWorksheetItem(worksheetId, questionId, 1, new BigDecimal("10.00"));
+        long classId = insertClass();
+        long assignmentId = insertAssignment(worksheetId, classId);
+        long assignmentStudentId = insertAssignmentStudent(assignmentId, "now()");
+        insertGradedHandwritingAnswer(assignmentStudentId, answerUnitId, "7", new BigDecimal("10.00"));
+
+        mockMvc.perform(get("/api/student/assignments/" + assignmentStudentId + "/result")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].contentBlocks[0].assetRef").value("F1"))
+                // 죽은 API 경로를 담던 필드는 사라졌다 — 주소는 assets[] 에만 있다.
+                .andExpect(jsonPath("$.data.items[0].contentBlocks[0].imageUrl").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].assets[0].assetKey").value("F1"))
+                .andExpect(jsonPath("$.data.items[0].assets[0].widthPx").value(240))
+                .andExpect(jsonPath("$.data.items[0].assets[0].altText").value("부채꼴 그림"))
+                // S3 를 끈 컨텍스트라 url 은 null 이다.
+                .andExpect(jsonPath("$.data.items[0].assets[0].url").doesNotExist());
     }
 
     @Test
@@ -559,6 +588,28 @@ class StudentResultControllerTest {
                 VALUES ('IMPORTED', ?, 1, ?, 'TEXT_ONLY', '[]'::jsonb, '검색용 원문 — 화면 표시 금지', '해설 원문')
                 RETURNING id
                 """, Long.class, subUnitId, questionType);
+    }
+
+    private long insertQuestionWithFigureBlock() {
+        return jdbcTemplate.queryForObject("""
+                INSERT INTO problem_question(
+                    source_type, sub_unit_id, difficulty, question_type,
+                    presentation, content_blocks, prompt_text, explanation)
+                VALUES ('IMPORTED', ?, 1, 'SHORT_INPUT', 'TEXT_ONLY',
+                    '[{"blockId":"Q-IMG-1","blockKind":"FIGURE","displayOrder":0,"assetRef":"F1","text":"부채꼴 그림"}]'::jsonb,
+                    '검색용 원문 — 화면 표시 금지', '해설 원문')
+                RETURNING id
+                """, Long.class, subUnitId);
+    }
+
+    private void insertAsset(long questionId, String assetKey, int displayOrder,
+                             String storageKey, int widthPx, int heightPx, String altText) {
+        jdbcTemplate.update("""
+                INSERT INTO problem_asset(
+                    question_id, asset_key, role, display_order,
+                    storage_key, width_px, height_px, alt_text)
+                VALUES (?, ?, 'FIGURE', ?, ?, ?, ?, ?)
+                """, questionId, assetKey, displayOrder, storageKey, widthPx, heightPx, altText);
     }
 
     private long insertChoice(long questionId, int displayOrder, String content) {

@@ -25,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** task_05 단계 2(저장·제출) 검증. 명세 6-5/8-2절의 측정 요구를 그대로 따른다. */
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-student-submission-controller-test-secret-32",
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
         "app.jwt.access-token-expiration=1h"
 })
 @AutoConfigureMockMvc

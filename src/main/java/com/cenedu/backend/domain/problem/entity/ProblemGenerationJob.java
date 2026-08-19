@@ -89,6 +89,13 @@ public class ProblemGenerationJob extends BaseTimeEntity {
         completedAt = LocalDateTime.now();
     }
 
+    /** 모든 슬롯이 은행 재사용일 때 AI 실행 없이 Job을 완료한다. */
+    public void completeWithoutExecution() {
+        requireStatus(GenerationJobStatus.QUEUED);
+        status = GenerationJobStatus.COMPLETED;
+        completedAt = LocalDateTime.now();
+    }
+
     private void requireStatus(GenerationJobStatus expected) {
         if (status != expected) {
             throw new IllegalStateException("생성 Job 상태가 " + expected + "이(가) 아닙니다.");

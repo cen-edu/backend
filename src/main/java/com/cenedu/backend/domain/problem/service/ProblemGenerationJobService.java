@@ -2,11 +2,15 @@ package com.cenedu.backend.domain.problem.service;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationBatchCommand;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationSlotSource;
+import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationPlan;
+import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationSlotPlan;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationItemResult;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationJobResult;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationWorkItem;
@@ -21,19 +25,39 @@ import com.cenedu.backend.domain.problem.repository.ProblemGenerationItemReposit
 import com.cenedu.backend.domain.problem.repository.ProblemGenerationJobRepository;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 멱등 Job과 문항별 Item을 생성하고 독립 실행·재시도·집계를 관리한다. */
 @Service
-@RequiredArgsConstructor
 public class ProblemGenerationJobService {
 
     private final ProblemGenerationJobRepository jobRepository;
     private final ProblemGenerationItemRepository itemRepository;
     private final ProblemAuthoringSessionRepository sessionRepository;
     private final ProblemAuthoringJsonCodec jsonCodec;
+    private final ProblemAuthoringVersionService versionService;
+
+    public ProblemGenerationJobService(ProblemGenerationJobRepository jobRepository,
+                                       ProblemGenerationItemRepository itemRepository,
+                                       ProblemAuthoringSessionRepository sessionRepository,
+                                       ProblemAuthoringJsonCodec jsonCodec,
+                                       ProblemAuthoringVersionService versionService) {
+        this.jobRepository = jobRepository;
+        this.itemRepository = itemRepository;
+        this.sessionRepository = sessionRepository;
+        this.jsonCodec = jsonCodec;
+        this.versionService = versionService;
+    }
+
+    /** 문제은행 재사용과 AI 생성 슬롯을 하나의 멱등 Job으로 저장한다. */
+    @Transactional
+    public ProblemGenerationJobResult create(long ownerTeacherId, ProblemGenerationPlan plan) {
+        validatePlan(plan);
+        return jobRepository.findByOwnerTeacherIdAndClientRequestId(ownerTeacherId, plan.clientRequestId())
+                .map(this::toResult)
+                .orElseGet(() -> createPlanned(ownerTeacherId, plan));
+    }
 
     /** clientRequestId를 멱등 키로 사용해 Job과 문항별 Session·Item을 생성한다. */
     @Transactional
@@ -46,18 +70,21 @@ public class ProblemGenerationJobService {
                 .orElseGet(() -> createNew(ownerTeacherId, batch));
     }
 
-    /** Worker 하나가 Item을 선점하고 재시작 가능한 전체 명령을 가져간다. */
+    /** 멱등 재요청이 동시에 와도 QUEUED Item을 한 Worker만 원자적으로 선점한다. */
     @Transactional
-    public ProblemGenerationWorkItem claim(Long itemId) {
+    public Optional<ProblemGenerationWorkItem> tryClaim(Long itemId) {
         ProblemGenerationItem item = getItemForUpdate(itemId);
+        if (item.getStatus() != GenerationItemStatus.QUEUED) {
+            return Optional.empty();
+        }
         ProblemGenerationJob job = getJobForUpdate(item.getJobId());
         item.startGeneration();
         if (job.getStatus() == GenerationJobStatus.QUEUED) {
             job.start();
         }
-        return new ProblemGenerationWorkItem(
+        return Optional.of(new ProblemGenerationWorkItem(
                 item.getId(), job.getId(), job.getOwnerTeacherId(), item.getSessionId(),
-                jsonCodec.read(item.getGenerationCommand(), ProblemGenerationCommand.class));
+                jsonCodec.read(item.getGenerationCommand(), ProblemGenerationCommand.class)));
     }
 
     /** 후보 생성 후 Item을 의미 검증 중으로 전이한다. */
@@ -129,6 +156,40 @@ public class ProblemGenerationJobService {
         return toResult(job);
     }
 
+    private ProblemGenerationJobResult createPlanned(long ownerTeacherId, ProblemGenerationPlan plan) {
+        ProblemGenerationJob job = jobRepository.saveAndFlush(ProblemGenerationJob.create(
+                ownerTeacherId, plan.clientRequestId(), plan.jobType()));
+        boolean hasAi = false;
+        for (ProblemGenerationSlotPlan slot : plan.slots()) {
+            ProblemAuthoringSession session = sessionRepository.saveAndFlush(
+                    ProblemAuthoringSession.createGenerating(ownerTeacherId));
+            if (slot.source() == GenerationSlotSource.BANK_REUSE) {
+                itemRepository.save(ProblemGenerationItem.createBankReuse(
+                        job.getId(), slot.slotIndex(), java.util.UUID.randomUUID(),
+                        session.getId(), slot.sourceQuestionId()));
+                versionService.saveBankReuse(ownerTeacherId, session.getId(),
+                        slot.sourceQuestionId(), jsonCodec.write(slot.sourceSnapshot()),
+                        jsonCodec.write(java.util.Map.of(
+                                "schemaVersion", 1,
+                                "plans", java.util.List.of(),
+                                "artifacts", slot.sourceAssetStorageKeys().entrySet().stream()
+                                        .map(entry -> java.util.Map.of(
+                                                "assetKey", entry.getKey(),
+                                                "status", "READY",
+                                                "draftStorageKey", entry.getValue(),
+                                                "attemptCount", 0)).toList())));
+            } else {
+                hasAi = true;
+                ProblemGenerationCommand command = slot.generationCommand();
+                itemRepository.save(ProblemGenerationItem.create(
+                        job.getId(), slot.slotIndex(), command.requestId(), session.getId(),
+                        command.purpose(), 1, jsonCodec.write(command)));
+            }
+        }
+        if (!hasAi) job.completeWithoutExecution();
+        return toResult(job);
+    }
+
     private void aggregateJob(Long jobId) {
         ProblemGenerationJob job = getJobForUpdate(jobId);
         List<ProblemGenerationItem> items = itemRepository
@@ -170,6 +231,19 @@ public class ProblemGenerationJobService {
             }
             if (!matches(batch.jobType(), command.purpose())) {
                 throw new IllegalArgumentException("Job 유형과 생성 목적이 일치하지 않습니다.");
+            }
+        }
+    }
+
+    private void validatePlan(ProblemGenerationPlan plan) {
+        if (plan == null) throw new IllegalArgumentException("생성 계획이 필요합니다.");
+        Set<java.util.UUID> requestIds = new HashSet<>();
+        for (ProblemGenerationSlotPlan slot : plan.slots()) {
+            if (slot.source() == GenerationSlotSource.AI_GENERATION) {
+                ProblemGenerationCommand command = slot.generationCommand();
+                if (!requestIds.add(command.requestId()) || !matches(plan.jobType(), command.purpose())) {
+                    throw new IllegalArgumentException("생성 계획의 요청 ID 또는 목적이 올바르지 않습니다.");
+                }
             }
         }
     }

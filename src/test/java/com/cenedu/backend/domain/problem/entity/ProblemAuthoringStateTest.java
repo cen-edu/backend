@@ -8,6 +8,7 @@ import java.util.UUID;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringInteractionStatus;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringLifecycleStatus;
+import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationStatus;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringVerificationStatus;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationItemStatus;
@@ -28,6 +29,24 @@ class ProblemAuthoringStateTest {
 
         assertThat(session.getCurrentVersionId()).isEqualTo(1L);
         assertThat(session.getPendingVersionId()).isNull();
+    }
+
+    @Test
+    @DisplayName("수정 후보 검증 실패 후에도 기존 current로 새 HITL 수정을 시작한다")
+    void restartsHitlCollectionAfterFailedCandidate() {
+        ProblemAuthoringSession session = ProblemAuthoringSession.createIdle(7L);
+        session.attachPendingVersion(1L);
+        session.promotePendingVersion(1L, AuthoringVerificationStatus.PASSED);
+        session.attachPendingVersion(2L);
+        session.failPendingVersion(2L, "VERIFICATION_FAILED");
+
+        session.startCollecting();
+
+        assertThat(session.getCurrentVersionId()).isEqualTo(1L);
+        assertThat(session.getOperationStatus()).isEqualTo(AuthoringOperationStatus.IDLE);
+        assertThat(session.getInteractionStatus())
+                .isEqualTo(AuthoringInteractionStatus.COLLECTING);
+        assertThat(session.getLastErrorCode()).isNull();
     }
 
     @Test

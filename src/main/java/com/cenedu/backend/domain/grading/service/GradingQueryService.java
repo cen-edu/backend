@@ -28,11 +28,13 @@ import com.cenedu.backend.domain.grading.entity.GradingRubricResult;
 import com.cenedu.backend.domain.grading.repository.GradingRubricResultRepository;
 import com.cenedu.backend.domain.member.service.SchoolClassService;
 import com.cenedu.backend.domain.member.service.StudentListQueryService;
+import com.cenedu.backend.domain.problem.dto.response.ProblemAssetResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemContentBlockResponse;
 import com.cenedu.backend.domain.problem.entity.ProblemAnswerUnit;
 import com.cenedu.backend.domain.problem.entity.ProblemChoice;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.entity.ProblemRubricItem;
+import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
 import com.cenedu.backend.domain.submission.entity.SubmissionAnswer;
 import com.cenedu.backend.domain.submission.entity.SubmissionQuestionTime;
 import com.cenedu.backend.domain.submission.entity.enums.GradingStatus;
@@ -85,6 +87,7 @@ public class GradingQueryService {
     private final GradingRubricResultRepository gradingRubricResultRepository;
     private final SchoolClassService schoolClassService;
     private final StudentListQueryService studentListQueryService;
+    private final ProblemQuestionDetailService problemQuestionDetailService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -360,6 +363,9 @@ public class GradingQueryService {
         Map<Long, String> handwritingUrls = createHandwritingUrls(
                 teacherId, assignmentStudentId, answersByUnitId);
 
+        Map<Long, List<ProblemAssetResponse>> assetsByQuestionId = problemQuestionDetailService
+                .getAssetsByQuestionIds(questionIds);
+
         List<GradingDetailItemResponse> itemResponses = new ArrayList<>();
         BigDecimal totalScore = BigDecimal.ZERO;
         boolean complete = true;
@@ -414,7 +420,8 @@ public class GradingQueryService {
                     question.getExplanation(),
                     timesByItemId.get(item.getId()),
                     GradingResponseFormatter.aggregateItemResult(unitResults),
-                    unitResponses));
+                    unitResponses,
+                    assetsByQuestionId.getOrDefault(question.getId(), List.of())));
         }
 
         return new GradingStudentDetailResponse(
@@ -429,7 +436,7 @@ public class GradingQueryService {
     }
 
     /**
-     * 필기 이미지 URL. 이미지를 실제로 올린 칸만 요청한다 — 없는 칸까지 URL 을 만들면 만료 10분짜리
+     * 필기 이미지 URL. 이미지를 실제로 올린 칸만 요청한다 — 없는 칸까지 URL 을 만들면 만료 있는
      * 서명이 헛돌고 권한 검증만 늘어난다.
      */
     private Map<Long, String> createHandwritingUrls(
@@ -534,7 +541,7 @@ public class GradingQueryService {
                     question.getContentBlocks(), new TypeReference<List<ProblemContentBlockResponse>>() {
                     });
             return blocks.stream()
-                    .map(block -> GradingContentBlockResponse.from(block, question.getId()))
+                    .map(GradingContentBlockResponse::from)
                     .toList();
         } catch (JacksonException e) {
             throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);

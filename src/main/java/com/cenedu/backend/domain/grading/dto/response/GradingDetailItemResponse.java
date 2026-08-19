@@ -3,6 +3,8 @@ package com.cenedu.backend.domain.grading.dto.response;
 import java.math.BigDecimal;
 import java.util.List;
 
+import com.cenedu.backend.domain.problem.dto.response.ProblemAssetResponse;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /** 채점 화면의 문항 하나. 교사가 문항을 하나씩 넘기며 본다(명세 6절). */
@@ -31,6 +33,9 @@ public record GradingDetailItemResponse(
         @Schema(allowableValues = {"correct", "partial", "wrong", "empty", "pending"})
         String result,
 
-        List<GradingAnswerUnitResponse> answerUnits
+        List<GradingAnswerUnitResponse> answerUnits,
+
+        @Schema(description = "발문 이미지. contentBlocks[].assetRef 와 assets[].assetKey 를 맞춰 렌더한다")
+        List<ProblemAssetResponse> assets
 ) {
 }

@@ -74,6 +74,23 @@ class SnapshotValidatorsTest {
     }
 
     @Test
+    @DisplayName("실제 문제 대신 발문 자리표시자만 들어간 스냅샷을 거부한다")
+    void rejectsQuestionPlaceholder() {
+        QuestionSnapshotV1 base = shortInputSnapshot(CompareMethod.VALUE, "12");
+        QuestionSnapshotV1 snapshot = new QuestionSnapshotV1(
+                base.schemaVersion(), base.metadata(),
+                List.of(new SnapshotContentBlock(
+                        "CB1", SnapshotBlockKind.TEXT, 0, "발문", null, null)),
+                base.assets(), base.choices(), base.steps(), base.answerUnits(),
+                base.explanation(), base.learningGuide(), base.rubricItems());
+
+        assertThatThrownBy(() -> structuralValidator.validate(snapshot))
+                .isInstanceOfSatisfying(SnapshotValidationException.class, exception ->
+                        assertThat(exception.violations())
+                                .anyMatch(message -> message.contains("자리표시자")));
+    }
+
+    @Test
     @DisplayName("VALUE 답안은 정규화 이후 answerNormalized가 필요하다")
     void requiresNormalizedValueAfterNormalization() {
         QuestionSnapshotV1 snapshot = shortInputSnapshot(CompareMethod.VALUE, null);

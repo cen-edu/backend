@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationCheckType;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationFinding;
@@ -53,7 +54,10 @@ public class ContentIntegrityChecker {
      * @return 이 검사가 내는 Finding 전부. {@code RUBRIC_QUALITY} 는 항상 1건 들어 있고,
      *         {@code ANSWER_CONSISTENCY} 는 결함이 있을 때만 들어 있다
      */
-    public List<VerificationFinding> check(QuestionSnapshotV1 snapshot) {
+    public List<VerificationFinding> check(
+            QuestionSnapshotV1 snapshot,
+            CurriculumContext expectedCurriculum
+    ) {
         boolean essay = isEssay(snapshot);
 
         if (!properties.enabled()) {
@@ -61,7 +65,8 @@ public class ContentIntegrityChecker {
             return List.of(essay ? rubricOnly(snapshot) : rubricNotApplicable());
         }
 
-        List<OriginalDefect> defects = llmClient.inspectOriginal(snapshot, essay);
+        List<OriginalDefect> defects = llmClient.inspectOriginal(
+                snapshot, essay, expectedCurriculum);
 
         List<VerificationFinding> findings = new ArrayList<>();
         for (OriginalDefect defect : defects) {
@@ -71,6 +76,7 @@ public class ContentIntegrityChecker {
                 // 구조 불변식은 코드가 판정한다. 모델이 STRUCTURE 로 분류한 것도 버리지 않고
                 // 같은 접두어로 낸다 — 판정을 임의로 좁히면 무엇을 봤는지 알 수 없게 된다.
                 case OriginalDefect.TYPE_STRUCTURE -> findings.add(structureDefect(defect));
+                case OriginalDefect.TYPE_CURRICULUM -> findings.add(curriculumDefect(defect));
                 case OriginalDefect.TYPE_RUBRIC -> {
                     // 루브릭은 아래에서 한 건으로 접는다.
                 }
@@ -124,6 +130,15 @@ public class ContentIntegrityChecker {
                 VerificationIssueCode.ANSWER_INCONSISTENT,
                 "원본 검사가 구조 결함을 지적했습니다.",
                 EvidencePrefix.of(EvidencePrefix.STRUCTURE, defect.describe()));
+    }
+
+    /** 메타데이터 ID가 아니라 실제 발문에서 확인된 교육과정 범위 이탈이다. */
+    private VerificationFinding curriculumDefect(OriginalDefect defect) {
+        return Findings.fail(
+                VerificationCheckType.CURRICULUM_ALIGNMENT,
+                VerificationIssueCode.CURRICULUM_MISMATCH,
+                "문항 내용이 요청한 소단원 범위와 다릅니다.",
+                EvidencePrefix.of("CURRICULUM", defect.describe()));
     }
 
     /** 통합 응답에서 루브릭 절만 접어 한 건으로 만든다. */

@@ -104,6 +104,15 @@ public class ProblemAuthoringSession extends BaseTimeEntity {
         return new ProblemAuthoringSession(ownerTeacherId, AuthoringOperationStatus.GENERATING);
     }
 
+    /** 문제은행에서 만든 최초 Version을 검증 완료 상태의 현재 Version으로 연결한다. */
+    public void initializeCurrentVersion(Long versionId) {
+        if (lifecycleStatus != AuthoringLifecycleStatus.DRAFT || currentVersionId != null) {
+            throw new IllegalStateException("최초 Version을 연결할 수 없는 Session입니다.");
+        }
+        currentVersionId = versionId;
+        operationStatus = AuthoringOperationStatus.IDLE;
+    }
+
     /** 기존 문제 수정 또는 복원 대화를 받을 수 있는 IDLE DRAFT Session을 만든다. */
     public static ProblemAuthoringSession createIdle(Long ownerTeacherId) {
         return new ProblemAuthoringSession(ownerTeacherId, AuthoringOperationStatus.IDLE);
@@ -111,6 +120,15 @@ public class ProblemAuthoringSession extends BaseTimeEntity {
 
     /** 새 수정 사항을 받기 위해 HITL 수집 상태를 연다. */
     public void startCollecting() {
+        // 실패한 후보는 이력에 남지만 current PASSED Version은 그대로다.
+        // 새로운 교사 수정 요청이 오면 이전 실패 실행 정보를 정리하고 다시 시작한다.
+        if (operationStatus == AuthoringOperationStatus.FAILED
+                && pendingVersionId == null
+                && interactionStatus == AuthoringInteractionStatus.IDLE) {
+            operationStatus = AuthoringOperationStatus.IDLE;
+            clearActiveExecution();
+            lastErrorCode = null;
+        }
         requireDraftIdle();
         interactionStatus = AuthoringInteractionStatus.COLLECTING;
     }
@@ -244,6 +262,26 @@ public class ProblemAuthoringSession extends BaseTimeEntity {
         lifecycleStatus = AuthoringLifecycleStatus.FINALIZED;
         finalizedQuestionId = questionId;
         finalizedAt = LocalDateTime.now();
+    }
+
+    /** 최종화 전 Session을 취소해 임시 자산 정리 대상으로 닫는다. */
+    public void cancelDraft() {
+        requireDraft();
+        lifecycleStatus = AuthoringLifecycleStatus.CANCELLED;
+        pendingVersionId = null;
+        pendingInstructions = null;
+        interactionStatus = AuthoringInteractionStatus.IDLE;
+        clearActiveExecution();
+    }
+
+    /** TTL이 지난 DRAFT Session을 만료 상태로 닫는다. */
+    public void expireDraft() {
+        requireDraft();
+        lifecycleStatus = AuthoringLifecycleStatus.EXPIRED;
+        pendingVersionId = null;
+        pendingInstructions = null;
+        interactionStatus = AuthoringInteractionStatus.IDLE;
+        clearActiveExecution();
     }
 
     private void requirePendingVersion(Long versionId) {

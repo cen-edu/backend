@@ -248,8 +248,32 @@ class ProblemVerificationAdapterTest {
     }
 
     @Test
-    @DisplayName("서술형은 CORRECTNESS 가 UNVERIFIABLE 이라 항상 FAILED 다 — 의도된 결과다")
-    void essayAlwaysFails() {
+    @DisplayName("메타데이터 ID가 같아도 발문이 소단원을 이탈하면 FAILED다")
+    void semanticCurriculumMismatchFailsTheReport() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                """
+                {"findings":[{"type":"CURRICULUM","kind":"","location":"contentBlocks[0]",\
+                "detail":"발문의 핵심 개념이 요청 소단원과 다릅니다."}]}
+                """);
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(report.findings())
+                .anySatisfy(finding -> {
+                    assertThat(finding.checkType())
+                            .isEqualTo(VerificationCheckType.CURRICULUM_ALIGNMENT);
+                    assertThat(finding.code())
+                            .isEqualTo(VerificationIssueCode.CURRICULUM_MISMATCH);
+                    assertThat(finding.status()).isEqualTo(VerificationFindingStatus.FAIL);
+                });
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("서술형은 값 대조를 생략하고 루브릭 품질 검증으로 PASSED 될 수 있다")
+    void essayUsesRubricQualityInsteadOfValueCorrectness() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.essaySnapshot();
         // Solver 는 호출하지 않는다. 원본 검사 한 번만 부른다(루브릭 절 포함).
         fake.respondWith(VerificationFixtures.CONTENT_CHECK_CLEAN);
@@ -257,11 +281,11 @@ class ProblemVerificationAdapterTest {
         ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
 
         VerificationFinding correctness = findingOf(report, VerificationCheckType.CORRECTNESS);
-        assertThat(correctness.status()).isEqualTo(VerificationFindingStatus.FAIL);
-        assertThat(correctness.code()).isEqualTo(VerificationIssueCode.UNVERIFIABLE);
+        assertThat(correctness.status()).isEqualTo(VerificationFindingStatus.NOT_APPLICABLE);
+        assertThat(correctness.code()).isNull();
         assertThat(statusOf(report, VerificationCheckType.RUBRIC_QUALITY))
                 .isEqualTo(VerificationFindingStatus.PASS);
-        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.FAILED);
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.PASSED);
         // Solver 를 부르지 않는다 — 판정에 쓰이지도 않는 호출로 문항을 외부에 보내지 않는다.
         assertThat(fake.userPrompts).as("서술형에서 Solver 를 불렀다").hasSize(1);
         assertThat(fake.systemPrompts.getFirst()).contains("채점 기준");

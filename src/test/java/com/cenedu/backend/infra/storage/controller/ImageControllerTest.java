@@ -52,4 +52,17 @@ class ImageControllerTest {
         assertThat(response.success()).isTrue();
         assertThat(response.data().url()).isEqualTo("https://example.com/image");
     }
+
+    @Test
+    @DisplayName("자산 재발급 API는 문항과 자산 키로 만든 URL을 공통 응답에 담는다")
+    void getsProblemAssetUrl() {
+        AuthenticatedUser user = new AuthenticatedUser(7L, UserRole.TEACHER);
+        when(problemImageService.createAssetGetUrl(31L, "F1"))
+                .thenReturn("https://example.com/asset");
+
+        ApiResponse<ImageUrlResponse> response = controller.getProblemAssetUrl(user, 31L, "F1");
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.data().url()).isEqualTo("https://example.com/asset");
+    }
 }

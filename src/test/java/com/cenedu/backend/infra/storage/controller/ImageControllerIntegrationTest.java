@@ -28,7 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
         "app.storage.s3.region=ap-northeast-2",
         "app.storage.s3.problem-bucket=problem-bucket",
         "app.storage.s3.answer-bucket=answer-bucket",
-        "app.jwt.secret=cen-edu-image-controller-test-secret-key-32-bytes",
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
         "app.jwt.access-token-expiration=1h"
 })
 @AutoConfigureMockMvc

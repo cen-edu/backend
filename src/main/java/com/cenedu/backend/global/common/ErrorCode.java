@@ -52,6 +52,8 @@ public enum ErrorCode {
     MEMBER_SCHOOL_CLASS_NOT_FOUND(HttpStatus.NOT_FOUND, "반을 찾을 수 없습니다."),
     MEMBER_SCHOOL_CLASS_NOT_OWNED(HttpStatus.FORBIDDEN, "담당하는 반에만 접근할 수 있습니다."),
     MEMBER_CLASS_GRADE_MISMATCH(HttpStatus.BAD_REQUEST, "반과 학생의 학년이 일치하지 않습니다."),
+    MEMBER_CLASS_STUDENT_ALREADY_ENROLLED(
+            HttpStatus.BAD_REQUEST, "이미 다른 반에 소속된 학생입니다."),
     MEMBER_SCHOOL_CLASS_ORDER_INVALID(
             HttpStatus.BAD_REQUEST, "현재 교사가 소유한 전체 활성 반의 순서를 전달해야 합니다."),
     MEMBER_CLASS_STUDENT_IDS_DUPLICATED(
@@ -114,6 +116,11 @@ public enum ErrorCode {
     PROBLEM_AI_PORT_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "문항 AI 처리기가 준비되지 않았습니다."),
     PROBLEM_GENERATION_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "문항 생성 작업을 찾을 수 없습니다."),
     PROBLEM_GENERATION_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "문항 생성 항목을 찾을 수 없습니다."),
+    PROBLEM_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "문항을 생성하지 못했습니다. 다시 시도해 주세요."),
+    PROBLEM_ASSET_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "문항 자료를 생성하지 못했습니다. 다시 시도해 주세요."),
+    PROBLEM_VERIFICATION_ERROR(HttpStatus.BAD_GATEWAY, "문항 검증을 완료하지 못했습니다. 다시 시도해 주세요."),
+    PROBLEM_VERIFICATION_FAILED(HttpStatus.CONFLICT, "문항 검증에 실패했습니다. 다른 문항을 생성해 주세요."),
+    PROBLEM_ASSET_NOT_READY(HttpStatus.CONFLICT, "문항 자료가 아직 준비되지 않았습니다."),
     PROBLEM_EDIT_COMMAND_STALE(HttpStatus.CONFLICT, "현재 문항과 일치하지 않는 수정 요청입니다."),
     // ===== analysis (모수환) =====
     ASSESSMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "평가를 찾을 수 없습니다."),

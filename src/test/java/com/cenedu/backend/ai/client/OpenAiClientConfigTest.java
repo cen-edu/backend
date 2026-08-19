@@ -31,4 +31,15 @@ class OpenAiClientConfigTest {
         // gpt-5-mini 가 1 이외 값을 400 으로 거절한다 — 지정하지 않아야 한다.
         assertThat(options.getTemperature()).isNull();
     }
+
+    @Test
+    @DisplayName("gpt-4o-mini에는 지원하지 않는 reasoning_effort를 보내지 않는다")
+    void omitsReasoningEffortForGpt4oMini() {
+        OpenAiProperties properties = new OpenAiProperties(
+                "test-key", "gpt-4o-mini", "minimal", 3000, Duration.ofSeconds(60), 2, Map.of());
+
+        OpenAiChatOptions options = new OpenAiClientConfig().openAiChatOptions(properties);
+
+        assertThat(options.getReasoningEffort()).isNull();
+    }
 }

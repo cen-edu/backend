@@ -33,6 +33,25 @@ public class CurriculumUnitQueryService {
         short grade,
         short semester
     ) {
+        return getUnitsForSemester(grade, semester);
+    }
+
+    /** API 학기 라벨을 정규화하고 공통 학기 요청이면 1·2학기 단원을 합쳐 반환한다. */
+    public List<CurriculumUnitResponse> getUnits(short grade, String semester) {
+        return switch (semester.trim().toLowerCase()) {
+            case "1", "first" -> getUnitsForSemester(grade, (short) 1);
+            case "2", "second" -> getUnitsForSemester(grade, (short) 2);
+            case "common" -> java.util.stream.Stream.of(
+                    getUnitsForSemester(grade, (short) 1),
+                    getUnitsForSemester(grade, (short) 2))
+                    .flatMap(List::stream)
+                    .toList();
+            default -> throw new BusinessException(
+                    ErrorCode.INVALID_INPUT_VALUE, "semester 값이 올바르지 않습니다.");
+        };
+    }
+
+    private List<CurriculumUnitResponse> getUnitsForSemester(short grade, short semester) {
         List<CurriculumUnit> units =
             curriculumUnitRepository
                 .findAllByGradeAndSemesterOrderByDisplayOrder(

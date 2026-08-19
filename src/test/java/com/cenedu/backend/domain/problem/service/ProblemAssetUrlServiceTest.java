@@ -8,6 +8,9 @@ import java.time.Duration;
 
 import com.cenedu.backend.infra.storage.config.S3Properties;
 import com.cenedu.backend.infra.storage.service.ImageStorageService;
+import com.cenedu.backend.domain.problem.entity.ProblemAsset;
+import com.cenedu.backend.domain.problem.entity.enums.AssetRole;
+import com.cenedu.backend.global.common.BusinessException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,20 +36,22 @@ class ProblemAssetUrlServiceTest {
                 "problem-bucket",
                 "answer-bucket",
                 "test-access-key",
-                "test-secret-key"
+                "test-secret-key",
+                Duration.ofHours(2),
+                Duration.ofHours(6)
             )
         );
     }
 
     @Test
-    @DisplayName("storage key를 문항 버킷의 1시간 presigned URL로 변환한다")
+    @DisplayName("storage key를 문항 버킷의 6시간 presigned URL로 변환한다")
     void createsProblemAssetUrl() {
         String storageKey =
             "questions/110/M1_2_06_11319_11635_F1.png";
         when(imageStorageService.createGetUrl(
             "problem-bucket",
             storageKey,
-            Duration.ofHours(1)
+            Duration.ofHours(6)
         )).thenReturn("https://example.com/question-image");
 
         String url = problemAssetUrlService.createUrl(storageKey);
@@ -57,7 +62,19 @@ class ProblemAssetUrlServiceTest {
         verify(imageStorageService).createGetUrl(
             "problem-bucket",
             storageKey,
-            Duration.ofHours(1)
+            Duration.ofHours(6)
         );
+    }
+
+    @Test
+    @DisplayName("S3 업로드 전 자산은 URL을 발급하지 않는다")
+    void rejectsNonReadyAsset() {
+        ProblemAsset asset = ProblemAsset.createPending(null, "F1", AssetRole.FIGURE, (short) 0,
+                "questions/generated/short-input/1/F1-hash.svg", 0, 0, "그림");
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> problemAssetUrlService.createUrl(asset))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(com.cenedu.backend.global.common.ErrorCode.PROBLEM_ASSET_NOT_READY);
     }
 }

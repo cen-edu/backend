@@ -32,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** 문제 보관함 API의 저장·조회·배포·삭제 검증. task_04 §9 표를 그대로 따른다. */
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-worksheet-controller-test-secret-32-bytes",
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
         "app.jwt.access-token-expiration=1h"
 })
 @AutoConfigureMockMvc

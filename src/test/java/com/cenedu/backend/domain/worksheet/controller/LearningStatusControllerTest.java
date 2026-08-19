@@ -29,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code class_id IS NULL} 배포가 DB에 하나도 없어 여기서만 덮인다.
  */
 @SpringBootTest(properties = {
-        "app.jwt.secret=cen-edu-learning-status-controller-test-secret-32byte",
+        "app.jwt.secret=cen-edu-test-jwt-secret-32-bytes-minimum",
         "app.jwt.access-token-expiration=1h"
 })
 @AutoConfigureMockMvc

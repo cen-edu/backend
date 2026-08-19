@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 
 import com.cenedu.backend.domain.grading.entity.GradingRubricResult;
 import com.cenedu.backend.domain.grading.repository.GradingRubricResultRepository;
+import com.cenedu.backend.domain.problem.dto.response.ProblemAssetResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemContentBlockResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemStepSegmentResponse;
 import com.cenedu.backend.domain.problem.entity.ProblemAnswerUnit;
@@ -22,6 +23,7 @@ import com.cenedu.backend.domain.problem.repository.ProblemAnswerUnitRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemChoiceRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemStepRepository;
+import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
 import com.cenedu.backend.domain.submission.entity.SubmissionAnswer;
 import com.cenedu.backend.domain.submission.entity.enums.GradingStatus;
 import com.cenedu.backend.domain.submission.repository.SubmissionAnswerRepository;
@@ -48,7 +50,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -79,6 +80,7 @@ public class StudentResultQueryService {
     private final ProblemStepRepository problemStepRepository;
     private final SubmissionAnswerRepository submissionAnswerRepository;
     private final GradingRubricResultRepository gradingRubricResultRepository;
+    private final ProblemQuestionDetailService problemQuestionDetailService;
     private final ObjectMapper objectMapper;
 
     public StudentResultResponse getResult(long studentId, long assignmentStudentId) {
@@ -125,6 +127,9 @@ public class StudentResultQueryService {
         Map<Long, SubmissionAnswer> savedByAnswerUnitId = submissionAnswerRepository
                 .findByAssignmentStudentId(assignmentStudentId).stream()
                 .collect(Collectors.toMap(SubmissionAnswer::getAnswerUnitId, answer -> answer));
+
+        Map<Long, List<ProblemAssetResponse>> assetsByQuestionId = problemQuestionDetailService
+                .getAssetsByQuestionIds(questionIds);
 
         List<Long> submissionAnswerIds = savedByAnswerUnitId.values().stream()
                 .map(SubmissionAnswer::getId)
@@ -183,7 +188,8 @@ public class StudentResultQueryService {
             totalScore = totalScore.add(itemScore);
             maxTotalScore = maxTotalScore.add(itemMaxScore);
 
-            StudentResultConceptResponse concept = disclose ? parseConcept(question) : null;
+            StudentResultConceptResponse concept =
+                    disclose ? LearningGuideParser.parse(objectMapper, question) : null;
             StudentResultExplanationResponse explanation = disclose
                     ? buildExplanation(question, units, choices, unitResponses,
                             stepsByQuestionId.getOrDefault(item.getQuestionId(), List.of()), concept)
@@ -195,8 +201,9 @@ public class StudentResultQueryService {
 
             itemResponses.add(StudentResultItemResponse.from(
                     item, question, itemResult, itemScore, itemMaxScore,
-                    parseContentBlocks(question.getContentBlocks(), question.getId()),
-                    explanation, chatContext, unitResponses, rubric));
+                    parseContentBlocks(question.getContentBlocks()),
+                    explanation, chatContext, unitResponses, rubric,
+                    assetsByQuestionId.getOrDefault(question.getId(), List.of())));
         }
 
         return StudentResultResponse.from(was, itemResponses, totalScore, maxTotalScore);
@@ -270,32 +277,6 @@ public class StudentResultQueryService {
             }
         }
         return formula.toString();
-    }
-
-    /**
-     * 개념 정리(명세 8.5). {@code learning_guide} jsonb에서 <b>세 키만 골라</b> 읽는다 —
-     * 통째로 역직렬화하면 내부 출처({@code source.datasets})와 품질 등급({@code status})이
-     * 함께 실린다.
-     */
-    private StudentResultConceptResponse parseConcept(ProblemQuestion question) {
-        String learningGuide = question.getLearningGuide();
-        if (learningGuide == null || learningGuide.isBlank()) {
-            return null;
-        }
-        JsonNode node;
-        try {
-            node = objectMapper.readTree(learningGuide);
-        } catch (JacksonException e) {
-            throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
-        }
-        List<String> points = new ArrayList<>();
-        for (JsonNode point : node.path("keyPoints")) {
-            points.add(point.asString());
-        }
-        return new StudentResultConceptResponse(
-                node.path("conceptTitle").asString(null),
-                node.path("summary").asString(null),
-                List.copyOf(points));
     }
 
     private List<ProblemStepSegmentResponse> parseSegments(String segments) {
@@ -446,12 +427,12 @@ public class StudentResultQueryService {
                 .toList();
     }
 
-    private List<StudentContentBlockResponse> parseContentBlocks(String contentBlocks, long questionId) {
+    private List<StudentContentBlockResponse> parseContentBlocks(String contentBlocks) {
         try {
             List<ProblemContentBlockResponse> blocks = objectMapper.readValue(
                     contentBlocks, new TypeReference<List<ProblemContentBlockResponse>>() {
                     });
-            return blocks.stream().map(block -> StudentContentBlockResponse.from(block, questionId)).toList();
+            return blocks.stream().map(StudentContentBlockResponse::from).toList();
         } catch (JacksonException e) {
             throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
         }
