@@ -1,6 +1,5 @@
 package com.cenedu.backend.domain.submission.service;
 
-import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,8 +26,6 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "app.storage.s3", name = "enabled", havingValue = "true")
 public class SubmissionImageService {
-
-    private static final Duration ANSWER_IMAGE_URL_EXPIRATION = Duration.ofMinutes(10);
 
     private final WorksheetImageAccessService worksheetImageAccessService;
     private final ProblemAnswerUnitService answerUnitService;
@@ -59,7 +56,7 @@ public class SubmissionImageService {
         return imageStorageService.createGetUrl(
                 s3Properties.requiredAnswerBucket(),
                 answerKey(assignmentStudentId, answerUnitId),
-                ANSWER_IMAGE_URL_EXPIRATION
+                s3Properties.answerUrlExpiration()
         );
     }
 
@@ -92,7 +89,7 @@ public class SubmissionImageService {
                 urlsByAnswerUnitId.put(answerUnitId, imageStorageService.createGetUrl(
                         s3Properties.requiredAnswerBucket(),
                         answerKey(assignmentStudentId, answerUnitId),
-                        ANSWER_IMAGE_URL_EXPIRATION
+                        s3Properties.answerUrlExpiration()
                 ));
             } catch (BusinessException exception) {
                 if (exception.getErrorCode() != ErrorCode.IMAGE_NOT_FOUND) {
