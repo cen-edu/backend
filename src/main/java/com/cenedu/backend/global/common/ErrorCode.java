@@ -82,6 +82,8 @@ public enum ErrorCode {
     WORKSHEET_DUE_IN_PAST(HttpStatus.BAD_REQUEST, "제출 기한은 현재 시각 이후여야 합니다."),
     WORKSHEET_ASSIGNMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "배정된 학습지를 찾을 수 없습니다."),
     WORKSHEET_RESULT_NOT_RELEASED(HttpStatus.CONFLICT, "아직 채점 결과가 공개되지 않았습니다."),
+    WORKSHEET_PARENT_MISMATCH(HttpStatus.BAD_REQUEST,
+            "직전 차수 학습지가 이 맞춤 학습의 출처 배정과 맞지 않습니다."),
 
     // ===== submission (배세빈) =====
     SUBMISSION_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 제출한 학습지입니다."),
@@ -122,6 +124,10 @@ public enum ErrorCode {
     PROBLEM_VERIFICATION_FAILED(HttpStatus.CONFLICT, "문항 검증에 실패했습니다. 다른 문항을 생성해 주세요."),
     PROBLEM_ASSET_NOT_READY(HttpStatus.CONFLICT, "문항 자료가 아직 준비되지 않았습니다."),
     PROBLEM_EDIT_COMMAND_STALE(HttpStatus.CONFLICT, "현재 문항과 일치하지 않는 수정 요청입니다."),
+    PROBLEM_SEMANTIC_EDIT_REJECTED(HttpStatus.BAD_REQUEST, "지원하지 않는 의미 수정 요청입니다."),
+    PROBLEM_SEMANTIC_MODEL_UNSUPPORTED(HttpStatus.CONFLICT, "현재 문항의 의미 모델을 사용할 수 없습니다."),
+    PROBLEM_SEMANTIC_MODEL_INVALID(HttpStatus.UNPROCESSABLE_ENTITY, "문항 의미 모델이 올바르지 않습니다."),
+    PROBLEM_DIAGRAM_RENDER_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "문항 도형을 렌더링하지 못했습니다."),
     // ===== analysis (모수환) =====
     ASSESSMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "평가를 찾을 수 없습니다."),
     STUDENT_ATTEMPT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 풀이를 찾을 수 없습니다."),

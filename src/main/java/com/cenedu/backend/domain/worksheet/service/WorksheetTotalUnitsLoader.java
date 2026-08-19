@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
-class WorksheetTotalUnitsLoader {
+public class WorksheetTotalUnitsLoader {
 
     private final WorksheetItemRepository worksheetItemRepository;
     private final ProblemAnswerUnitService problemAnswerUnitService;
@@ -42,7 +42,7 @@ class WorksheetTotalUnitsLoader {
      * 학습지 여러 개의 진행률 분모. 종합평가는 문항 수 집계 한 번이면 되고, 일반·맞춤 학습만
      * 문항을 읽어 칸 수를 센다 — 배점형에만 필요한 조회를 전체에 걸지 않는다.
      */
-    Map<Long, Integer> byWorksheetId(Map<Long, WorksheetType> typeByWorksheetId) {
+    public Map<Long, Integer> byWorksheetId(Map<Long, WorksheetType> typeByWorksheetId) {
         List<Long> assessmentWorksheetIds = worksheetIds(typeByWorksheetId, WorksheetType.COMPREHENSIVE_ASSESSMENT);
         List<Long> practiceWorksheetIds = worksheetIds(typeByWorksheetId, WorksheetType.GENERAL_LEARNING);
 

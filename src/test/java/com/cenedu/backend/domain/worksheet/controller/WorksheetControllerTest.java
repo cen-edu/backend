@@ -295,6 +295,134 @@ class WorksheetControllerTest {
                 .andExpect(jsonPath("$.data.assignments[0].status").value("completed"));
     }
 
+    /**
+     * 맞춤 학습지 저장 요청. {@code parentWorksheetId} 가 차수를 정한다 — 원본 학습지를 가리키면
+     * 1차, 1차 맞춤을 가리키면 2차다.
+     */
+    private String customRequestJson(long sourceAssignmentId, Long parentWorksheetId,
+                                     List<Long> questionIds) {
+        return """
+                {
+                  "title": "맞춤 학습지",
+                  "type": "practice",
+                  "origin": "custom",
+                  "grade": 1,
+                  "semester": "common",
+                  "sourceAssignmentId": %d,
+                  "parentWorksheetId": %s,
+                  "genSpec": [{"subUnitId": %d, "questionType": "step", "difficulty": "low", "count": 1}],
+                  "items": [%s]
+                }
+                """.formatted(sourceAssignmentId, String.valueOf(parentWorksheetId), subUnitId,
+                itemsJson(questionIds));
+    }
+
+    /** 원본 학습지를 만들어 반에 배포하고 그 배정 ID를 돌려준다. */
+    private long assignedSourceWorksheet(long worksheetId) throws Exception {
+        MvcResult result = assignWorksheet(teacherToken, worksheetId, classId, FUTURE_DUE_AT)
+                .andExpect(status().isCreated())
+                .andReturn();
+        return ((Number) JsonPath.read(
+                result.getResponse().getContentAsString(), "$.data.assignmentId")).longValue();
+    }
+
+    @Test
+    @DisplayName("맞춤인데 parentWorksheetId가 없으면 400이다 — 차수를 셀 수 없다")
+    void createWorksheet_customWithoutParent_returns400() throws Exception {
+        long sourceWorksheetId = createWorksheet(
+                teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+        long assignmentId = assignedSourceWorksheet(sourceWorksheetId);
+
+        mockMvc.perform(post("/api/teacher/worksheets")
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(customRequestJson(assignmentId, null,
+                                insertQuestions("STEP_FILL", 1))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT_VALUE"));
+    }
+
+    @Test
+    @DisplayName("맞춤이 아닌데 parentWorksheetId를 주면 400이다")
+    void createWorksheet_nonCustomWithParent_returns400() throws Exception {
+        long sourceWorksheetId = createWorksheet(
+                teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+        List<Long> questionIds = insertQuestions("STEP_FILL", 1);
+
+        mockMvc.perform(post("/api/teacher/worksheets")
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "일반 학습지",
+                                  "type": "practice",
+                                  "origin": "manual",
+                                  "grade": 1,
+                                  "semester": "common",
+                                  "parentWorksheetId": %d,
+                                  "genSpec": [{"subUnitId": %d, "questionType": "step",
+                                               "difficulty": "low", "count": 1}],
+                                  "items": [%s]
+                                }
+                                """.formatted(sourceWorksheetId, subUnitId, itemsJson(questionIds))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT_VALUE"));
+    }
+
+    @Test
+    @DisplayName("남의 학습지를 부모로 걸면 404다 — 존재 여부를 흘리지 않는다")
+    void createWorksheet_othersParent_returns404() throws Exception {
+        long sourceWorksheetId = createWorksheet(
+                teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+        long assignmentId = assignedSourceWorksheet(sourceWorksheetId);
+        long othersWorksheetId = createWorksheet(
+                otherTeacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+
+        mockMvc.perform(post("/api/teacher/worksheets")
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(customRequestJson(assignmentId, othersWorksheetId,
+                                insertQuestions("STEP_FILL", 1))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("WORKSHEET_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("다른 묶음의 학습지를 부모로 걸면 400이다 — 두 컬럼이 어긋나면 트리가 깨진다")
+    void createWorksheet_parentFromOtherGroup_returns400() throws Exception {
+        long sourceWorksheetId = createWorksheet(
+                teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+        long assignmentId = assignedSourceWorksheet(sourceWorksheetId);
+        // 같은 교사의 학습지지만 이 배정에서 파생된 것이 아니다.
+        long unrelatedWorksheetId = createWorksheet(
+                teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+
+        mockMvc.perform(post("/api/teacher/worksheets")
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(customRequestJson(assignmentId, unrelatedWorksheetId,
+                                insertQuestions("STEP_FILL", 1))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("WORKSHEET_PARENT_MISMATCH"));
+    }
+
+    @Test
+    @DisplayName("2차 맞춤은 1차 맞춤을 부모로 걸 수 있고 sourceAssignmentId는 원본 그대로다")
+    void createWorksheet_secondSession_parentIsFirstCustom() throws Exception {
+        long sourceWorksheetId = createWorksheet(
+                teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+        long assignmentId = assignedSourceWorksheet(sourceWorksheetId);
+        long firstCustomId = createWorksheet(teacherToken,
+                customRequestJson(assignmentId, sourceWorksheetId, insertQuestions("STEP_FILL", 1)));
+
+        mockMvc.perform(post("/api/teacher/worksheets")
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(customRequestJson(assignmentId, firstCustomId,
+                                insertQuestions("STEP_FILL", 1))))
+                .andExpect(status().isCreated());
+    }
+
     @Test
     @DisplayName("출처가 practice인 맞춤 학습지는 tab=practice 목록에도 포함된다")
     void getWorksheets_customFromPractice_includedInPracticeTab() throws Exception {
@@ -315,10 +443,11 @@ class WorksheetControllerTest {
                   "grade": 1,
                   "semester": "common",
                   "sourceAssignmentId": %d,
+                  "parentWorksheetId": %d,
                   "genSpec": [{"subUnitId": %d, "questionType": "step", "difficulty": "low", "count": 1}],
                   "items": [%s]
                 }
-                """.formatted(assignmentId, subUnitId, itemsJson(customQuestionIds));
+                """.formatted(assignmentId, sourceWorksheetId, subUnitId, itemsJson(customQuestionIds));
         long customWorksheetId = createWorksheet(teacherToken, customRequestJson);
 
         mockMvc.perform(get("/api/teacher/worksheets")

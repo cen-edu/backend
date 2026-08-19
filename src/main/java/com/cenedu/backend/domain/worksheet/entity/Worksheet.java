@@ -29,7 +29,8 @@ import lombok.NoArgsConstructor;
         indexes = {
                 @Index(name = "idx_worksheet_owner_teacher", columnList = "owner_teacher_id"),
                 @Index(name = "idx_worksheet_source_assignment",
-                        columnList = "source_assignment_id")})
+                        columnList = "source_assignment_id"),
+                @Index(name = "idx_worksheet_parent", columnList = "parent_worksheet_id")})
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Worksheet {
 
@@ -63,11 +64,23 @@ public class Worksheet {
     @Column(name = "total_score")
     private Short totalScore;
 
-    /** 맞춤 학습지가 어느 배정 결과를 보고 만들어졌는지. */
+    /** 맞춤 학습지가 어느 배정 결과를 보고 만들어졌는지. <b>모든 차수가 원본 배정</b>을 가리킨다. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_assignment_id",
             foreignKey = @ForeignKey(name = "fk_worksheet_source_assignment"))
     private WorksheetAssignment sourceAssignment;
+
+    /**
+     * 직전 차수의 학습지. 1차 맞춤은 원본 학습지를, 2차는 1차 맞춤을 가리킨다.
+     *
+     * <p>차수는 저장하지 않고 이 체인의 깊이로 파생한다. {@link #sourceAssignment}와 역할이 다르다 —
+     * 그쪽은 묶음 키라 2차도 원본을 가리키고, 이쪽만 직전 차수를 가리킨다. 한 컬럼이 둘을 겸하면
+     * 2차가 생기는 순간 묶음 조회와 계보가 충돌한다.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_worksheet_id",
+            foreignKey = @ForeignKey(name = "fk_worksheet_parent"))
+    private Worksheet parentWorksheet;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -77,7 +90,7 @@ public class Worksheet {
 
     private Worksheet(String title, WorksheetType type, WorksheetOrigin origin, Long ownerTeacherId,
                       short grade, String semester, Short totalScore,
-                      WorksheetAssignment sourceAssignment) {
+                      WorksheetAssignment sourceAssignment, Worksheet parentWorksheet) {
         this.title = title;
         this.type = type;
         this.origin = origin;
@@ -86,15 +99,17 @@ public class Worksheet {
         this.semester = semester;
         this.totalScore = totalScore;
         this.sourceAssignment = sourceAssignment;
+        this.parentWorksheet = parentWorksheet;
         this.createdAt = OffsetDateTime.now();
     }
 
-    /** 학습지를 생성한다. 맞춤 학습지가 아니면 sourceAssignment 가 null 이다. */
+    /** 학습지를 생성한다. 맞춤 학습지가 아니면 sourceAssignment 와 parentWorksheet 가 null 이다. */
     public static Worksheet create(String title, WorksheetType type, WorksheetOrigin origin,
                                    Long ownerTeacherId, short grade, String semester,
-                                   Short totalScore, WorksheetAssignment sourceAssignment) {
+                                   Short totalScore, WorksheetAssignment sourceAssignment,
+                                   Worksheet parentWorksheet) {
         return new Worksheet(title, type, origin, ownerTeacherId, grade, semester, totalScore,
-                sourceAssignment);
+                sourceAssignment, parentWorksheet);
     }
 
     /** 학습지를 소프트 삭제한다. */

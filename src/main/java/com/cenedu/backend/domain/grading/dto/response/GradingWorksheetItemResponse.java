@@ -36,12 +36,17 @@ public record GradingWorksheetItemResponse(
         int studentCount,
         int submittedCount,
         int gradedCount,
-        int pendingCount
+        int pendingCount,
+
+        @Schema(description = "이 배정에서 파생된 맞춤 학습. 맞춤이 없으면 null. "
+                + "맞춤 배정은 최상위 목록에 형제로 나오지 않고 여기에만 들어온다", nullable = true)
+        GradingCustomLearningResponse customLearning
 ) {
 
     public static GradingWorksheetItemResponse of(
             WorksheetAssignment assignment, String className, String status, boolean modified,
-            int studentCount, int submittedCount, int gradedCount, int pendingCount
+            int studentCount, int submittedCount, int gradedCount, int pendingCount,
+            GradingCustomLearningResponse customLearning
     ) {
         return new GradingWorksheetItemResponse(
                 assignment.getId(),
@@ -57,6 +62,7 @@ public record GradingWorksheetItemResponse(
                 studentCount,
                 submittedCount,
                 gradedCount,
-                pendingCount);
+                pendingCount,
+                customLearning);
     }
 }

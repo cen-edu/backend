@@ -3,6 +3,7 @@ package com.cenedu.backend.domain.grading.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -12,12 +13,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.cenedu.backend.domain.grading.dto.request.GradingListRequest;
 import com.cenedu.backend.domain.grading.dto.response.GradingAnswerUnitResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingCellResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingChoiceResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingContentBlockResponse;
+import com.cenedu.backend.domain.grading.dto.response.GradingCustomLearningResponse;
+import com.cenedu.backend.domain.grading.dto.response.GradingCustomSessionResponse;
+import com.cenedu.backend.domain.grading.dto.response.GradingCustomStudentResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingSegmentResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingStepResponse;
 import com.cenedu.backend.domain.grading.dto.response.GradingDetailItemResponse;
@@ -47,6 +52,7 @@ import com.cenedu.backend.domain.submission.entity.enums.GradingStatus;
 import com.cenedu.backend.domain.submission.repository.SubmissionAnswerRepository;
 import com.cenedu.backend.domain.submission.repository.SubmissionQuestionTimeRepository;
 import com.cenedu.backend.domain.submission.service.SubmissionImageService;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentResponseFormatter;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignment;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignmentStudent;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetItem;
@@ -54,6 +60,10 @@ import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType;
 import com.cenedu.backend.domain.worksheet.repository.WorksheetAssignmentRepository;
 import com.cenedu.backend.domain.worksheet.repository.WorksheetAssignmentStudentRepository;
 import com.cenedu.backend.domain.worksheet.repository.WorksheetItemRepository;
+import com.cenedu.backend.domain.worksheet.repository.row.CustomLearningAssignmentRow;
+import com.cenedu.backend.domain.worksheet.service.CustomSessionNumbering;
+import com.cenedu.backend.domain.worksheet.service.StudentDisplayOrder;
+import com.cenedu.backend.domain.worksheet.service.WorksheetTotalUnitsLoader;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.AssignmentStatus;
@@ -94,6 +104,7 @@ public class GradingQueryService {
     private final SchoolClassService schoolClassService;
     private final StudentListQueryService studentListQueryService;
     private final ProblemQuestionDetailService problemQuestionDetailService;
+    private final WorksheetTotalUnitsLoader totalUnitsLoader;
     private final ObjectMapper objectMapper;
 
     /**
@@ -112,13 +123,26 @@ public class GradingQueryService {
             return new GradingWorksheetListResponse(List.of());
         }
 
-        List<Long> assignmentIds = assignments.stream().map(WorksheetAssignment::getId).toList();
+        List<Long> rootAssignmentIds = assignments.stream().map(WorksheetAssignment::getId).toList();
+        List<CustomLearningAssignmentRow> customRows =
+                worksheetAssignmentRepository.findCustomLearningAssignments(rootAssignmentIds);
+
+        List<Long> allAssignmentIds = Stream.concat(
+                        rootAssignmentIds.stream(),
+                        customRows.stream().map(CustomLearningAssignmentRow::assignmentId))
+                .distinct()
+                .toList();
         Map<Long, List<WorksheetAssignmentStudent>> studentsByAssignmentId =
-                assignmentStudentRepository.findByAssignment_IdIn(assignmentIds).stream()
+                assignmentStudentRepository.findByAssignment_IdIn(allAssignmentIds).stream()
                         .collect(Collectors.groupingBy(student -> student.getAssignment().getId()));
         Set<Long> modifiedAssignmentIds = new HashSet<>(
-                assignmentStudentRepository.findAssignmentIdsModifiedAfterRelease(assignmentIds));
+                assignmentStudentRepository.findAssignmentIdsModifiedAfterRelease(allAssignmentIds));
         Map<Long, String> classNamesById = getClassNames(teacherId, assignments);
+        Map<Long, String> studentNamesById =
+                getCustomStudentNames(teacherId, studentsByAssignmentId.values());
+        Map<Long, Integer> totalUnitsByWorksheetId = customTotalUnits(customRows);
+        Map<Long, List<CustomLearningAssignmentRow>> customRowsBySourceId = customRows.stream()
+                .collect(Collectors.groupingBy(CustomLearningAssignmentRow::sourceAssignmentId));
 
         List<GradingWorksheetItemResponse> worksheets = new ArrayList<>();
         for (WorksheetAssignment assignment : assignments) {
@@ -132,6 +156,7 @@ public class GradingQueryService {
                     .count();
             String status = deriveStatus(students, submittedCount, gradedCount);
 
+            // 자식은 원본의 일부라, 원본이 status 필터에 걸리면 맞춤도 함께 사라진다.
             if (request.status() != null && !request.status().equals(status)) {
                 continue;
             }
@@ -143,9 +168,161 @@ public class GradingQueryService {
                     students.size(),
                     submittedCount,
                     gradedCount,
-                    submittedCount - gradedCount));
+                    submittedCount - gradedCount,
+                    buildCustomLearning(
+                            customRowsBySourceId.getOrDefault(assignment.getId(), List.of()),
+                            students, studentsByAssignmentId, modifiedAssignmentIds,
+                            studentNamesById, totalUnitsByWorksheetId)));
         }
         return new GradingWorksheetListResponse(worksheets);
+    }
+
+    /**
+     * 원본 배정 하나에 딸린 맞춤 학습을 학생 → 차수 2단으로 접는다. 맞춤이 없으면 {@code null}이다.
+     *
+     * <p>차수는 {@code parentWorksheet} 체인의 깊이다. 배정일로 매기면 늦게 받은 학생의 첫 맞춤이
+     * 3차로 보이고, 학생 A의 1차와 B의 1차가 같은 라운드라는 보장도 없다.
+     */
+    private GradingCustomLearningResponse buildCustomLearning(
+            List<CustomLearningAssignmentRow> rows,
+            List<WorksheetAssignmentStudent> roster,
+            Map<Long, List<WorksheetAssignmentStudent>> studentsByAssignmentId,
+            Set<Long> modifiedAssignmentIds,
+            Map<Long, String> studentNamesById,
+            Map<Long, Integer> totalUnitsByWorksheetId
+    ) {
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Map<Long, Integer> sessionNumbers = CustomSessionNumbering.depthByWorksheetId(
+                rows.getFirst().rootWorksheetId(),
+                rows.stream()
+                        .collect(Collectors.toMap(
+                                CustomLearningAssignmentRow::worksheetId,
+                                row -> new CustomSessionNumbering.Node(
+                                        row.worksheetId(), row.parentWorksheetId()),
+                                (left, right) -> left))
+                        .values());
+
+        // 표시 순번은 원본 배정 명단 기준이다. 맞춤 대상만으로 1부터 매기면 같은 화면의 원본 표와
+        // 번호가 어긋난다.
+        Map<Long, Integer> displayNumbers = StudentDisplayOrder.numbers(
+                roster.stream().map(WorksheetAssignmentStudent::getStudentId).toList(),
+                rows.stream().map(CustomLearningAssignmentRow::studentId)
+                        .filter(studentId -> studentId != null).distinct().toList(),
+                studentNamesById);
+
+        Map<Long, List<CustomLearningAssignmentRow>> rowsByStudentId = rows.stream()
+                .filter(row -> row.studentId() != null)
+                .collect(Collectors.groupingBy(CustomLearningAssignmentRow::studentId));
+
+        List<GradingCustomStudentResponse> students = rowsByStudentId.entrySet().stream()
+                .map(entry -> GradingCustomStudentResponse.of(
+                        entry.getKey(),
+                        displayNumbers.getOrDefault(entry.getKey(), 0),
+                        studentNamesById.get(entry.getKey()),
+                        sessions(entry.getValue(), sessionNumbers, studentsByAssignmentId,
+                                modifiedAssignmentIds, totalUnitsByWorksheetId)))
+                .sorted(Comparator.comparingInt(GradingCustomStudentResponse::displayNumber))
+                .toList();
+        return students.isEmpty() ? null : GradingCustomLearningResponse.of(students);
+    }
+
+    /** 학생 한 명이 받은 차수들. 배정 하나에 학생 행이 하나라 첫 행만 쓴다. */
+    private List<GradingCustomSessionResponse> sessions(
+            List<CustomLearningAssignmentRow> rows,
+            Map<Long, Integer> sessionNumbers,
+            Map<Long, List<WorksheetAssignmentStudent>> studentsByAssignmentId,
+            Set<Long> modifiedAssignmentIds,
+            Map<Long, Integer> totalUnitsByWorksheetId
+    ) {
+        return rows.stream()
+                .map(row -> {
+                    List<WorksheetAssignmentStudent> students =
+                            studentsByAssignmentId.getOrDefault(row.assignmentId(), List.of());
+                    if (students.isEmpty()) {
+                        return null;
+                    }
+                    return toSession(row, students.getFirst(),
+                            sessionNumbers.getOrDefault(row.worksheetId(), 0),
+                            modifiedAssignmentIds.contains(row.assignmentId()),
+                            totalUnitsByWorksheetId.getOrDefault(row.worksheetId(), 0));
+                })
+                .filter(session -> session != null)
+                .sorted(Comparator.comparingInt(GradingCustomSessionResponse::sessionNumber))
+                .toList();
+    }
+
+    /**
+     * 차수 한 줄. 상태를 두 축으로 내린다 — {@code status}는 원본 행과 같은 규칙이라 맞춤처럼 학생이
+     * 한 명이면 미제출과 제출·미채점이 둘 다 {@code grading}이고, 그 구분은 {@code studentStatus}가 한다.
+     */
+    private GradingCustomSessionResponse toSession(
+            CustomLearningAssignmentRow row, WorksheetAssignmentStudent student,
+            int sessionNumber, boolean modified, int totalUnits
+    ) {
+        boolean assessment = row.type() == WorksheetType.COMPREHENSIVE_ASSESSMENT;
+        int submittedCount = SUBMITTED_STATUSES.contains(student.getStatus()) ? 1 : 0;
+        int gradedCount = student.getStatus() == AssignmentStatus.GRADED ? 1 : 0;
+        return new GradingCustomSessionResponse(
+                sessionNumber,
+                row.worksheetId(),
+                row.parentWorksheetId(),
+                row.assignmentId(),
+                student.getId(),
+                row.title(),
+                GradingResponseFormatter.toApiType(row.type()),
+                deriveStatus(List.of(student), submittedCount, gradedCount),
+                StudentResponseFormatter.toApiStatus(
+                        student.getStatus(), student.getProgressCount(), row.dueAt()),
+                student.getProgressCount(),
+                totalUnits,
+                assessment ? gradingState(student) : null,
+                modified,
+                row.assignedAt(),
+                row.dueAt(),
+                student.getSubmittedAt(),
+                student.getGradedAt(),
+                assessment ? student.getTotalScore() : null);
+    }
+
+    /**
+     * 채점 상태. {@code released_at}은 보지 않는다 — 그건 학생 공개 여부이고 교사는 공개 전에도
+     * 점수를 본다. 학습 현황의 같은 이름 필드와 규칙이 같아야 두 화면이 어긋나지 않는다.
+     */
+    private String gradingState(WorksheetAssignmentStudent student) {
+        if (student.getGradedAt() != null) {
+            return "done";
+        }
+        return student.getSubmittedAt() == null ? null : "pending";
+    }
+
+    /** 진행률 분모. 맞춤 학습지 전체를 한 번에 읽어 카드마다 조회하지 않는다. */
+    private Map<Long, Integer> customTotalUnits(List<CustomLearningAssignmentRow> rows) {
+        if (rows.isEmpty()) {
+            return Map.of();
+        }
+        return totalUnitsLoader.byWorksheetId(rows.stream()
+                .collect(Collectors.toMap(
+                        CustomLearningAssignmentRow::worksheetId,
+                        CustomLearningAssignmentRow::type,
+                        (left, right) -> left)));
+    }
+
+    /**
+     * 원본 명단과 맞춤 대상의 이름을 한 번에 읽는다. 두 번 부르면 그 사이에 담당이 바뀐 학생이
+     * 순번과 표시에서 다르게 취급된다.
+     */
+    private Map<Long, String> getCustomStudentNames(
+            long teacherId, Collection<List<WorksheetAssignmentStudent>> studentGroups
+    ) {
+        List<Long> studentIds = studentGroups.stream()
+                .flatMap(List::stream)
+                .map(WorksheetAssignmentStudent::getStudentId)
+                .distinct()
+                .toList();
+        return studentIds.isEmpty() ? Map.of()
+                : studentListQueryService.getStudentNamesByIds(teacherId, studentIds);
     }
 
     /**
@@ -153,6 +330,9 @@ public class GradingQueryService {
      *
      * <p>제출자가 0명이면 "전원 채점됨"이 공허하게 참이 되므로 명시적으로 막는다 — 아무도 안 낸
      * 학습지가 {@code graded}로 보이면 안 된다.
+     *
+     * <p>맞춤 차수처럼 학생이 한 명인 배정에서는 미제출과 제출·미채점이 둘 다 {@code grading}이다.
+     * 구분이 필요하면 응답의 {@code studentStatus}·{@code submittedAt}을 본다.
      */
     private String deriveStatus(List<WorksheetAssignmentStudent> students,
                                 int submittedCount, int gradedCount) {

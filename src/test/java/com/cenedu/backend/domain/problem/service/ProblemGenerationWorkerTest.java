@@ -1,6 +1,7 @@
 package com.cenedu.backend.domain.problem.service;
 
 import static com.cenedu.backend.domain.problem.support.ProblemSnapshotFixtures.shortInput;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -28,6 +29,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import org.mockito.ArgumentCaptor;
+import java.nio.charset.StandardCharsets;
 
 class ProblemGenerationWorkerTest {
 
@@ -77,6 +80,12 @@ class ProblemGenerationWorkerTest {
 
         verify(generationPort, times(3)).generate(any());
         verify(jobService).succeed(workItem);
+        ArgumentCaptor<ProblemGenerationCommand> commands = ArgumentCaptor.forClass(ProblemGenerationCommand.class);
+        verify(generationPort, times(3)).generate(commands.capture());
+        assertThat(commands.getAllValues().get(1).requestId()).isEqualTo(UUID.nameUUIDFromBytes(
+                (workItem.command().requestId() + ":attempt:1").getBytes(StandardCharsets.UTF_8)));
+        assertThat(commands.getAllValues().get(2).requestId()).isEqualTo(UUID.nameUUIDFromBytes(
+                (workItem.command().requestId() + ":attempt:2").getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test

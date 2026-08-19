@@ -1,6 +1,9 @@
 package com.cenedu.backend.domain.problem.service;
 
 import java.util.List;
+import java.util.Map;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.RenderSpecDocument;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.SemanticModelDocument;
 
 import com.cenedu.backend.domain.problem.entity.*;
 
@@ -11,6 +14,14 @@ public record ProblemQuestionPersistenceBundle(
         List<ProblemStep> steps,
         List<ProblemAnswerUnit> answerUnits,
         List<ProblemRubricItem> rubricItems,
-        List<ProblemAsset> assets
+        List<ProblemAsset> assets,
+        SemanticModelDocument semanticModel,
+        Map<String, RenderSpecDocument> renderSpecs
 ) {
+    public ProblemQuestionPersistenceBundle(ProblemQuestion question,
+            List<ProblemChoice> choices, List<ProblemStep> steps,
+            List<ProblemAnswerUnit> answerUnits, List<ProblemRubricItem> rubricItems,
+            List<ProblemAsset> assets) {
+        this(question, choices, steps, answerUnits, rubricItems, assets, null, Map.of());
+    }
 }

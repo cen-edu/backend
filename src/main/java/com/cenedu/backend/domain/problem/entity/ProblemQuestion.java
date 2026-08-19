@@ -5,6 +5,8 @@ import java.time.OffsetDateTime;
 import com.cenedu.backend.domain.problem.entity.enums.QuestionPresentation;
 import com.cenedu.backend.domain.problem.entity.enums.QuestionSourceType;
 import com.cenedu.backend.domain.problem.entity.enums.VerificationStatus;
+import com.cenedu.backend.domain.problem.entity.enums.SemanticModelStatus;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.SemanticModelDocument;
 import com.cenedu.backend.global.common.enums.EvaluationArea;
 import com.cenedu.backend.global.common.enums.QuestionType;
 
@@ -111,6 +113,24 @@ public class ProblemQuestion {
     @Column(name = "verification_status", length = 20)
     private VerificationStatus verificationStatus;
 
+    @Column(name = "semantic_model_schema_version")
+    private Short semanticModelSchemaVersion;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "semantic_model", columnDefinition = "jsonb")
+    private String semanticModel;
+
+    @Column(name = "semantic_model_hash", length = 64)
+    private String semanticModelHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "semantic_model_status", nullable = false, length = 20)
+    private SemanticModelStatus semanticModelStatus = SemanticModelStatus.ABSENT;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "semantic_extraction_findings", columnDefinition = "jsonb")
+    private String semanticExtractionFindings;
+
     @Column(name = "verification_attempts", nullable = false)
     private short verificationAttempts;
 
@@ -170,4 +190,19 @@ public class ProblemQuestion {
                 questionType, presentation, contentBlocks, promptText, explanation, learningGuide,
                 null, verificationStatus, evaluationArea);
     }
+
+    public void attachSemanticModel(SemanticModelDocument document) {
+        if (document == null) throw new IllegalArgumentException("semantic model document가 필요합니다.");
+        if (semanticModelHash != null && !semanticModelHash.equals(document.sha256())) {
+            throw new IllegalStateException("semantic model hash를 변경할 수 없습니다.");
+        }
+        semanticModelSchemaVersion = (short) document.schemaVersion(); semanticModel = document.json();
+        semanticModelHash = document.sha256(); semanticModelStatus = SemanticModelStatus.READY;
+        semanticExtractionFindings = null;
+    }
+
+    public void markSemanticModelUnsupported() { clearSemanticModel(SemanticModelStatus.UNSUPPORTED, null); }
+    public void markSemanticModelFailed() { clearSemanticModel(SemanticModelStatus.FAILED, null); }
+    public void markSemanticModelFailed(String findings) { clearSemanticModel(SemanticModelStatus.FAILED, findings); }
+    private void clearSemanticModel(SemanticModelStatus status, String findings) { semanticModelSchemaVersion = null; semanticModel = null; semanticModelHash = null; semanticModelStatus = status; semanticExtractionFindings = findings; }
 }

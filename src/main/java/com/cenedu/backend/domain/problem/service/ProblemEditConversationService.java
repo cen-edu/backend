@@ -160,6 +160,7 @@ public class ProblemEditConversationService {
                 && Objects.equals(pending.sessionId(), confirmed.sessionId())
                 && Objects.equals(pending.baseVersionId(), confirmed.baseVersionId())
                 && Objects.equals(pending.instructions(), confirmed.instructions())
+                && Objects.equals(pending.semanticPatch(), confirmed.semanticPatch())
                 && Objects.equals(pending.requestedSpecification(),
                         confirmed.requestedSpecification())
                 && Objects.equals(pending.restoreReference(), confirmed.restoreReference())

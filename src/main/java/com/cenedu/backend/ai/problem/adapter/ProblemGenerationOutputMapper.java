@@ -32,7 +32,7 @@ public class ProblemGenerationOutputMapper {
                 new SnapshotLearningGuide(required(output.learningGuide().conceptTitle(), "conceptTitle"),
                         required(output.learningGuide().summary(), "learningGuide.summary"),
                         copy(output.learningGuide().keyPoints())), mapRubrics(output.rubricItems()));
-        return new ProblemCandidateDraft(command.requestId(), snapshot, mapAssetPlans(output.assets()),
+        return ProblemCandidateDraft.legacy(command.requestId(), snapshot, mapAssetPlans(output.assets()),
                 new CandidateProvenance(CandidateSourceType.AI_GENERATE, null,
                         command.references() == null ? List.of() : command.references().stream()
                                 .map(reference -> reference.sourceQuestionId()).toList()));

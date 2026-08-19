@@ -8,7 +8,7 @@ public record ProblemEditAgentResultEnvelope(
         ProblemEditConversationResult problemEditResult
 ) {
 
-    public static final int CURRENT_SCHEMA_VERSION = 1;
+    public static final int CURRENT_SCHEMA_VERSION = 2;
     public static final String RESPONSE_KEY = "problemEditResult";
 
     public ProblemEditAgentResultEnvelope {

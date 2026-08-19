@@ -1,0 +1,1 @@
+package com.cenedu.backend.domain.problem.authoring.port; import com.cenedu.backend.domain.problem.authoring.diagram.*; public interface ProblemDiagramRendererPort { RenderedDiagram render(DiagramSpecV1 spec,DiagramRenderContext context); }

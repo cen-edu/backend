@@ -1,0 +1,1 @@
+package com.cenedu.backend.domain.problem.authoring.diagram; public final class DiagramValidationException extends IllegalArgumentException { public DiagramValidationException(String message){super(message);} }
