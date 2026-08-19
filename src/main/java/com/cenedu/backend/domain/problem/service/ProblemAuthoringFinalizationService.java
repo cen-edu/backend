@@ -20,6 +20,9 @@ import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemSemanticDocumentCodec;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.SemanticModelDocument;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.RenderSpecDocument;
 
 /** PASSED 현재 Version을 문제은행에 원자적으로 최종 저장한다. */
 @Service
@@ -37,6 +40,7 @@ public class ProblemAuthoringFinalizationService {
     private final ObjectMapper objectMapper;
     private ProblemSearchIndexingService searchIndexingService;
     private ProblemTeacherDecisionEventService decisionEventService;
+    private final ProblemSemanticDocumentCodec semanticDocumentCodec;
 
     public ProblemAuthoringFinalizationService(ProblemAuthoringSessionRepository sessionRepository,
             ProblemAuthoringVersionRepository versionRepository, ProblemQuestionRepository questionRepository,
@@ -50,6 +54,7 @@ public class ProblemAuthoringFinalizationService {
         this.rubricRepository = rubricRepository; this.assetRepository = assetRepository;
         this.storageTaskRepository = storageTaskRepository;
         this.mapper = mapper; this.objectMapper = objectMapper;
+        this.semanticDocumentCodec = new ProblemSemanticDocumentCodec(objectMapper);
     }
 
     /** 최종화 이후 검색 인덱싱 큐를 선택적으로 연결한다. */
@@ -118,7 +123,17 @@ public class ProblemAuthoringFinalizationService {
             ProblemQuestion derivedFrom = snapshot.metadata().derivedFromQuestionId() == null ? null
                     : questionRepository.findById(snapshot.metadata().derivedFromQuestionId())
                     .orElseThrow(() -> new BusinessException(ErrorCode.PROBLEM_AUTHORING_DATA_INVALID));
-            ProblemQuestionPersistenceBundle bundle = mapper.map(snapshot, keys, derivedFrom);
+            SemanticModelDocument semanticModel = version.getSemanticModel() == null ? null
+                    : semanticDocumentCodec.semanticModel(
+                            semanticDocumentCodec.readSemanticModel(version.getSemanticModel()));
+            Map<String, RenderSpecDocument> renderSpecs = draftManifest.plans().stream()
+                    .filter(plan -> plan.specification() != null && plan.specification().diagramSpec() != null)
+                    .collect(java.util.stream.Collectors.toMap(
+                            GeneratedAssetPlan::assetKey,
+                            plan -> semanticDocumentCodec.renderSpec(
+                                    plan.specification().diagramSpec(), "semantic-svg-v1")));
+            ProblemQuestionPersistenceBundle bundle = mapper.map(snapshot, keys, derivedFrom,
+                    semanticModel, renderSpecs);
             ProblemQuestion question = questionRepository.save(bundle.question());
             choiceRepository.saveAll(bundle.choices()); stepRepository.saveAll(bundle.steps());
             answerUnitRepository.saveAll(bundle.answerUnits()); rubricRepository.saveAll(bundle.rubricItems());

@@ -8,6 +8,7 @@ import java.util.List;
 import com.cenedu.backend.domain.problem.support.ProblemSnapshotFixtures;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.SemanticModelDocument;
 
 class ProblemSnapshotEntityMapperTest {
     @Test
@@ -60,5 +61,17 @@ class ProblemSnapshotEntityMapperTest {
         assertThat(bundle.question().getEvaluationArea()).isEqualTo(
                 com.cenedu.backend.global.common.enums.EvaluationArea.CALCULATION);
         assertThat(bundle.question().getDerivedFrom()).isSameAs(derived);
+    }
+
+    @Test
+    void semantic_model_document를_문제에_연결한다() {
+        var semantic = new SemanticModelDocument(1, "{\"schemaVersion\":1}", "a".repeat(64));
+
+        var bundle = new ProblemSnapshotEntityMapper(new ObjectMapper()).map(
+                ProblemSnapshotFixtures.shortInput(), Map.of(), null, semantic, Map.of());
+
+        assertThat(bundle.question().getSemanticModelStatus())
+                .isEqualTo(com.cenedu.backend.domain.problem.entity.enums.SemanticModelStatus.READY);
+        assertThat(bundle.question().getSemanticModelHash()).isEqualTo("a".repeat(64));
     }
 }

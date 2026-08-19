@@ -29,6 +29,12 @@ import com.cenedu.backend.domain.problem.authoring.verification.VerificationIssu
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationOverallStatus;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationScope;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationSeverity;
+import com.cenedu.backend.domain.problem.authoring.port.ProblemSemanticMaterializer;
+import com.cenedu.backend.domain.problem.authoring.semantic.materialization.MaterializedProblem;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemSemanticDocumentCodec;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.SemanticModelDocument;
+import com.cenedu.backend.domain.problem.authoring.semantic.materialization.SemanticMaterializationReport;
+import com.cenedu.backend.domain.problem.authoring.semantic.materialization.DefaultProblemSemanticMaterializer;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringSession;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
@@ -55,6 +61,9 @@ public class ProblemCandidateProcessingService {
     private final ObjectProvider<ProblemAssetProductionPort> assetPortProvider;
     private final TransactionTemplate transactionTemplate;
     private final ProblemAiConcurrencyLimiter concurrencyLimiter;
+    private final ProblemSemanticMaterializer semanticMaterializer = new DefaultProblemSemanticMaterializer();
+    private final ProblemSemanticDocumentCodec semanticDocumentCodec =
+            new ProblemSemanticDocumentCodec(new tools.jackson.databind.ObjectMapper());
 
     public ProblemCandidateProcessingService(
             ProblemAuthoringSessionRepository sessionRepository,
@@ -120,6 +129,8 @@ public class ProblemCandidateProcessingService {
                 .orElse(1);
         DraftAssetManifest manifest = DraftAssetManifest.planned(
                 request.candidate().assetPlans());
+        SemanticModelDocument semanticDocument = request.candidate().semanticModel() == null
+                ? null : semanticDocumentCodec.semanticModel(request.candidate().semanticModel());
         ProblemAuthoringVersion version = ProblemAuthoringVersion.create(
                 request.sessionId(),
                 versionNo,
@@ -128,9 +139,8 @@ public class ProblemCandidateProcessingService {
                 request.operationType(),
                 request.candidate().provenance().sourceQuestionId(),
                 request.candidate().snapshot().schemaVersion(),
-                jsonCodec.write(request.candidate().snapshot()),
-                jsonCodec.write(manifest),
-                request.changeSummary());
+                jsonCodec.write(request.candidate().snapshot()), semanticDocument,
+                jsonCodec.write(manifest), request.changeSummary());
         versionRepository.saveAndFlush(version);
         session.attachPendingVersion(version.getId());
         return new RegisteredCandidate(version.getId(), versionNo);
@@ -230,7 +240,7 @@ public class ProblemCandidateProcessingService {
                 request.candidate(),
                 manifest,
                 request.expectation(),
-                request.verificationContext());
+                request.verificationContext(), semanticReport(request.candidate()));
     }
 
     private ProblemVerificationReport callVerification(
@@ -295,9 +305,25 @@ public class ProblemCandidateProcessingService {
         }
         structuralValidator.validate(request.candidate().snapshot());
         normalizedValidator.validate(request.candidate().snapshot());
+        validateSemanticCandidate(request.candidate());
         validateSourceType(request.operationType(),
                 request.candidate().provenance().sourceType());
         validateAssetPlans(request.candidate());
+    }
+
+    /** 의미 후보를 다시 계산해 Snapshot·자산 계획이 서버 결과와 일치하는지 확인한다. */
+    private void validateSemanticCandidate(ProblemCandidateDraft candidate) {
+        if (candidate.semanticModel() == null) return;
+        MaterializedProblem materialized = semanticMaterializer.materialize(candidate.semanticModel());
+        if (!Objects.equals(materialized.snapshot(), candidate.snapshot())
+                || !Objects.equals(materialized.assetPlans(), candidate.assetPlans())) {
+            throw new IllegalArgumentException("의미 모델과 materialized 후보가 일치하지 않습니다.");
+        }
+    }
+
+    private SemanticMaterializationReport semanticReport(ProblemCandidateDraft candidate) {
+        return candidate.semanticModel() == null ? null
+                : semanticMaterializer.materialize(candidate.semanticModel()).report();
     }
 
     private void validateParent(CandidateProcessingRequest request,

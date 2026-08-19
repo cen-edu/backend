@@ -1306,7 +1306,7 @@ Finalization decisions:
 - every snapshot asset key must have one manifest artifact and one plan; a plan with `diagramSpec()!=null` must also have one render document whose hash equals canonical DiagramSpec JSON and renderer version equals `semantic-svg-v1`.
 - final question status is READY only for a stored model; legacy final questions remain ABSENT.
 
-- [ ] **Step 1: Add failing short-circuit and finalization tests**
+- [x] **Step 1: Add short-circuit and finalization tests** *(사용자 지정 방식에 따라 RED 단계는 생략)*
 
 ```java
 @Test
@@ -1330,23 +1330,23 @@ void finalizationCopiesSemanticAndRenderDocumentsToQuestionAndAsset() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED** *(사용자 지정 방식에 따라 생략)*
 
 Run: `bash gradlew test --tests '*ProblemCandidateProcessingServiceTest' --tests '*ProblemAuthoringFinalizationServiceTest' --tests '*ProblemSnapshotEntityMapperTest'`
 
 Expected: FAIL because candidate processing ignores semantic data and finalization does not persist semantic/render documents.
 
-- [ ] **Step 3: Implement deterministic short-circuit, request report, and finalization propagation**
+- [x] **Step 3: Implement deterministic short-circuit, request report, and finalization propagation**
 
 Retain the current transaction boundaries: no LLM, rendering, or storage I/O inside registration/finalization DB transactions. The renderer runs through the existing asset production phase; finalization only copies canonical render metadata and schedules existing storage tasks.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN** *(Task9 관련 테스트 통과)*
 
 Run: `bash gradlew test --tests '*ProblemCandidateProcessingServiceTest' --tests '*ProblemAuthoringFinalizationServiceTest' --tests '*ProblemSnapshotEntityMapperTest' --tests '*ProblemVerificationAdapterTest'`
 
 Expected: PASS for semantic short-circuit, content-only, content+asset, asset failure, semantic persistence, legacy null compatibility, and finalized render provenance.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/service/ProblemCandidateProcessingService.java \
