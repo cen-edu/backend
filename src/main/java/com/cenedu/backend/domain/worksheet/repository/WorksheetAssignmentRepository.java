@@ -7,6 +7,9 @@ import java.util.Optional;
 
 import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignment;
 import com.cenedu.backend.domain.worksheet.repository.row.AssignmentStudentCountRow;
+import com.cenedu.backend.domain.worksheet.repository.row.CustomLearningWorksheetCountRow;
+import com.cenedu.backend.domain.worksheet.repository.row.CustomLearningStudentCountRow;
+import com.cenedu.backend.domain.worksheet.repository.row.CustomLearningAssignmentRow;
 import com.cenedu.backend.domain.worksheet.repository.row.LearningStatusAssignmentRow;
 import com.cenedu.backend.domain.worksheet.repository.row.LearningStatusSummaryRow;
 import com.cenedu.backend.domain.worksheet.repository.row.WorksheetCountRow;
@@ -27,14 +30,27 @@ public interface WorksheetAssignmentRepository extends JpaRepository<WorksheetAs
     boolean existsByWorksheetId(Long worksheetId);
 
     /**
+     * 그 배정이 바로 그 학습지의 배포인지 반환한다. 1차 맞춤을 만들 때
+     * parentWorksheetId 가 sourceAssignmentId 의 학습지와 같은지 확인하는 데 쓴다.
+     */
+    boolean existsByIdAndWorksheetId(Long id, Long worksheetId);
+
+    /**
      * 채점 목록용 배포 조회. 학습지를 함께 읽어 목록이 제목·유형·학년을 다시 조회하지 않게 한다.
      * 파생 상태(grading/graded/confirmed)는 컬럼이 아니라 서버 계산이라 여기서 거르지 않는다.
+     *
+     * <p>맞춤 배정은 최상위에서 뺀다. 원본 아래 자식으로 들어가기 때문이다. 술어가
+     * {@code findCustomLearningAssignments}의 <b>정확한 여집합</b>이어야 한다 — DB가
+     * {@code origin='CUSTOM' ⇔ source_assignment_id NOT NULL} 을 강제하지 않아서, 한쪽 조건만 걸면
+     * 어중간한 행이 최상위에서도 빠지고 자식으로도 안 잡혀 화면에서 통째로 사라진다.
      */
     @Query("""
             select wa from WorksheetAssignment wa
             join fetch wa.worksheet w
             where w.ownerTeacherId = :teacherId
               and w.deletedAt is null
+              and (w.origin <> com.cenedu.backend.domain.worksheet.entity.enums.WorksheetOrigin.CUSTOM
+                   or w.sourceAssignment is null)
               and (:grade is null or w.grade = :grade)
               and (:semester is null or w.semester = :semester)
               and (:classId is null or wa.classId = :classId)
@@ -145,4 +161,102 @@ public interface WorksheetAssignmentRepository extends JpaRepository<WorksheetAs
             """)
     List<AssignmentStudentCountRow> countStudentsByAssignmentIdIn(
             @Param("assignmentIds") Collection<Long> assignmentIds);
+
+    /**
+     * 원본 배정 여러 개에서 파생된 맞춤 배정을 읽는다. 학습 현황과 평가 결과가 같은 쿼리를 써야
+     * 두 화면이 같은 집합을 본다.
+     *
+     * <p><b>차수는 이 정렬로 파생하지 않는다.</b> {@code parentWorksheetId} 체인의 깊이로 매긴다 —
+     * 배정일 순으로 매기면 늦게 받은 학생의 첫 맞춤이 3차로 보인다. 정렬은 화면 축(학생→배정일)에
+     * 맞춘 것이고, 차수 계산은 {@code CustomSessionNumbering}이 한다.
+     *
+     * <p>{@code origin}과 {@code deletedAt}을 함께 건다. {@code source_assignment_id}만으로 거르면
+     * 소프트 삭제된 맞춤 학습지가 화면에 남는다 — analysis 쪽 맞춤 조회와 같은 필터 조합이라야
+     * 두 화면이 같은 집합을 본다.
+     */
+    @Query("""
+            select new com.cenedu.backend.domain.worksheet.repository.row.CustomLearningAssignmentRow(
+                sa.id, sa.worksheet.id, w.id, w.parentWorksheet.id,
+                w.title, w.type, ca.id, ca.studentId, ca.assignedAt, ca.dueAt)
+            from WorksheetAssignment ca
+            join ca.worksheet w
+            join w.sourceAssignment sa
+            where sa.id in :sourceAssignmentIds
+              and w.origin = com.cenedu.backend.domain.worksheet.entity.enums.WorksheetOrigin.CUSTOM
+              and w.deletedAt is null
+            order by sa.id asc, ca.studentId asc, ca.assignedAt asc, ca.id asc
+            """)
+    List<CustomLearningAssignmentRow> findCustomLearningAssignments(
+            @Param("sourceAssignmentIds") Collection<Long> sourceAssignmentIds);
+
+    /**
+     * 원본 배정 여러 개의 맞춤 학습지 축 집계를 한 번에 낸다. 배정마다 부르면 목록 길이만큼 쿼리가 든다.
+     *
+     * <p>학생 행과 조인하지 않는다. 조인하면 학습지 하나가 학생 수만큼 늘어나(팬아웃) 집계에
+     * distinct 를 겹쳐 써야 한다. 학생 축은 별도 쿼리로 센다.
+     */
+    @Query("""
+            select new com.cenedu.backend.domain.worksheet.repository.row.CustomLearningWorksheetCountRow(
+                sa.id,
+                count(distinct w.id),
+                count(distinct case when w.type
+                        = com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType.COMPREHENSIVE_ASSESSMENT
+                    then w.id else null end),
+                max(ca.assignedAt),
+                max(ca.dueAt))
+            from WorksheetAssignment ca
+            join ca.worksheet w
+            join w.sourceAssignment sa
+            where sa.id in :sourceAssignmentIds
+              and w.origin = com.cenedu.backend.domain.worksheet.entity.enums.WorksheetOrigin.CUSTOM
+              and w.deletedAt is null
+            group by sa.id
+            """)
+    List<CustomLearningWorksheetCountRow> summarizeCustomLearningWorksheets(
+            @Param("sourceAssignmentIds") Collection<Long> sourceAssignmentIds);
+
+    /**
+     * 원본 배정 여러 개의 맞춤 학습 학생 축 집계.
+     *
+     * <p>진행 상태 파생은 {@code summarizeLearningStatus}와 같은 규칙이되 <b>맞춤 배정 자신의
+     * 마감</b>을 본다. 마감 조건을 미시작·풀이중 양쪽에 걸어야 미제출과 이중으로 세지 않는다.
+     * 채점 집계는 종합평가 학습지로만 한정한다 — 일반 학습은 채점 상태 자체가 없다.
+     */
+    @Query("""
+            select new com.cenedu.backend.domain.worksheet.repository.row.CustomLearningStudentCountRow(
+                sa.id,
+                count(distinct was.studentId),
+                coalesce(sum(case when was.status
+                        = com.cenedu.backend.global.common.enums.AssignmentStatus.NOT_STARTED
+                      and was.progressCount = 0 and ca.dueAt > :now then 1L else 0L end), 0L),
+                coalesce(sum(case when was.status
+                        = com.cenedu.backend.global.common.enums.AssignmentStatus.NOT_STARTED
+                      and was.progressCount > 0 and ca.dueAt > :now then 1L else 0L end), 0L),
+                coalesce(sum(case when was.status in (
+                        com.cenedu.backend.global.common.enums.AssignmentStatus.SUBMITTED,
+                        com.cenedu.backend.global.common.enums.AssignmentStatus.GRADED)
+                    then 1L else 0L end), 0L),
+                coalesce(sum(case when was.status
+                        = com.cenedu.backend.global.common.enums.AssignmentStatus.NOT_SUBMITTED
+                      or (was.status
+                        = com.cenedu.backend.global.common.enums.AssignmentStatus.NOT_STARTED
+                      and ca.dueAt <= :now) then 1L else 0L end), 0L),
+                coalesce(sum(case when w.type
+                        = com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType.COMPREHENSIVE_ASSESSMENT
+                      and was.gradedAt is null and was.submittedAt is not null then 1L else 0L end), 0L),
+                coalesce(sum(case when w.type
+                        = com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType.COMPREHENSIVE_ASSESSMENT
+                      and was.gradedAt is not null then 1L else 0L end), 0L))
+            from WorksheetAssignmentStudent was
+            join was.assignment ca
+            join ca.worksheet w
+            join w.sourceAssignment sa
+            where sa.id in :sourceAssignmentIds
+              and w.origin = com.cenedu.backend.domain.worksheet.entity.enums.WorksheetOrigin.CUSTOM
+              and w.deletedAt is null
+            group by sa.id
+            """)
+    List<CustomLearningStudentCountRow> summarizeCustomLearningStudents(
+            @Param("sourceAssignmentIds") Collection<Long> sourceAssignmentIds,
+            @Param("now") OffsetDateTime now);
 }

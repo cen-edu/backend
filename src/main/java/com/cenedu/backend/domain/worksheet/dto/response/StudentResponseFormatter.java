@@ -14,7 +14,7 @@ import com.cenedu.backend.global.common.enums.QuestionType;
  * 같아 그대로 재사용한다. {@code origin}은 교사용("manual")과 학생용("standard") 값이 달라
  * 재사용하지 않는다. {@code semester}는 변환하지 않고 원값을 그대로 내려보낸다.
  */
-final class StudentResponseFormatter {
+public final class StudentResponseFormatter {
 
     private StudentResponseFormatter() {
     }
@@ -24,7 +24,8 @@ final class StudentResponseFormatter {
      * {@code not-submitted}로 접는다 — DB에는 {@code NOT_SUBMITTED}로 확정되기 전이라 매 조회마다
      * 시각을 비교해 파생해야 한다.
      */
-    static String toApiStatus(AssignmentStatus status, short progressCount, OffsetDateTime dueAt) {
+    public static String toApiStatus(AssignmentStatus status, short progressCount,
+                                     OffsetDateTime dueAt) {
         return switch (status) {
             case SUBMITTED, GRADED -> "submitted";
             case NOT_SUBMITTED -> "not-submitted";

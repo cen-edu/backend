@@ -50,6 +50,14 @@ public class GradingController {
     @Operation(summary = "평가 결과 목록", description = """
             채점할 학습지 배포 목록을 배포일 최신순으로 반환한다.
             채점 상태(grading/graded/confirmed)는 컬럼이 아니라 서버가 파생한 값이다.
+
+            맞춤 학습은 최상위에 형제로 나오지 않고, 파생된 원본의 customLearning 안에
+            학생 → 차수 2단으로 들어간다. 차수는 저장 컬럼이 아니라 학습지 계보의 깊이다.
+            그래서 status 필터로 원본이 걸러지면 그 아래 맞춤도 함께 사라지고,
+            반 필터를 걸면 맞춤은 필터를 통과한 원본 아래에 그대로 남는다.
+
+            문항별 정오는 여기 없다. 행을 열 때 점수표 API(GET /{assignmentId})를 부르며,
+            맞춤은 customLearning...sessions[].assignmentId 를 그 경로에 넣으면 된다.
             """)
     public ApiResponse<GradingWorksheetListResponse> getWorksheets(
             @AuthenticationPrincipal AuthenticatedUser user,
@@ -100,9 +108,24 @@ public class GradingController {
     @PostMapping("/{assignmentId}/auto")
     @ResponseStatus(HttpStatus.ACCEPTED)
     @Operation(summary = "자동채점 실행", description = """
-            규칙 채점을 백그라운드에서 시작하고 즉시 응답한다. 결과 확인은 진행률 조회가 정본이다.
-            교사가 이미 점수를 고친 칸은 대상에서 빠지고 skippedCount 로 센다.
-            서술형(RUBRIC)은 아직 자동채점하지 않으며 FAILED 로 남는다.
+            규칙 채점과 서술형 채점을 백그라운드에서 시작하고 즉시 응답한다.
+            결과 확인은 진행률 조회가 정본이다.
+
+            대상에서 빠지는 칸(skippedCount 로 센다)
+            - 교사가 이미 점수를 고친 칸
+            - 이미 채점이 끝난 서술형 칸 — 서술형은 LLM 이 한 번만 채점하고 이후 정정은 교사 몫이다
+
+            서술형(RUBRIC)은 학생 필기 이미지를 읽어 채점 기준 항목별로 판정한다.
+            점수는 그 문항 가중치의 실제 합을 분모로 환산한다(100 고정이 아니다).
+
+            배점이 없는 학습지(일반·맞춤 학습)의 서술형은 점수 없이 판정만 남기고 GRADED 가 된다.
+            즉 gradingStatus 가 GRADED 인데 autoScore·finalScore 가 null 인 칸이 생긴다.
+
+            판정하지 못하면 FAILED 로 남고 failureReason 앞에 코드가 붙는다.
+            다시 돌려볼 값이 있는 실패  TURN_LIMIT · MALFORMED · LLM_ERROR
+            교사가 직접 채점해야 하는 것 UNJUDGEABLE · NO_RUBRIC · NO_ANSWER · NO_IMAGE
+                                        · IMAGE_STORE_UNAVAILABLE
+            FAILED 인 칸은 다시 실행하면 대상에 들어간다.
             """)
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(

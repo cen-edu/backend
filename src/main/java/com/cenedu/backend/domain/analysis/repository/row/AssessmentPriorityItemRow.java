@@ -5,6 +5,7 @@ public record AssessmentPriorityItemRow(
         Long worksheetItemId,
         int itemNumber,
         String questionTitle,
+        String questionType,
         int sourceDifficulty,
         int correctStudentCount,
         int gradedStudentCount

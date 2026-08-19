@@ -88,7 +88,7 @@ class WorksheetCommandServiceAuthoringTest {
 
     private WorksheetCreateRequest request(WorksheetItemRequest item) {
         return new WorksheetCreateRequest("AI 일반학습", "practice", "manual", 1,
-                "first", null,
+                "first", null, null,
                 List.of(new WorksheetGenSpecRequest(101L, "step", "mid", 1)),
                 List.of(item));
     }

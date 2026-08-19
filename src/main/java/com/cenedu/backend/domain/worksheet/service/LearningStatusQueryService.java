@@ -13,6 +13,7 @@ import com.cenedu.backend.domain.member.service.SchoolClassService;
 import com.cenedu.backend.domain.member.service.StudentListQueryService;
 import com.cenedu.backend.domain.problem.service.ProblemAnswerUnitService;
 import com.cenedu.backend.domain.worksheet.dto.request.LearningStatusListRequest;
+import com.cenedu.backend.domain.worksheet.dto.response.CustomLearningSummaryResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.LearningStatusAssignmentResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.LearningStatusListResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.LearningStatusStudentResponse;
@@ -27,6 +28,8 @@ import com.cenedu.backend.domain.worksheet.repository.WorksheetAssignmentReposit
 import com.cenedu.backend.domain.worksheet.repository.WorksheetAssignmentStudentRepository;
 import com.cenedu.backend.domain.worksheet.repository.WorksheetItemRepository;
 import com.cenedu.backend.domain.worksheet.repository.row.AssignmentStudentCountRow;
+import com.cenedu.backend.domain.worksheet.repository.row.CustomLearningStudentCountRow;
+import com.cenedu.backend.domain.worksheet.repository.row.CustomLearningWorksheetCountRow;
 import com.cenedu.backend.domain.worksheet.repository.row.LearningStatusAssignmentRow;
 import com.cenedu.backend.domain.worksheet.repository.row.LearningStatusSummaryRow;
 import com.cenedu.backend.global.common.BusinessException;
@@ -54,6 +57,7 @@ public class LearningStatusQueryService {
     private final SchoolClassService schoolClassService;
     private final StudentListQueryService studentListQueryService;
     private final ProblemAnswerUnitService problemAnswerUnitService;
+    private final WorksheetTotalUnitsLoader totalUnitsLoader;
 
     /** 상태 필터가 받는 값. 오타가 조용히 빈 목록으로 나가지 않게 서버가 검사한다. */
     private static final Set<String> STUDENT_STATUSES =
@@ -87,6 +91,8 @@ public class LearningStatusQueryService {
 
         Map<Long, String> classNamesByClassId = classNames(teacherId, rows);
         Map<Long, Integer> totalUnitsByWorksheetId = totalUnits(rows);
+        Map<Long, CustomLearningSummaryResponse> customSummaries =
+                customLearningSummaries(assignmentIds, now);
 
         List<LearningStatusAssignmentResponse> assignments = rows.stream()
                 .map(row -> {
@@ -97,7 +103,8 @@ public class LearningStatusQueryService {
                             isOngoing(row.dueAt(), now) ? "ongoing" : "completed",
                             totalUnitsByWorksheetId.getOrDefault(row.worksheetId(), 0),
                             counts == null ? 0 : Math.toIntExact(counts.studentCount()),
-                            counts == null ? 0L : counts.submittedCount());
+                            counts == null ? 0L : counts.submittedCount(),
+                            customSummaries.get(row.assignmentId()));
                 })
                 .toList();
 
@@ -149,42 +156,57 @@ public class LearningStatusQueryService {
      * 표시 순번 부여. <b>필터 전 전체 명단</b>을 이름순으로 세운 뒤 1부터 연속으로 준다 —
      * 필터 뒤에 매기면 같은 학생이 「전체」에서 7번, 「미제출」에서 2번으로 보인다.
      *
-     * <p>이름 정렬은 {@link Collator}(한국어)를 쓴다. {@code String.compareTo}는 유니코드
-     * 코드포인트 순이라 한글 이름 정렬이 직관과 어긋난다. 이름이 같으면 {@code studentId}
-     * 오름차순으로 안정 정렬하고, 이름이 없는 학생은 뒤로 보낸다.
+     * <p>정렬 규칙은 {@link StudentDisplayOrder}가 갖는다. 맞춤 학습 화면이 같은 번호를 써야 해서
+     * 규칙을 한 곳에 뒀다.
      */
     private List<LearningStatusStudentResponse> numbered(
             List<WorksheetAssignmentStudent> rows, Map<Long, String> namesByStudentId,
-            com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType type, OffsetDateTime dueAt
+            WorksheetType type, OffsetDateTime dueAt
     ) {
-        Collator collator = Collator.getInstance(Locale.KOREAN);
-        List<WorksheetAssignmentStudent> sorted = rows.stream()
-                .sorted(java.util.Comparator
-                        .comparing((WorksheetAssignmentStudent was) ->
-                                namesByStudentId.get(was.getStudentId()) == null)
-                        .thenComparing(was -> namesByStudentId.getOrDefault(was.getStudentId(), ""), collator)
-                        .thenComparing(WorksheetAssignmentStudent::getStudentId))
-                .toList();
+        Map<Long, WorksheetAssignmentStudent> rowByStudentId = rows.stream()
+                .collect(Collectors.toMap(WorksheetAssignmentStudent::getStudentId, row -> row));
+        List<Long> ordered = StudentDisplayOrder.order(rowByStudentId.keySet(), namesByStudentId);
 
-        List<LearningStatusStudentResponse> students = new java.util.ArrayList<>(sorted.size());
-        for (int i = 0; i < sorted.size(); i++) {
-            WorksheetAssignmentStudent was = sorted.get(i);
+        List<LearningStatusStudentResponse> students = new java.util.ArrayList<>(ordered.size());
+        for (int index = 0; index < ordered.size(); index++) {
+            Long studentId = ordered.get(index);
             students.add(LearningStatusStudentResponse.from(
-                    was, type, dueAt, namesByStudentId.get(was.getStudentId()), i + 1));
+                    rowByStudentId.get(studentId), type, dueAt,
+                    namesByStudentId.get(studentId), index + 1));
         }
         return students;
     }
 
     /** 배포 하나의 진행률 분모. 목록과 같은 규칙을 쓴다. */
     private int totalUnits(com.cenedu.backend.domain.worksheet.entity.Worksheet worksheet) {
-        List<WorksheetItem> items =
-                worksheetItemRepository.findAllByWorksheetIdOrderByDisplayOrderAsc(worksheet.getId());
-        if (worksheet.getType() == WorksheetType.COMPREHENSIVE_ASSESSMENT) {
-            return WorksheetUnitCounter.totalUnits(worksheet.getType(), items, Map.of());
+        return totalUnitsLoader.totalUnits(worksheet);
+    }
+
+    /**
+     * 맞춤 학습 요약. 배정 목록 전체에 대해 두 쿼리로 낸다 — 배정마다 부르면 목록 길이만큼 쿼리가 든다.
+     *
+     * <p>학습지 축과 학생 축을 나눠 세는 이유는 한 쿼리로 묶으면 학습지 하나가 학생 수만큼
+     * 늘어나(팬아웃) 집계마다 distinct 를 겹쳐 써야 하기 때문이다. 맞춤이 없는 배정은 두 집계 모두
+     * 그룹이 나오지 않아 맵에 없고, 응답에서 {@code null}이 된다.
+     */
+    private Map<Long, CustomLearningSummaryResponse> customLearningSummaries(
+            List<Long> assignmentIds, OffsetDateTime now
+    ) {
+        Map<Long, CustomLearningWorksheetCountRow> worksheetCounts = worksheetAssignmentRepository
+                .summarizeCustomLearningWorksheets(assignmentIds).stream()
+                .collect(Collectors.toMap(CustomLearningWorksheetCountRow::sourceAssignmentId, row -> row));
+        if (worksheetCounts.isEmpty()) {
+            return Map.of();
         }
-        List<Long> questionIds = items.stream().map(WorksheetItem::getQuestionId).distinct().toList();
-        return WorksheetUnitCounter.totalUnits(
-                worksheet.getType(), items, problemAnswerUnitService.countByQuestionIds(questionIds));
+        Map<Long, CustomLearningStudentCountRow> studentCounts = worksheetAssignmentRepository
+                .summarizeCustomLearningStudents(worksheetCounts.keySet(), now).stream()
+                .collect(Collectors.toMap(CustomLearningStudentCountRow::sourceAssignmentId, row -> row));
+
+        return worksheetCounts.values().stream()
+                .collect(Collectors.toMap(
+                        CustomLearningWorksheetCountRow::sourceAssignmentId,
+                        row -> CustomLearningSummaryResponse.from(
+                                row, studentCounts.get(row.sourceAssignmentId()))));
     }
 
     /** 반 이름은 ID를 모아 한 번에 읽는다. 배포마다 부르면 목록 길이만큼 쿼리가 는다. */
@@ -197,40 +219,13 @@ public class LearningStatusQueryService {
         return classIds.isEmpty() ? Map.of() : schoolClassService.getClassNamesByIds(teacherId, classIds);
     }
 
-    /**
-     * 학습지별 진행률 분모. 종합평가는 문항 수 집계 한 번이면 되고, 일반·맞춤 학습만 문항을 읽어
-     * 칸 수를 센다 — 배점형에만 필요한 조회를 전체에 걸지 않는다.
-     */
+    /** 학습지별 진행률 분모. 계산 규칙과 배치 조회는 {@link WorksheetTotalUnitsLoader}가 갖는다. */
     private Map<Long, Integer> totalUnits(List<LearningStatusAssignmentRow> rows) {
-        List<Long> assessmentWorksheetIds = worksheetIds(rows, WorksheetType.COMPREHENSIVE_ASSESSMENT);
-        List<Long> practiceWorksheetIds = worksheetIds(rows, WorksheetType.GENERAL_LEARNING);
-
-        Map<Long, Integer> totalUnitsByWorksheetId = new java.util.HashMap<>();
-        if (!assessmentWorksheetIds.isEmpty()) {
-            worksheetItemRepository.countByWorksheetIdIn(assessmentWorksheetIds).forEach(
-                    row -> totalUnitsByWorksheetId.put(row.worksheetId(), Math.toIntExact(row.count())));
-        }
-        if (practiceWorksheetIds.isEmpty()) {
-            return totalUnitsByWorksheetId;
-        }
-
-        Map<Long, List<WorksheetItem>> itemsByWorksheetId = worksheetItemRepository
-                .findByWorksheetIdInOrderByWorksheetIdAscDisplayOrderAsc(practiceWorksheetIds).stream()
-                .collect(Collectors.groupingBy(item -> item.getWorksheet().getId()));
-        List<Long> questionIds = itemsByWorksheetId.values().stream()
-                .flatMap(List::stream)
-                .map(WorksheetItem::getQuestionId)
-                .distinct()
-                .toList();
-        Map<Long, Long> answerUnitCountByQuestionId = problemAnswerUnitService.countByQuestionIds(questionIds);
-
-        for (Long worksheetId : practiceWorksheetIds) {
-            totalUnitsByWorksheetId.put(worksheetId, WorksheetUnitCounter.totalUnits(
-                    WorksheetType.GENERAL_LEARNING,
-                    itemsByWorksheetId.getOrDefault(worksheetId, List.of()),
-                    answerUnitCountByQuestionId));
-        }
-        return totalUnitsByWorksheetId;
+        return totalUnitsLoader.byWorksheetId(rows.stream()
+                .collect(Collectors.toMap(
+                        LearningStatusAssignmentRow::worksheetId,
+                        LearningStatusAssignmentRow::type,
+                        (left, right) -> left)));
     }
 
     private List<Long> worksheetIds(List<LearningStatusAssignmentRow> rows, WorksheetType type) {

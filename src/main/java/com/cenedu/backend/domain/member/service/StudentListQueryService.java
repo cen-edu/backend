@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 
 import com.cenedu.backend.domain.member.dto.request.StudentListRequest;
 import com.cenedu.backend.domain.member.dto.request.StudentSort;
+import com.cenedu.backend.domain.member.dto.response.StudentDetailResponse;
 import com.cenedu.backend.domain.member.dto.response.StudentListItemResponse;
 import com.cenedu.backend.domain.member.dto.response.StudentListResponse;
 import com.cenedu.backend.domain.member.entity.MemberClassEnrollment;
@@ -14,6 +15,8 @@ import com.cenedu.backend.domain.member.entity.MemberStudentProfile;
 import com.cenedu.backend.domain.member.repository.MemberClassEnrollmentRepository;
 import com.cenedu.backend.domain.member.repository.MemberStudentProfileRepository;
 import com.cenedu.backend.domain.member.repository.MemberStudentProfileSpecifications;
+import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.ErrorCode;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -56,6 +59,21 @@ public class StudentListQueryService {
                 .toList();
 
         return StudentListResponse.from(studentPage, students);
+    }
+
+    /** 교사가 소유한 활성 학생의 기본 정보와 활성 반 정보를 반환한다. */
+    public StudentDetailResponse getStudentDetail(long teacherId, long studentId) {
+        MemberStudentProfile profile = studentProfileRepository.findByUserId(studentId)
+                .filter(candidate -> candidate.getUser().getDeletedAt() == null)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_FOUND));
+
+        if (!profile.getOwnerTeacher().getId().equals(teacherId)) {
+            throw new BusinessException(ErrorCode.MEMBER_STUDENT_NOT_OWNED);
+        }
+
+        List<MemberClassEnrollment> enrollments = enrollmentRepository
+                .findAllActiveByTeacherIdAndStudentIdIn(teacherId, List.of(studentId));
+        return StudentDetailResponse.from(profile, enrollments);
     }
 
     /** 학생 ID 목록으로 이름을 반환한다. 존재하지 않는 ID는 결과에서 빠진다. */

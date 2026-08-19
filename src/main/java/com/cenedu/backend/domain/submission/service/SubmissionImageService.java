@@ -102,6 +102,26 @@ public class SubmissionImageService {
         return urlsByAnswerUnitId;
     }
 
+    /**
+     * 서술형 채점 파이프라인이 칸 하나를 LLM 에 넘기기 직전에 발급하는 URL(D4).
+     *
+     * <p><b>권한을 검사하지 않는다.</b> 검사할 주체가 없어서다 — 이 경로는 사람이 부르는 요청이
+     * 아니라 배치가 도는 시스템 트리거고, 교사 소유권은 채점을 시작한
+     * {@code GradingExecutionService.start} 가 이미 확인했다. 사람이 부르는 두 메서드는
+     * {@code validateTarget} 을 그대로 통과하므로 이 메서드가 그 검사를 무르지 않는다.
+     *
+     * <p><b>미리 모아 발급하지 않는다.</b> 칸마다 채점 직전에 만든다. 그래서 이 URL 은 한 칸이
+     * 채점되는 동안만 살면 되고, 배치 전체 소요와는 무관하다 — 만료는 화면용과 별개로
+     * {@code app.storage.s3.grading-pipeline-url-expiration} 이 정한다.
+     */
+    public String createGradingPipelineUrl(long assignmentStudentId, long answerUnitId) {
+        return imageStorageService.createGetUrl(
+                s3Properties.requiredAnswerBucket(),
+                answerKey(assignmentStudentId, answerUnitId),
+                s3Properties.gradingPipelineUrlExpiration()
+        );
+    }
+
     private void validateTarget(long memberId, UserRole role, long assignmentStudentId,
                                 long answerUnitId) {
         long worksheetId = worksheetImageAccessService.getAuthorizedWorksheetId(
