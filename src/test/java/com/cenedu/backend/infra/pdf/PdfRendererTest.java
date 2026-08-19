@@ -23,14 +23,13 @@ class PdfRendererTest {
     private PdfRenderer renderer;
 
     @BeforeEach
-    void setUp() throws IOException {
+    void setUp() {
         renderer = new PdfRenderer();
-        renderer.extractFonts();
     }
 
     @AfterEach
     void tearDown() {
-        renderer.cleanUpFonts();
+        renderer.close();
     }
 
     @Test

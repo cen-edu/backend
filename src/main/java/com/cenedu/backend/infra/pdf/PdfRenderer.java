@@ -8,7 +8,6 @@ import java.nio.file.Path;
 import java.util.List;
 
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +25,7 @@ import org.springframework.stereotype.Component;
  * 눈으로 보기 전까지 알아채기 어렵다.
  */
 @Component
-public class PdfRenderer {
+public class PdfRenderer implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(PdfRenderer.class);
 
@@ -45,26 +44,31 @@ public class PdfRenderer {
      * 한 번 꺼내 두고 재사용한다. 요청마다 꺼내면 20MB 짜리 보고서를 여러 명이 동시에 뽑을 때
      * 디스크와 GC 를 함께 낭비한다.
      */
-    private Path fontDirectory;
+    private final Path fontDirectory;
 
-    @PostConstruct
-    void extractFonts() throws IOException {
-        fontDirectory = Files.createTempDirectory("cen-edu-pdf-fonts");
-        for (FontFace font : FONTS) {
-            Path target = fontDirectory.resolve(font.fileName());
-            try (InputStream in = new ClassPathResource(FONT_DIR + font.fileName())
-                    .getInputStream()) {
-                Files.copy(in, target);
+    /**
+     * 폰트를 꺼내며 만들어진다. 폰트를 읽지 못하면 <b>기동이 실패한다</b> — 첫 PDF 요청에서야
+     * 알게 되는 것보다 낫다. 한글 폰트 없이 뜨면 그 뒤 모든 보고서가 빈칸으로 나온다.
+     */
+    public PdfRenderer() {
+        try {
+            fontDirectory = Files.createTempDirectory("cen-edu-pdf-fonts");
+            for (FontFace font : FONTS) {
+                Path target = fontDirectory.resolve(font.fileName());
+                try (InputStream in = new ClassPathResource(FONT_DIR + font.fileName())
+                        .getInputStream()) {
+                    Files.copy(in, target);
+                }
             }
+        } catch (IOException e) {
+            throw new PdfRenderException("PDF 폰트를 준비하지 못했습니다.", e);
         }
         log.info("PDF 폰트 준비 완료 — {}개, 경로={}", FONTS.size(), fontDirectory);
     }
 
+    @Override
     @PreDestroy
-    void cleanUpFonts() {
-        if (fontDirectory == null) {
-            return;
-        }
+    public void close() {
         try (var paths = Files.walk(fontDirectory)) {
             paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
                 try {

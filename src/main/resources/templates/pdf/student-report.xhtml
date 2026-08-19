@@ -1,0 +1,178 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8"/>
+    <th:block th:replace="~{common-style :: style}"/>
+</head>
+<body>
+
+<div class="doc-title">학생 분석 보고서</div>
+<div class="doc-meta">
+    <span th:text="${view.summary.className}">1반</span> ·
+    <span th:text="${view.summary.worksheetTitle}">학습지</span> ·
+    <span th:text="${view.summary.studentName}">학생</span> ·
+    <span th:text="${view.generatedAt}">2026-08-19</span>
+</div>
+
+<h2>수행 요약</h2>
+<table>
+    <thead>
+    <tr>
+        <th>전체 문항</th>
+        <th>채점 완료</th>
+        <th>정답</th>
+        <th>성취율</th>
+        <th>학급 평균</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+        <td th:text="${view.summary.totalItemCount}">0</td>
+        <td th:text="${view.summary.gradedItemCount}">0</td>
+        <td th:text="${view.summary.correctItemCount}">0</td>
+        <td th:text="${view.summary.performanceRate != null
+                      ? view.summary.performanceRate + '%' : '-'}">-</td>
+        <td th:text="${view.summary.classPerformanceRate != null
+                      ? view.summary.classPerformanceRate + '%' : '-'}">-</td>
+    </tr>
+    </tbody>
+</table>
+
+<h2 th:text="${view.comparisonTitle}">평가 영역별 성취</h2>
+<div th:if="${view.comparisonBars.isEmpty()}" class="empty">표시할 결과가 없습니다.</div>
+<div th:each="bar : ${view.comparisonBars}" class="bar-row">
+    <span class="bar-label" th:text="${bar.label}">영역</span>
+    <span class="bar-track">
+        <span class="bar" th:style="'width:' + ${bar.studentWidth} + '%'"></span>
+    </span>
+    <span class="bar-value" th:text="${bar.studentRate != null ? bar.studentRate + '%' : '-'}">-</span>
+    <span class="bar-note">
+        학급 <span th:text="${bar.classRate != null ? bar.classRate + '%' : '-'}">-</span>
+        · <span th:text="${bar.itemCount}">0</span>문항
+        <span th:if="${bar.referenceOnly}">· 참고</span>
+    </span>
+</div>
+
+<h2>난이도별 성취</h2>
+<div th:if="${view.difficultyBars.isEmpty()}" class="empty">표시할 결과가 없습니다.</div>
+<div th:each="bar : ${view.difficultyBars}" class="bar-row">
+    <span class="bar-label" th:text="${bar.label}">난이도</span>
+    <span class="bar-track">
+        <span class="bar" th:style="'width:' + ${bar.studentWidth} + '%'"></span>
+    </span>
+    <span class="bar-value" th:text="${bar.studentRate != null ? bar.studentRate + '%' : '-'}">-</span>
+    <span class="bar-note">
+        학급 <span th:text="${bar.classRate != null ? bar.classRate + '%' : '-'}">-</span>
+        · <span th:text="${bar.itemCount}">0</span>문항
+        <span th:if="${bar.referenceOnly}">· 참고</span>
+    </span>
+</div>
+
+<h2>취약 소분류</h2>
+<div th:if="${view.summary.weaknessSubcategories.isEmpty()}" class="empty">
+    정답률 60% 미만인 소분류가 없습니다.
+</div>
+<table th:unless="${view.summary.weaknessSubcategories.isEmpty()}">
+    <thead>
+    <tr>
+        <th class="left">소분류</th>
+        <th>오답</th>
+        <th>채점 완료</th>
+        <th>정답률</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="weak : ${view.summary.weaknessSubcategories}">
+        <td class="left" th:text="${weak.subcategoryName}">소분류</td>
+        <td th:text="${weak.incorrectCount}">0</td>
+        <td th:text="${weak.gradedCount}">0</td>
+        <td th:text="${weak.accuracyRate != null ? weak.accuracyRate + '%' : '-'}">-</td>
+    </tr>
+    </tbody>
+</table>
+
+<h2>AI 분석</h2>
+<div th:if="${!view.hasAiMessages()}" class="ai-pending">
+    AI 분석 문장이 아직 생성되지 않았습니다. 점수와 채점 결과는 위 내용 그대로입니다.
+</div>
+<div th:if="${view.hasAiMessages()}">
+    <p th:text="${view.report.summaryMessage}">요약</p>
+    <p th:if="${view.report.overallObservation != null}"
+       th:text="${view.report.overallObservation}">관찰</p>
+</div>
+
+<h2>문항별 결과</h2>
+<table>
+    <thead>
+    <tr>
+        <th>번호</th>
+        <th class="left">문항</th>
+        <th>영역</th>
+        <th>난이도</th>
+        <th>결과</th>
+        <th>점수</th>
+        <th>학급 정답률</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="item : ${view.items}">
+        <td th:text="${item.itemNumber}">1</td>
+        <td class="left" th:text="${item.questionTitle}">문항</td>
+        <td th:text="${item.evaluationArea != null ? item.evaluationArea : '-'}">-</td>
+        <td th:text="${item.difficultyBand}">중</td>
+        <td th:text="${item.resultType}">정답</td>
+        <td th:text="${item.score != null ? item.score + ' / ' + item.maxScore : '-'}">-</td>
+        <td th:text="${item.classAccuracyRate != null
+                      ? item.classAccuracyRate + '%' : '-'}">-</td>
+    </tr>
+    </tbody>
+</table>
+
+<h2>문항별 지도 참고</h2>
+<div th:if="${view.hasAiMessages()}">
+    <div th:each="item : ${view.items}" th:if="${item.hasAiMessage()}" class="ai-block">
+        <h3><span th:text="${item.itemNumber}">1</span>번 ·
+            <span th:text="${item.questionTitle}">문항</span></h3>
+        <p><span class="ai-label">확인된 점</span> —
+            <span th:text="${item.observation}">관찰</span></p>
+        <p><span class="ai-label">학습 포인트</span> —
+            <span th:text="${item.learningPoint}">학습</span></p>
+        <p><span class="ai-label">다시 풀 때</span> —
+            <span th:text="${item.retryGuide}">안내</span></p>
+    </div>
+</div>
+<div th:if="${!view.hasAiMessages()}" class="ai-pending">
+    AI 분석 문장이 아직 생성되지 않았습니다.
+</div>
+
+<h2>맞춤 학습</h2>
+<div th:if="${view.customSessions.isEmpty()}" class="empty">아직 맞춤 학습 회차가 없습니다.</div>
+<div th:each="session : ${view.customSessions}">
+    <h3>
+        <span th:text="${#temporals.format(session.assignedAt, 'yyyy-MM-dd')}">날짜</span>
+        · <span th:text="${session.overallResolutionStatus}">상태</span>
+        · <span th:text="${session.completedItemCount}">0</span>/<span
+            th:text="${session.totalItemCount}">0</span>문항
+    </h3>
+    <table>
+        <thead>
+        <tr>
+            <th class="left">소분류</th>
+            <th>상태</th>
+            <th>난이도</th>
+            <th>정답률</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="sub : ${session.subcategories}">
+            <td class="left" th:text="${sub.subcategoryName}">소분류</td>
+            <td th:text="${sub.resolutionStatus}">상태</td>
+            <td th:text="${sub.currentDifficultyBand != null
+                          ? sub.currentDifficultyBand : '-'}">-</td>
+            <td th:text="${sub.accuracyRate != null ? sub.accuracyRate + '%' : '-'}">-</td>
+        </tr>
+        </tbody>
+    </table>
+</div>
+
+</body>
+</html>

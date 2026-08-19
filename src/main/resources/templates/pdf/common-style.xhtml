@@ -1,0 +1,100 @@
+<!--
+  분석 보고서 PDF 공통 스타일.
+
+  화면의 사본이 아니라 인쇄용 문서다. 그래서 화면에는 없던 요구가 들어간다.
+  - 표가 페이지 경계에서 쪼개지지 않게 하고, 다음 장에도 표 머리글을 반복한다
+  - 학교 프린터로 흑백 출력해도 읽히도록 색상 대신 명도로 구분하고 숫자를 함께 적는다
+  - 막대는 CSS 로 그린다. openhtmltopdf 는 자바스크립트를 실행하지 않아 화면의 차트를
+    가져올 수 없고, width 비율만으로 충분히 같은 모양이 나온다
+-->
+<th:block xmlns:th="http://www.thymeleaf.org" th:fragment="style">
+<style>
+    @page {
+        size: A4;
+        margin: 18mm 16mm 20mm 16mm;
+        @bottom-center {
+            content: counter(page) " / " counter(pages);
+            font-family: "Pretendard";
+            font-size: 8.5pt;
+            color: #888;
+        }
+    }
+
+    body {
+        font-family: "Pretendard";
+        font-size: 10.5pt;
+        color: #1a1a1a;
+        line-height: 1.55;
+    }
+
+    /* ===== 문서 머리 ===== */
+    .doc-title { font-size: 16pt; font-weight: 700; margin: 0 0 1.5mm 0; }
+    .doc-meta { color: #666; font-size: 9pt; margin-bottom: 7mm; }
+
+    /* ===== 구역 ===== */
+    h2 {
+        font-size: 12pt;
+        font-weight: 700;
+        border-bottom: 1px solid #333;
+        padding-bottom: 1.5mm;
+        margin: 8mm 0 3mm 0;
+        page-break-after: avoid;
+    }
+    h3 {
+        font-size: 10.5pt;
+        font-weight: 700;
+        margin: 5mm 0 2mm 0;
+        page-break-after: avoid;
+    }
+    .empty { color: #888; font-size: 9.5pt; }
+
+    /* ===== 표 =====
+       thead 를 table-header-group 으로 두면 표가 여러 장에 걸칠 때 머리글이 반복된다.
+       tr 을 avoid 로 두어 한 행이 페이지 사이에서 잘리지 않게 한다. */
+    table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; }
+    th, td { border: 1px solid #bbb; padding: 1.8mm 2mm; text-align: center; }
+    th { background-color: #eee; font-weight: 700; }
+    td.left, th.left { text-align: left; }
+    td.num { text-align: right; }
+
+    /* ===== 막대 =====
+       값을 막대 옆에 그대로 적는다. 화면은 대략을 보면 되지만 인쇄물은 값이 남아야 한다. */
+    .bar-row { margin-bottom: 2.2mm; }
+    .bar-label { display: inline-block; width: 30mm; font-size: 9.5pt; }
+    .bar-track {
+        display: inline-block;
+        width: 78mm;
+        height: 4.5mm;
+        background-color: #eee;
+        vertical-align: middle;
+    }
+    .bar { height: 4.5mm; background-color: #555; }
+    .bar-compare { background-color: #aaa; }
+    .bar-value { display: inline-block; width: 18mm; text-align: right; font-size: 9.5pt; }
+    .bar-note { color: #888; font-size: 8.5pt; }
+
+    /* ===== 히트맵 =====
+       색상 계열이 아니라 명도로 나눈다. 흑백 출력에서 색은 전부 회색으로 뭉개진다. */
+    .heat-none { background-color: #ffffff; }
+    .heat-low { background-color: #dddddd; }
+    .heat-mid { background-color: #bbbbbb; }
+    .heat-high { background-color: #999999; }
+
+    /* ===== 결과 표시 ===== */
+    .tag { font-size: 8.5pt; padding: 0.4mm 1.5mm; border: 1px solid #888; }
+    .correct { font-weight: 700; }
+    .incorrect { color: #444; }
+
+    /* ===== AI 문장 ===== */
+    .ai-block { margin-bottom: 3mm; page-break-inside: avoid; }
+    .ai-label { font-weight: 700; }
+    .ai-pending {
+        color: #888;
+        font-size: 9.5pt;
+        border: 1px dashed #bbb;
+        padding: 3mm;
+    }
+</style>
+</th:block>
