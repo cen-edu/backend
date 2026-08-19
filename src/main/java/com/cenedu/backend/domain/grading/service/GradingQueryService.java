@@ -436,7 +436,7 @@ public class GradingQueryService {
     }
 
     /**
-     * 필기 이미지 URL. 이미지를 실제로 올린 칸만 요청한다 — 없는 칸까지 URL 을 만들면 만료 10분짜리
+     * 필기 이미지 URL. 이미지를 실제로 올린 칸만 요청한다 — 없는 칸까지 URL 을 만들면 만료 있는
      * 서명이 헛돌고 권한 검증만 늘어난다.
      */
     private Map<Long, String> createHandwritingUrls(
