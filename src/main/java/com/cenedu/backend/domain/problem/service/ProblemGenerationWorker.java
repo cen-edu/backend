@@ -69,7 +69,9 @@ public class ProblemGenerationWorker {
         int attempt = 0;
         while (true) {
             ProblemGenerationCommand attemptCommand = commandForAttempt(workItem.command(), attempt);
-            if (semanticReferenceEnricher != null) attemptCommand = semanticReferenceEnricher.enrich(attemptCommand);
+            if (semanticReferenceEnricher != null) {
+                attemptCommand = semanticReferenceEnricher.enrichWithStatus(attemptCommand).command();
+            }
             ProblemCandidateDraft candidate;
             try (ProblemAiConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire()) {
                 candidate = generationPort().generate(attemptCommand);

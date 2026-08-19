@@ -59,4 +59,24 @@ class ProblemSemanticReferenceEnricherTest {
         assertThat(enriched.references().get(2).semanticModel()).isNull();
         verify(service, times(2)).ensureQuestionSemantic(anyLong(), any(), any());
     }
+
+    @Test
+    void origin_실패는_unsupported_상태로_노출한다() {
+        var service = mock(ProblemSemanticExtractionService.class);
+        var origin = new GenerationReference(GenerationReferenceRole.ORIGIN, 41L,
+                ProblemSnapshotFixtures.shortInput());
+        when(service.ensureQuestionSemantic(anyLong(), any(), any())).thenReturn(
+                new SemanticExtractionResult(SemanticExtractionStatus.UNSUPPORTED, null, List.of("unsupported")));
+        var command = new ProblemGenerationCommand(UUID.randomUUID(), null,
+                GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
+                new GenerationSpecification(com.cenedu.backend.global.common.enums.QuestionType.SHORT_INPUT,
+                        "mid", null, List.of()),
+                new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L,
+                        "수와 연산", "사칙연산", "덧셈"), List.of(origin), List.of());
+
+        var result = new ProblemSemanticReferenceEnricher(service).enrichWithStatus(command);
+
+        assertThat(result.unsupportedOrigin()).isTrue();
+        assertThat(result.command().references().getFirst().semanticModel()).isNull();
+    }
 }
