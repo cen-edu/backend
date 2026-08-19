@@ -7,15 +7,24 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.MapperFeature;
+import tools.jackson.databind.SerializationFeature;
 
 /** Converts normalized semantic contracts to reproducible JSON documents. */
 public final class ProblemSemanticDocumentCodec {
     private final ObjectMapper mapper;
 
-    public ProblemSemanticDocumentCodec(ObjectMapper mapper) { this.mapper = mapper; }
+    public ProblemSemanticDocumentCodec(ObjectMapper mapper) {
+        this.mapper = mapper.rebuild()
+                .configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
+                .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+                .configure(SerializationFeature.INDENT_OUTPUT, false)
+                .build();
+    }
 
     public SemanticModelDocument semanticModel(ProblemSemanticModelV1 model) {
-        return new SemanticModelDocument(model.schemaVersion(), write(model), hash(write(model)));
+        String json = write(model);
+        return new SemanticModelDocument(model.schemaVersion(), json, hash(json));
     }
 
     public RenderSpecDocument renderSpec(DiagramSpecV1 spec, String rendererVersion) {

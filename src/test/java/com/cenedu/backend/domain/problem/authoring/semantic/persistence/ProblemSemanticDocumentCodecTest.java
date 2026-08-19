@@ -19,4 +19,15 @@ class ProblemSemanticDocumentCodecTest {
         assertThat(second.sha256()).matches("[0-9a-f]{64}").isEqualTo(first.sha256());
         assertThat(codec.readSemanticModel(first.json()).schemaVersion()).isEqualTo(1);
     }
+
+    @Test void renderSpecRoundTripsPolymorphicDiagramSpec() {
+        var spec = new com.cenedu.backend.domain.problem.authoring.diagram.NumberLineDiagramSpecV1(1, "A",
+                com.cenedu.backend.domain.problem.authoring.diagram.DiagramKind.NUMBER_LINE,
+                new com.cenedu.backend.domain.problem.authoring.diagram.DiagramViewport(320, 120, 8),
+                new com.cenedu.backend.domain.problem.authoring.diagram.DiagramStyle("#000", "#FFF", "#F00", 1, "sans", 12),
+                "MIN", "MAX", "STEP", List.of(), List.of(), true, true);
+        var codec = new ProblemSemanticDocumentCodec(new ObjectMapper());
+        var document = codec.renderSpec(spec, "semantic-svg-v1");
+        assertThat(codec.readRenderSpec(document.json())).isInstanceOf(com.cenedu.backend.domain.problem.authoring.diagram.NumberLineDiagramSpecV1.class);
+    }
 }

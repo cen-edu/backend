@@ -189,6 +189,9 @@ public class ProblemQuestion {
 
     public void attachSemanticModel(SemanticModelDocument document) {
         if (document == null) throw new IllegalArgumentException("semantic model document가 필요합니다.");
+        if (semanticModelHash != null && !semanticModelHash.equals(document.sha256())) {
+            throw new IllegalStateException("semantic model hash를 변경할 수 없습니다.");
+        }
         semanticModelSchemaVersion = (short) document.schemaVersion(); semanticModel = document.json();
         semanticModelHash = document.sha256(); semanticModelStatus = SemanticModelStatus.READY;
     }
