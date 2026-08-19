@@ -192,9 +192,16 @@ public class CustomLearningQueryRepository {
                             SELECT result.custom_assignment_id,
                                    result.sub_unit_id,
                                    unit.name AS subcategory_name,
+                                   -- 현재 난이도를 뜻하는 것은 유사 문항뿐이다. 동일 문항은 과거
+                                   -- 난이도를 그대로 들고 오고 응용 문항은 상 고정이라, 세 단계를
+                                   -- 함께 세면 난이도가 섞여 항상 NULL 이 된다.
                                    CASE
-                                       WHEN COUNT(DISTINCT result.difficulty) = 1
-                                           THEN MAX(result.difficulty)
+                                       WHEN COUNT(DISTINCT result.difficulty) FILTER (
+                                           WHERE result.custom_stage = 'SIMILAR'
+                                       ) = 1
+                                           THEN MAX(result.difficulty) FILTER (
+                                               WHERE result.custom_stage = 'SIMILAR'
+                                           )
                                        ELSE NULL
                                    END AS current_difficulty,
                                    COUNT(*) AS total_item_count,
