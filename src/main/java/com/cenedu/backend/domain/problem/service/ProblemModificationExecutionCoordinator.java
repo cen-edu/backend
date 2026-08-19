@@ -8,6 +8,7 @@ import com.cenedu.backend.domain.problem.authoring.edit.ReplacementSourcePolicy;
 import com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemModificationExecutionResult;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
+import com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionStatus;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringSessionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringVersionRepository;
 import org.springframework.stereotype.Component;
@@ -27,6 +28,7 @@ public class ProblemModificationExecutionCoordinator {
     private final TransactionTemplate transactionTemplate;
     private ProblemSemanticModificationService semanticModificationService;
     private ProblemStructuralRegenerationService structuralRegenerationService;
+    private ProblemSemanticExtractionService semanticExtractionService;
     private ProblemTeacherDecisionEventService decisionEventService;
 
     public ProblemModificationExecutionCoordinator(ProblemModificationWorker modificationWorker,
@@ -61,6 +63,12 @@ public class ProblemModificationExecutionCoordinator {
         this.structuralRegenerationService = service;
     }
 
+    /** semantic model이 없는 기존 Version의 lazy extraction 경계를 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSemanticExtractionService(ProblemSemanticExtractionService service) {
+        this.semanticExtractionService = service;
+    }
+
     /** RESTORE는 AI 호출 없이 즉시 전환하고 나머지는 수정 Worker에 위임한다. */
     public Object execute(long teacherId, ProblemEditExecutionPlan plan,
                           com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 baseSnapshot) {
@@ -79,6 +87,19 @@ public class ProblemModificationExecutionCoordinator {
                     .findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
                     .orElseThrow(() -> new com.cenedu.backend.global.common.BusinessException(
                         com.cenedu.backend.global.common.ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
+            if (baseVersion.getSemanticModel() == null && semanticExtractionService != null) {
+                var extraction = semanticExtractionService.ensureVersionSemantic(
+                        teacherId, plan.sessionId(), baseVersion.getId(), null);
+                if (extraction.status() == SemanticExtractionStatus.EXTRACTED) {
+                    baseVersion = versionRepository.findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
+                            .orElseThrow(() -> new com.cenedu.backend.global.common.BusinessException(
+                                    com.cenedu.backend.global.common.ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
+                } else if (plan.instructions() != null && !plan.instructions().isEmpty()) {
+                    return modificationWorker.execute(teacherId,
+                            new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
+                                    plan.requestId(), plan, baseSnapshot, null));
+                }
+            }
             if (plan.semanticPatch().mode() == com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode.STRUCTURAL_REGENERATION) {
                 if (structuralRegenerationService == null)
                     throw new com.cenedu.backend.global.common.BusinessException(
