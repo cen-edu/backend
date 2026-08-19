@@ -26,8 +26,7 @@ public class ProblemReferenceJdbcRepository {
                     FROM problem_search_index
                     WHERE index_status = 'READY' AND deleted = false
                       AND curriculum_revision = :curriculumRevision AND school_level = :schoolLevel AND grade = :grade
-                      AND ((:achievementStandardId IS NOT NULL AND achievement_standard_id = :achievementStandardId)
-                        OR (:achievementStandardId IS NULL AND sub_unit_id = :subUnitId))
+                      AND %s
                       AND difficulty IN (:allowedDifficulties)
                       AND (:allowCrossType OR question_type = :questionType)
                 """ + exclusion + """
@@ -38,10 +37,18 @@ public class ProblemReferenceJdbcRepository {
                 """;
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("queryVector", queryVectorLiteral)
                 .addValue("curriculumRevision", query.curriculum().curriculumRevision()).addValue("schoolLevel", query.curriculum().schoolLevel())
-                .addValue("grade", query.curriculum().grade()).addValue("achievementStandardId", query.curriculum().achievementStandardId())
+                .addValue("grade", query.curriculum().grade())
                 .addValue("subUnitId", query.curriculum().subUnitId()).addValue("allowedDifficulties", List.of("low", "mid", "high"))
                 .addValue("allowCrossType", query.purpose().name().equals("PERSONALIZED_APPLICATION"))
                 .addValue("questionType", query.questionType().name()).addValue("candidateLimit", query.candidateLimit());
+        String scopeCondition;
+        if (query.curriculum().achievementStandardId() == null) {
+            scopeCondition = "sub_unit_id = :subUnitId";
+        } else {
+            scopeCondition = "achievement_standard_id = :achievementStandardId";
+            params.addValue("achievementStandardId", query.curriculum().achievementStandardId());
+        }
+        sql = sql.formatted(scopeCondition);
         if (hasExcluded) params.addValue("excludedQuestionIds", query.excludedQuestionIds());
         return jdbc.query(sql, params, (rs, row) -> {
             try {

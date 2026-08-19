@@ -11,6 +11,7 @@ import com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenc
 import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceQuery;
 import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceRetrievalPort;
 import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemRetrievalTracePort;
+import com.cenedu.backend.domain.problem.authoring.retrieval.RetrievedProblemReference;
 import com.cenedu.backend.domain.problem.config.ProblemRagProperties;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationPlan;
@@ -22,10 +23,13 @@ import com.cenedu.backend.domain.problem.authoring.snapshot.BankSnapshotResult;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** 문제은행을 먼저 채우고 부족한 슬롯만 AI 명령으로 만드는 계획을 계산한다. */
 @Service
 public class ProblemGenerationPlanningService {
+    private static final Logger log = LoggerFactory.getLogger(ProblemGenerationPlanningService.class);
     private final ProblemQuestionSelector selector;
     private final ProblemBankSnapshotQueryService snapshotQueryService;
     private final ObjectProvider<ProblemReferenceRetrievalPort> retrievalPort;
@@ -92,6 +96,8 @@ public class ProblemGenerationPlanningService {
         boolean enabled = ragProperties != null && ragProperties.enabled();
         ProblemReferenceRetrievalPort port = !enabled || retrievalPort == null
                 ? null : retrievalPort.getIfAvailable();
+        log.info("문제 Retrieval 경계 — enabled={} providerPresent={} purpose={} subUnitId={} excludedCount={}",
+                enabled, port != null, requirement.purpose(), requirement.subUnitId(), excludedQuestionIds.size());
         UUID retrievalRequestId = enabled && port != null ? UUID.randomUUID() : null;
         List<GenerationReference> references = new ArrayList<>(requirement.references());
         if (retrievalRequestId != null) {
@@ -106,10 +112,14 @@ public class ProblemGenerationPlanningService {
         ProblemReferenceRetrievalPort port = retrievalPort.getIfAvailable();
         if (port == null) return List.of();
         try {
-            return port.retrieve(createRetrievalQuery(requirement, retrievalRequestId, excludedQuestionIds)).stream()
+            List<RetrievedProblemReference> retrieved = port.retrieve(createRetrievalQuery(requirement, retrievalRequestId, excludedQuestionIds));
+            log.info("문제 Retrieval 결과 — requestId={} candidateReferenceCount={}", retrievalRequestId, retrieved.size());
+            return retrieved.stream()
                     .map(reference -> new GenerationReference(GenerationReferenceRole.EXAMPLE,
                             reference.questionId(), reference.snapshot())).toList();
         } catch (RuntimeException exception) {
+            log.warn("문제 Retrieval 실패 — requestId={} exceptionType={} message={}",
+                    retrievalRequestId, exception.getClass().getSimpleName(), exception.getMessage());
             if (tracePort != null && tracePort.getIfAvailable() != null) {
                 tracePort.getIfAvailable().recordFallback(
                         createRetrievalQuery(requirement, retrievalRequestId, excludedQuestionIds),
