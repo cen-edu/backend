@@ -27,6 +27,7 @@ import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
 import com.cenedu.backend.domain.submission.entity.SubmissionAnswer;
 import com.cenedu.backend.domain.submission.entity.enums.GradingStatus;
 import com.cenedu.backend.domain.submission.repository.SubmissionAnswerRepository;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentChoiceResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentContentBlockResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultAnswerUnitResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultChatContextResponse;
@@ -35,6 +36,8 @@ import com.cenedu.backend.domain.worksheet.dto.response.StudentResultExplanation
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultItemResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultStepResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentSegmentResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentStepResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentRubricItemResponse;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignmentStudent;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetItem;
@@ -118,8 +121,11 @@ public class StudentResultQueryService {
         Map<Long, List<ProblemRubricItem>> rubricItemsByQuestionId = gradingRubricResultRepository
                 .findRubricItemsByQuestionIdIn(questionIds).stream()
                 .collect(Collectors.groupingBy(item -> item.getQuestion().getId()));
-        // 모범 풀이는 공개 대상일 때만 필요하다. 가릴 응답이면 조회 자체를 하지 않는다.
-        Map<Long, List<ProblemStep>> stepsByQuestionId = disclose
+        // 빈칸형은 단계 구조 자체가 화면 배치라 공개 전에도 필요하다. 모범 풀이(explanation)만
+        // 공개 대상일 때 만든다 — 같은 행을 읽지만 내보내는 필드가 다르다.
+        boolean needsSteps = disclose || questionsById.values().stream()
+                .anyMatch(question -> question.getQuestionType() == QuestionType.STEP_FILL);
+        Map<Long, List<ProblemStep>> stepsByQuestionId = needsSteps
                 ? problemStepRepository.findAllByQuestionIds(questionIds).stream()
                         .collect(Collectors.groupingBy(step -> step.getQuestion().getId()))
                 : Map.of();
@@ -203,6 +209,9 @@ public class StudentResultQueryService {
                     item, question, itemResult, itemScore, itemMaxScore,
                     parseContentBlocks(question.getContentBlocks()),
                     explanation, chatContext, unitResponses, rubric,
+                    buildChoices(question.getQuestionType(), choices),
+                    buildSteps(question.getQuestionType(), units,
+                            stepsByQuestionId.getOrDefault(item.getQuestionId(), List.of())),
                     assetsByQuestionId.getOrDefault(question.getId(), List.of())));
         }
 
@@ -277,6 +286,36 @@ public class StudentResultQueryService {
             }
         }
         return formula.toString();
+    }
+
+    /** 객관식 보기 전체. 다른 형식이면 {@code null}이다 — 빈 배열은 "보기가 비어 있는 객관식"과 섞인다. */
+    private List<StudentChoiceResponse> buildChoices(QuestionType questionType,
+                                                     List<ProblemChoice> choices) {
+        if (questionType != QuestionType.MULTIPLE_CHOICE) {
+            return null;
+        }
+        return choices.stream().map(StudentChoiceResponse::from).toList();
+    }
+
+    /**
+     * 빈칸형 풀이 단계. 다른 형식이면 {@code null}이다.
+     *
+     * <p>정답은 담기지 않는다 — 빈칸 세그먼트는 {@code answerUnitId}만 내려가고, 그 칸의 정답은
+     * 공개 여부를 이미 판단한 {@code answerUnits[].correctAnswer}가 가진다.
+     */
+    private List<StudentStepResponse> buildSteps(QuestionType questionType,
+                                                 List<ProblemAnswerUnit> units,
+                                                 List<ProblemStep> steps) {
+        if (questionType != QuestionType.STEP_FILL) {
+            return null;
+        }
+        Map<String, Long> answerUnitIdByUnitKey = units.stream()
+                .collect(Collectors.toMap(ProblemAnswerUnit::getUnitKey, ProblemAnswerUnit::getId));
+        return steps.stream()
+                .map(step -> StudentStepResponse.from(step, parseSegments(step.getSegments()).stream()
+                        .map(segment -> StudentSegmentResponse.from(segment, answerUnitIdByUnitKey))
+                        .toList()))
+                .toList();
     }
 
     private List<ProblemStepSegmentResponse> parseSegments(String segments) {
@@ -413,17 +452,14 @@ public class StudentResultQueryService {
         List<GradingRubricResult> results = essayAnswerId == null
                 ? List.of()
                 : rubricResultsByAnswerId.getOrDefault(essayAnswerId, List.of());
-        // 행 부재 = 판정 안 함(채점 실패 또는 미채점) — satisfied=false로 채우지 않고 빈 배열을 낸다.
-        if (results.isEmpty()) {
-            return List.of();
-        }
-
+        // 행 부재 = 판정 안 함(채점 실패 또는 미채점) — satisfied=false로 채우지 않고 null로 둔다.
+        // 기준 목록 자체는 판정 전에도 내려보낸다. 목록이 없으면 화면이 채점 기준을 못 그린다.
         Map<Long, Boolean> satisfiedByRubricItemId = results.stream()
                 .collect(Collectors.toMap(GradingRubricResult::getRubricItemId, GradingRubricResult::isSatisfied));
         return rubricItems.stream()
                 .sorted(Comparator.comparingInt(ProblemRubricItem::getDisplayOrder))
                 .map(rubricItem -> StudentRubricItemResponse.from(
-                        rubricItem, satisfiedByRubricItemId.getOrDefault(rubricItem.getId(), false)))
+                        rubricItem, satisfiedByRubricItemId.get(rubricItem.getId())))
                 .toList();
     }
 

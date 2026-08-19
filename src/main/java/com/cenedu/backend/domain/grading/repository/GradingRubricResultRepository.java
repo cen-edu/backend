@@ -8,6 +8,7 @@ import com.cenedu.backend.domain.problem.entity.ProblemAnswerUnit;
 import com.cenedu.backend.domain.problem.entity.ProblemChoice;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.entity.ProblemRubricItem;
+import com.cenedu.backend.domain.problem.entity.ProblemStep;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -44,4 +45,9 @@ public interface GradingRubricResultRepository extends JpaRepository<GradingRubr
     @Query("select u from ProblemAnswerUnit u where u.question.id in :questionIds "
             + "order by u.question.id, u.displayOrder, u.id")
     List<ProblemAnswerUnit> findAnswerUnitsByQuestionIdIn(@Param("questionIds") Collection<Long> questionIds);
+
+    /** 문항 여러 개의 빈칸형 풀이 단계를 표시 순서대로 한 번에 읽는다. */
+    @Query("select s from ProblemStep s where s.question.id in :questionIds "
+            + "order by s.question.id, s.displayOrder")
+    List<ProblemStep> findStepsByQuestionIdIn(@Param("questionIds") Collection<Long> questionIds);
 }
