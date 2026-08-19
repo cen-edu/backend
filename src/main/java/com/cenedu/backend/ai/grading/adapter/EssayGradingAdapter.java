@@ -285,11 +285,23 @@ public class EssayGradingAdapter implements EssayGradingPort {
         return closing < 0 ? body.strip() : body.substring(0, closing).strip();
     }
 
-    /** 도구 결과에서 상태만 꺼낸다. 값·근거는 학생 답안 조각이라 세지 않는다. */
+    /**
+     * 도구 결과에서 상태와 사유만 꺼낸다. 값·근거는 학생 답안 조각이라 세지 않는다.
+     *
+     * <p>사유가 있으면 {@code UNREADABLE:IMPLICIT_MULT} 처럼 붙여 하나의 키로 센다 — 단계 4 가
+     * 재려는 D9 는 "{@code UNREADABLE} 중 곱셈 기호 누락 비율" 이라, 상태만 세면 분자를 못 낸다.
+     */
     private String statusOf(String result) {
         try {
             JsonNode root = objectMapper.readTree(result);
-            return root != null && root.isObject() ? root.path("status").asString("UNKNOWN") : "UNKNOWN";
+            if (root == null || !root.isObject()) {
+                return "UNKNOWN";
+            }
+            String status = root.path("status").asString("UNKNOWN");
+            JsonNode reason = root.path("reason");
+            return reason.isMissingNode() || reason.isNull()
+                    ? status
+                    : status + ":" + reason.asString("UNKNOWN");
         } catch (JacksonException exception) {
             return "UNKNOWN";
         }

@@ -65,6 +65,16 @@ public class GradingMathTools {
     /** 공백을 지우면 두 수가 한 수로 붙는 자리. 여기서는 보정하지 않고 못 읽었다고 한다. */
     private static final Pattern DIGIT_SPACE_DIGIT = Pattern.compile("[0-9] +[0-9]");
 
+    /**
+     * 파서가 "값 하나를 다 읽었는데 뒤에 글자가 남았다" 고 할 때 내는 메시지의 머리다.
+     * {@code 3x} · {@code 2(x+1)} 이 여기로 온다 — 남은 조각의 <b>첫 글자 갈래</b>만 보고
+     * {@link Reason#IMPLICIT_MULT} 인지 가른다.
+     */
+    private static final String LEFTOVER_MESSAGE = "식 뒤에 남은 문자: ";
+
+    /** 파서가 화이트리스트 밖 문자를 만났을 때 내는 메시지의 머리다. */
+    private static final String BAD_CHARACTER_MESSAGE = "읽을 수 없는 문자: ";
+
     private final ExpressionEvaluator expressionEvaluator;
 
     /** 도구가 돌려주는 상태. 못 읽은 것과 읽고 나서 실패한 것을 가른다. */
@@ -88,25 +98,50 @@ public class GradingMathTools {
     }
 
     /**
+     * {@link Status#UNREADABLE} 의 사유. <b>D9 를 재기 위한 축이다</b> — 지시서는 곱셈 기호를
+     * 명시하도록 강제하고 보정은 실패율을 본 뒤에 넣기로 했는데, 사유를 가르지 않으면 단계 4 에서
+     * "{@code UNREADABLE} 중 곱셈 기호 누락이 원인인 비율" 을 낼 수 없다.
+     *
+     * <p><b>파서 메시지를 로그에 남기지 않는다.</b> {@code "식 뒤에 남은 문자: x"} 의 {@code x} 는
+     * 학생 답안 조각이다. 분류에만 쓰고 버린다 — 남기는 것은 이 enum 값뿐이다.
+     */
+    public enum Reason {
+        /** 곱셈 기호를 빼먹었다. {@code 3x} · {@code 2(x+1)} — 파서가 암묵 곱셈을 지원하지 않는다. */
+        IMPLICIT_MULT,
+        /** 숫자와 숫자 사이에 공백이 있다. 한 수인지 두 수인지 정할 수 없어 보정하지 않는다. */
+        DIGIT_SPACE_DIGIT,
+        /** 화이트리스트 밖 문자가 있다. 한글·이모지·구분자가 여기로 온다. */
+        CHARSET,
+        /** 위 셋 어디에도 들지 않는다. 빈 식·미완성 식이 여기로 온다. */
+        OTHER
+    }
+
+    /**
      * 도구 반환값. <b>예외를 던지지 않고 상태를 돌려준다</b> — 도구가 던진 예외는 루프를 끊지만,
      * 상태는 모델이 읽고 다음 수를 고를 수 있다.
      *
      * @param value  비교 연산자가 없는 식의 값. 그 외에는 {@code null}
      * @param holds  비교 연산자가 있는 식의 참·거짓. 그 외에는 {@code null}
      * @param note   모델이 읽을 짧은 설명. 로그에는 남기지 않는다
+     * @param reason {@link Status#UNREADABLE} 의 사유. 그 외에는 {@code null}. 단계 4 의 D9 측정축이다
      */
-    public record MathResult(Status status, Double value, Boolean holds, String note) {
+    public record MathResult(Status status, Double value, Boolean holds, String note, Reason reason) {
 
         static MathResult ok(double value) {
-            return new MathResult(Status.OK, value, null, null);
+            return new MathResult(Status.OK, value, null, null, null);
         }
 
         static MathResult ok(boolean holds) {
-            return new MathResult(Status.OK, null, holds, null);
+            return new MathResult(Status.OK, null, holds, null, null);
         }
 
         static MathResult failure(Status status, String note) {
-            return new MathResult(status, null, null, note);
+            return new MathResult(status, null, null, note, null);
+        }
+
+        /** 못 읽은 것만 사유를 함께 낸다. 나머지 상태는 이미 그 자체가 사유다. */
+        static MathResult unreadable(Reason reason, String note) {
+            return new MathResult(Status.UNREADABLE, null, null, note, reason);
         }
     }
 
@@ -134,18 +169,21 @@ public class GradingMathTools {
             Map<String, Double> variables) {
 
         MathResult result = evaluateGuarded(expression, variables);
-        log.info("[도구] math len={} status={}",
-                expression == null ? 0 : expression.length(), result.status());
+        // len 과 net 이 다르면 공백이 있었다는 뜻이다. 보정이 얼마나 일을 했는지 여기서만 드러난다.
+        log.info("[도구] math len={} net={} status={} reason={}",
+                expression == null ? 0 : expression.length(),
+                expression == null ? 0 : expression.replace(" ", "").length(),
+                result.status(), result.reason());
         return result;
     }
 
     private MathResult evaluateGuarded(String expression, Map<String, Double> variables) {
         if (expression == null || expression.isBlank()) {
             // 파서에 null 을 넘기면 ParseException 이 아니라 NullPointerException 이 난다.
-            return MathResult.failure(Status.UNREADABLE, "식이 비어 있다.");
+            return MathResult.unreadable(Reason.OTHER, "식이 비어 있다.");
         }
         if (DIGIT_SPACE_DIGIT.matcher(expression).find()) {
-            return MathResult.failure(Status.UNREADABLE,
+            return MathResult.unreadable(Reason.DIGIT_SPACE_DIGIT,
                     "숫자와 숫자 사이에 공백이 있다. 한 수인지 두 수인지 정할 수 없다.");
         }
         String cleaned = expression.replace(" ", "");
@@ -177,15 +215,41 @@ public class GradingMathTools {
         } catch (ExpressionEvaluator.ParseException e) {
             // 0으로 나눈 것만 메시지로 가른다. 시그니처를 바꿀 수 없어 다른 길이 없다.
             // 메시지가 바뀌면 여기서 조용히 UNREADABLE 로 떨어지고, 1/0 테스트가 먼저 깨진다.
-            Status status = DIVIDE_BY_ZERO_MESSAGE.equals(e.getMessage())
-                    ? Status.DIVIDE_BY_ZERO
-                    : Status.UNREADABLE;
-            return MathResult.failure(status, e.getMessage());
+            if (DIVIDE_BY_ZERO_MESSAGE.equals(e.getMessage())) {
+                return MathResult.failure(Status.DIVIDE_BY_ZERO, e.getMessage());
+            }
+            return MathResult.unreadable(classify(e.getMessage()), e.getMessage());
         } catch (RuntimeException e) {
             // 도구는 예외를 던지지 않는다(D10). 예상 못 한 실패도 상태로 돌려줘야 루프가 끊기지 않는다.
             // Error 는 잡지 않는다 — 가드가 이미 크래시 도달 자체를 막는다.
-            return MathResult.failure(Status.UNREADABLE, "식을 계산하지 못했다.");
+            return MathResult.unreadable(Reason.OTHER, "식을 계산하지 못했다.");
         }
+    }
+
+    /**
+     * 파서 메시지를 사유로 옮긴다. <b>메시지 자체는 돌려주지도 남기지도 않는다</b> — 남은 조각의
+     * 첫 글자가 어느 갈래인지만 본다. 값·이름·괄호가 값 자리에 곧바로 이어졌다면 빠진 것은
+     * 곱셈 기호다({@code 3x} · {@code 2(x+1)}).
+     *
+     * <p>파서 메시지에 기대는 분류라 문구가 바뀌면 조용히 {@link Reason#OTHER} 로 떨어진다.
+     * 판정이 달라지지는 않고 D9 측정만 흐려진다 — 상태는 어차피 {@code UNREADABLE} 로 같다.
+     */
+    private static Reason classify(String message) {
+        if (message == null) {
+            return Reason.OTHER;
+        }
+        if (message.startsWith(BAD_CHARACTER_MESSAGE)) {
+            return Reason.CHARSET;
+        }
+        if (!message.startsWith(LEFTOVER_MESSAGE)) {
+            return Reason.OTHER;
+        }
+        String leftover = message.substring(LEFTOVER_MESSAGE.length());
+        if (leftover.isEmpty()) {
+            return Reason.OTHER;
+        }
+        char head = leftover.charAt(0);
+        return Character.isLetterOrDigit(head) || head == '(' ? Reason.IMPLICIT_MULT : Reason.OTHER;
     }
 
     /**
@@ -243,7 +307,7 @@ public class GradingMathTools {
                 default -> {
                     if (!isAllowedAtom(c)) {
                         // 어떤 문자였는지는 남기지 않는다. 학생 답안 조각이다.
-                        return MathResult.failure(Status.UNREADABLE, "식에 쓸 수 없는 문자가 있다.");
+                        return MathResult.unreadable(Reason.CHARSET, "식에 쓸 수 없는 문자가 있다.");
                     }
                     atomExpected = false;
                 }

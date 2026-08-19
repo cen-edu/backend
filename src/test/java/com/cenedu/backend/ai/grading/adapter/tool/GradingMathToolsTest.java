@@ -69,7 +69,7 @@ class GradingMathToolsTest {
     @DisplayName("절댓값 중첩은 금지, 나란히 쓰는 것은 허용")
     void rejectsNestedAbsoluteValue() {
         assertThat(tools.math("||1||", null).status()).isEqualTo(Status.TOO_COMPLEX);
-        assertThat(tools.math("|-5|", null)).isEqualTo(new MathResult(Status.OK, 5.0, null, null));
+        assertThat(tools.math("|-5|", null)).isEqualTo(new MathResult(Status.OK, 5.0, null, null, null));
         assertThat(tools.math("|3-5|+|2|", null).value()).isEqualTo(4.0);
     }
 
