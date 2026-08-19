@@ -28,7 +28,20 @@ import org.springframework.web.multipart.MultipartFile;
 @ConditionalOnProperty(prefix = "app.storage.s3", name = "enabled", havingValue = "true")
 public class SubmissionImageService {
 
+    /** 교사 채점 화면·학생 결과 화면이 여는 URL. 사람이 보는 동안만 살아 있으면 된다. */
     private static final Duration ANSWER_IMAGE_URL_EXPIRATION = Duration.ofMinutes(10);
+
+    /**
+     * 서술형 채점 파이프라인이 LLM 에 넘길 URL 의 만료(D5).
+     *
+     * <p>화면용과 <b>같은 값을 쓰지 않는다.</b> 화면은 사람이 열자마자 받아 가지만, 이 URL 은
+     * OpenAI 쪽으로 넘어가 그쪽이 fetch 한다 — 큐에서 대기하다 뒤늦게 당겨질 수 있어 10분은 짧다.
+     *
+     * <p>그렇다고 무한정 늘리지 않는다. 유효한 동안에는 <b>그 URL 을 가진 누구나</b> 학생 필기를
+     * 볼 수 있다. 1시간은 60칸 직렬 채점이 들어올 것으로 본 상한이고, 실제로 들어오는지는
+     * 단계 6 이 칸당 소요로 확인한다.
+     */
+    private static final Duration GRADING_PIPELINE_URL_EXPIRATION = Duration.ofHours(1);
 
     private final WorksheetImageAccessService worksheetImageAccessService;
     private final ProblemAnswerUnitService answerUnitService;
@@ -103,6 +116,25 @@ public class SubmissionImageService {
             }
         }
         return urlsByAnswerUnitId;
+    }
+
+    /**
+     * 서술형 채점 파이프라인이 칸 하나를 LLM 에 넘기기 직전에 발급하는 URL(D4).
+     *
+     * <p><b>권한을 검사하지 않는다.</b> 검사할 주체가 없어서다 — 이 경로는 사람이 부르는 요청이
+     * 아니라 배치가 도는 시스템 트리거고, 교사 소유권은 채점을 시작한
+     * {@code GradingExecutionService.start} 가 이미 확인했다. 사람이 부르는 두 메서드는
+     * {@code validateTarget} 을 그대로 통과하므로 이 메서드가 그 검사를 무르지 않는다.
+     *
+     * <p><b>미리 모아 발급하지 않는다.</b> 칸마다 채점 직전에 만든다 — 60칸을 앞당겨 만들면
+     * 마지막 칸이 채점될 즈음 첫 칸의 서명이 이미 늙어 있다.
+     */
+    public String createGradingPipelineUrl(long assignmentStudentId, long answerUnitId) {
+        return imageStorageService.createGetUrl(
+                s3Properties.requiredAnswerBucket(),
+                answerKey(assignmentStudentId, answerUnitId),
+                GRADING_PIPELINE_URL_EXPIRATION
+        );
     }
 
     private void validateTarget(long memberId, UserRole role, long assignmentStudentId,

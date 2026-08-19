@@ -28,6 +28,7 @@ import com.cenedu.backend.domain.worksheet.repository.WorksheetItemRepository;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.AssignmentStatus;
+import com.cenedu.backend.global.common.enums.CompareMethod;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -138,6 +139,12 @@ public class GradingExecutionService {
      *
      * <p>교사가 이미 점수를 고친 칸({@code overridden_by IS NOT NULL})은 빼고 센다 — 자동채점이
      * 덮어쓰면 교사 작업이 조용히 사라진다(명세 7절). 되돌리려면 {@code resetToAuto}를 쓴다.
+     *
+     * <p><b>채점이 끝난 서술형 칸도 뺀다(D17).</b> 표식으로 {@code auto_score} 가 아니라
+     * {@code grading_status} 를 본다 — 배점이 없는 학습지의 서술형은 점수 없이 판정만 남기므로
+     * (D25) {@code auto_score} 가 계속 {@code null} 이고, 그것을 표식으로 쓰면 그 칸이 돌 때마다
+     * 다시 LLM 에 들어간다. {@code recordGradingFailure} 는 상태를 {@code FAILED} 로 두므로
+     * <b>실패한 칸은 다시 대상이 된다</b> — 의도한 동작이다.
      */
     private Selection selectTargets(WorksheetAssignment assignment, Set<Long> studentIds,
                                     Map<Long, Set<Long>> itemFilterByStudentId) {
@@ -175,6 +182,12 @@ public class GradingExecutionService {
                 continue;
             }
             if (answer.getOverriddenBy() != null) {
+                skipped++;
+                continue;
+            }
+            if (answer.getCompareMethod() == CompareMethod.RUBRIC
+                    && answer.getGradingStatus() == GradingStatus.GRADED) {
+                // D17 — 서술형은 LLM 이 한 번만 채점한다. 이후 정정은 전부 교사 수동이다.
                 skipped++;
                 continue;
             }
