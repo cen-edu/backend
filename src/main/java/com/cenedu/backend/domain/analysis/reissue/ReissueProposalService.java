@@ -143,13 +143,31 @@ public class ReissueProposalService {
                 context.incorrectQuestions().getOrDefault(subUnitId, List.of());
         SubUnitWeaknessRow weakness = context.weakness().get(subUnitId);
 
+        ReissueProposalResponse.ReviewProposal review = toReview(incorrect);
+        ReissueProposalResponse.SimilarProposal similar =
+                toSimilar(subUnitId, adaptive.difficulty(), incorrect, context);
+        ReissueProposalResponse.AdvancedProposal advanced =
+                toAdvanced(subUnitId, adaptive.advancedTriggered(), weakness, context);
+
         return new ReissueProposalResponse.SubUnitProposal(
                 subUnitId,
                 subUnit.subUnitName(),
+                ReissueGuidanceWriter.write(adaptive, review, similar, advanced,
+                        hasEnoughCoverage(explainedIncorrectCount(advanced),
+                                advanced.historicalIncorrectItemCount())),
                 adaptive.toResponse(context.customSessionCount()),
-                toReview(incorrect),
-                toSimilar(subUnitId, adaptive.difficulty(), incorrect, context),
-                toAdvanced(subUnitId, adaptive.advancedTriggered(), weakness, context));
+                review,
+                similar,
+                advanced);
+    }
+
+    /** 평가 영역으로 설명된 오답 수. 미분류 문항의 오답은 여기 잡히지 않는다. */
+    private static int explainedIncorrectCount(
+            ReissueProposalResponse.AdvancedProposal advanced
+    ) {
+        return advanced.evaluationAreaEvidence().stream()
+                .mapToInt(ReissueProposalResponse.EvaluationAreaEvidence::incorrectItemCount)
+                .sum();
     }
 
     /**
@@ -167,11 +185,11 @@ public class ReissueProposalService {
         PlacementScorer.PlacementResult placement = PlacementScorer.score(
                 toTally(context.placementTallies().getOrDefault(subUnitId, List.of())));
         if (placement != null) {
-            return new Adaptive(placement.difficulty(), "placement", placement.rate(),
-                    placement.mixed(), null, false);
+            return Adaptive.fromPlacement(placement.difficulty(), placement.rate(),
+                    placement.mixed(), placement.soleDifficulty());
         }
 
-        return new Adaptive(FALLBACK_DIFFICULTY, "default", null, null, null, false);
+        return Adaptive.unknown(FALLBACK_DIFFICULTY);
     }
 
     /** 직전 회차의 유사 문항 결과로 승급·유지·강등을 판정한다. 채점된 유사 문항이 없으면 null. */
@@ -187,8 +205,9 @@ public class ReissueProposalService {
         MasteryStatusJudge.Judgement judgement =
                 MasteryStatusJudge.judge(dominantDifficulty(rows), totalCount, correctCount);
 
-        return new Adaptive(judgement.difficultyAfter(), "judgement", null, null,
-                judgement.status(), judgement.advancedTriggered());
+        return Adaptive.fromJudgement(judgement.difficultyBefore(), totalCount, correctCount,
+                judgement.status(), judgement.cutoffRule(), judgement.accuracyRate(),
+                judgement.difficultyAfter(), judgement.advancedTriggered());
     }
 
     /**
@@ -378,22 +397,5 @@ public class ReissueProposalService {
             Map<Long, List<DiagnosticStageEvidenceRow>> diagnosticStageEvidence,
             int customSessionCount
     ) {
-    }
-
-    /** 난이도 산출의 중간 결과. */
-    private record Adaptive(
-            short difficulty,
-            String source,
-            BigDecimal placementRate,
-            Boolean placementMixed,
-            MasteryStatus lastStatus,
-            boolean advancedTriggered
-    ) {
-
-        ReissueProposalResponse.AdaptiveState toResponse(int customSessionCount) {
-            return new ReissueProposalResponse.AdaptiveState(
-                    DifficultyLadder.code(difficulty), source, placementRate, placementMixed,
-                    customSessionCount, lastStatus);
-        }
     }
 }

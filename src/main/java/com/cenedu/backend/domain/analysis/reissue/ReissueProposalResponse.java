@@ -37,10 +37,38 @@ public record ReissueProposalResponse(
             @Schema(description = "화면·로그·LLM 프롬프트에 쓰는 소단원명", example = "소인수분해")
             String subUnitName,
 
+            @Schema(description = "교사 화면에 그대로 실을 설명. 아래 필드들을 문장으로 옮긴 것이다")
+            Guidance guidance,
+
             AdaptiveState adaptive,
             ReviewProposal review,
             SimilarProposal similar,
             AdvancedProposal advanced
+    ) {
+    }
+
+    /**
+     * 교사가 읽을 설명 세 문장.
+     *
+     * <p>세 문장이 각각 다른 질문에 답한다 — 지금 어디 서 있나, 이번에 뭘 낼 건가, 어디가
+     * 약한가. 화면이 한 줄로 붙여 쓰든 카드 세 칸으로 나누든 상관없도록 나눠 둔다.
+     *
+     * <p>여기 숫자는 다른 필드와 같은 값이다. LLM 이 아니라 규칙으로 만들어 재현된다.
+     *
+     * @param status   난이도가 지금 값이 된 경위
+     * @param plan     세 단계를 몇 개씩 낼지와, 0인 칸이 왜 0인지
+     * @param weakness 누적 오답이 가리키는 취약 영역·단계
+     */
+    @Schema(description = "교사용 설명 문장")
+    public record Guidance(
+            @Schema(example = "유사 5문항 중 3개 정답(60%)으로 유지 판정, 중 난이도를 이어갑니다.")
+            String status,
+
+            @Schema(example = "동일 1문항(최근 오답), 유사 5문항(중). 응용은 상 난이도가 아니라 내지 않습니다.")
+            String plan,
+
+            @Schema(example = "계산 영역·실행 단계가 약합니다.")
+            String weakness
     ) {
     }
 

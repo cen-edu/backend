@@ -79,7 +79,8 @@ public final class PlacementScorer {
                 ? byAbsoluteCutoff(rate)
                 : DifficultyLadder.apply(soleDifficulty, MasteryStatusJudge.judgeByRate(rate));
 
-        return new PlacementResult(rate, difficulty, earnedScore, maxScore, soleDifficulty == null);
+        return new PlacementResult(
+                rate, difficulty, earnedScore, maxScore, soleDifficulty == null, soleDifficulty);
     }
 
     /** 혼합 진단지의 절대 컷오프. */
@@ -126,15 +127,18 @@ public final class PlacementScorer {
     /**
      * 영점 조절 산출 결과.
      *
-     * @param mixed 진단지가 두 가지 이상의 난이도로 출제됐는지. 거짓이면 절대 컷오프가 아니라
-     *              단일 난이도 기준의 상대 조정으로 나온 값이다.
+     * @param mixed          진단지가 두 가지 이상의 난이도로 출제됐는지. 거짓이면 절대 컷오프가
+     *                       아니라 단일 난이도 기준의 상대 조정으로 나온 값이다.
+     * @param soleDifficulty 단일 난이도 진단에서 실제로 출제된 난이도. 혼합이면 {@code null} 이다.
+     *                       "무엇을 풀어 본 결과인지" 를 설명할 때 쓴다.
      */
     public record PlacementResult(
             BigDecimal rate,
             short difficulty,
             int earnedScore,
             int maxScore,
-            boolean mixed
+            boolean mixed,
+            Short soleDifficulty
     ) {
     }
 }
