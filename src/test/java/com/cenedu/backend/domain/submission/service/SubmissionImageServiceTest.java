@@ -48,7 +48,7 @@ class SubmissionImageServiceTest {
     void setUp() {
         S3Properties properties = new S3Properties(
                 "ap-northeast-2", "problem-bucket", "answer-bucket",
-                "test-access-key", "test-secret-key");
+                "test-access-key", "test-secret-key", Duration.ofMinutes(15));
         submissionImageService = new SubmissionImageService(
                 worksheetImageAccessService,
                 answerUnitService,

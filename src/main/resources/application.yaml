@@ -35,6 +35,10 @@ app:
       answer-bucket: ${AWS_S3_ANSWER_BUCKET:}
       access-key-id: ${AWS_ACCESS_KEY_ID:}
       secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
+      # 서술형 채점이 모델에 넘기는 답안 이미지 URL 의 만료. 칸마다 채점 직전에 발급하므로
+      # 한 칸이 채점되는 동안만 살면 된다. 유효한 동안에는 URL 을 가진 누구나 학생 필기를
+      # 볼 수 있어 기본값을 짧게 둔다 — 측정용으로 길게 쓰는 local 만 따로 덮는다.
+      grading-pipeline-url-expiration: ${AWS_S3_GRADING_PIPELINE_URL_EXPIRATION:15m}
   ai:
     guard:
       input:

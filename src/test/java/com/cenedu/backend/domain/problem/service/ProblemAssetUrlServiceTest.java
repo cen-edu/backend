@@ -36,7 +36,8 @@ class ProblemAssetUrlServiceTest {
                 "problem-bucket",
                 "answer-bucket",
                 "test-access-key",
-                "test-secret-key"
+                "test-secret-key",
+                Duration.ofMinutes(15)
             )
         );
     }
