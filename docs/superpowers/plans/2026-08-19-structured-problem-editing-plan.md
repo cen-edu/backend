@@ -1981,7 +1981,7 @@ JWT_SECRET='test-only-jwt-secret-value-at-least-32-bytes' bash gradlew test --te
 
 Expected: pure service/scenario tests PASS without context; MockMvc/OpenAPI controller tests PASS with the process-local JWT value and assert teacher principal, ApiResponse envelope, additive fields, status codes, and examples.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** *(Task14 보강 시나리오 테스트 포함 커밋 완료; MockMvc 기반 웹 계약 검증은 Task15 종합 회귀에서 수행)*
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/dto/response/ProblemParameterChangeResponse.java \
