@@ -70,7 +70,7 @@ public class OpenAiClientConfig {
     }
 
     /** reasoning_effort를 지원하는 모델에만 해당 요청 필드를 보낸다. */
-    static boolean supportsReasoningEffort(String model) {
+    public static boolean supportsReasoningEffort(String model) {
         if (model == null) return false;
         String normalized = model.toLowerCase(java.util.Locale.ROOT);
         return normalized.startsWith("gpt-5") || normalized.startsWith("o1")
