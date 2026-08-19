@@ -13,6 +13,7 @@ import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.SemanticModelStatus;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringVersionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
+import com.cenedu.backend.domain.problem.repository.ProblemAuthoringSessionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -24,20 +25,33 @@ import tools.jackson.databind.ObjectMapper;
 public class ProblemSemanticExtractionService {
     private final ProblemQuestionRepository questionRepository;
     private final ProblemAuthoringVersionRepository versionRepository;
+    private final ProblemAuthoringSessionRepository sessionRepository;
     private final ProblemSemanticExtractionPort extractionPort;
     private final ProblemSemanticMaterializer materializer;
     private final ProblemSemanticDocumentCodec codec;
     private final TransactionTemplate transactionTemplate;
 
-    @Autowired
     public ProblemSemanticExtractionService(ProblemQuestionRepository questionRepository,
             ProblemAuthoringVersionRepository versionRepository,
             ProblemSemanticExtractionPort extractionPort,
             ProblemSemanticMaterializer materializer,
             PlatformTransactionManager transactionManager,
             ObjectMapper objectMapper) {
+        this(questionRepository, versionRepository, null, extractionPort, materializer,
+                transactionManager, objectMapper);
+    }
+
+    @Autowired
+    public ProblemSemanticExtractionService(ProblemQuestionRepository questionRepository,
+            ProblemAuthoringVersionRepository versionRepository,
+            ProblemAuthoringSessionRepository sessionRepository,
+            ProblemSemanticExtractionPort extractionPort,
+            ProblemSemanticMaterializer materializer,
+            PlatformTransactionManager transactionManager,
+            ObjectMapper objectMapper) {
         this.questionRepository = questionRepository;
         this.versionRepository = versionRepository;
+        this.sessionRepository = sessionRepository;
         this.extractionPort = extractionPort;
         this.materializer = materializer;
         this.codec = new ProblemSemanticDocumentCodec(objectMapper);
@@ -47,14 +61,21 @@ public class ProblemSemanticExtractionService {
     /** Version의 원본 question을 확인한 뒤 semantic extraction 결과를 짧은 transaction으로 저장한다. */
     public SemanticExtractionResult ensureVersionSemantic(long ownerTeacherId, long sessionId,
             long versionId, CurriculumScope curriculum) {
+        sessionRepository.findByIdAndOwnerTeacherId(sessionId, ownerTeacherId)
+                .orElseThrow(() -> new IllegalArgumentException("authoring session 소유권이 없습니다."));
         ProblemAuthoringVersion version = versionRepository.findByIdAndSessionId(versionId, sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("authoring version을 찾을 수 없습니다."));
         if (version.getSourceQuestionId() == null) {
             return new SemanticExtractionResult(SemanticExtractionStatus.UNSUPPORTED, null,
                     java.util.List.of("source question이 없습니다."));
         }
-        return ensureQuestionSemantic(version.getSourceQuestionId(), curriculum,
+        SemanticExtractionResult result = ensureQuestionSemantic(version.getSourceQuestionId(), curriculum,
                 readSnapshot(version.getSnapshot()));
+        if (result.status() == SemanticExtractionStatus.EXTRACTED && result.semanticModel() != null) {
+            transactionTemplate.executeWithoutResult(status -> versionRepository.findByIdAndSessionId(versionId, sessionId)
+                    .ifPresent(found -> found.attachSemanticModel(codec.semanticModel(result.semanticModel()))));
+        }
+        return result;
     }
 
     /** 저장된 상태를 먼저 확인하고 필요한 경우에만 provider를 호출한다. */
@@ -100,8 +121,12 @@ public class ProblemSemanticExtractionService {
                             java.util.List.of("materialized snapshot이 원본과 일치하지 않습니다."));
                 }
             } catch (RuntimeException exception) {
-                finalResult = new SemanticExtractionResult(SemanticExtractionStatus.INVALID_SOURCE, null,
-                        java.util.List.of("semantic model이 원본 snapshot과 일치하지 않습니다."));
+                SemanticExtractionStatus status = unsupported(exception)
+                        ? SemanticExtractionStatus.UNSUPPORTED : SemanticExtractionStatus.INVALID_SOURCE;
+                finalResult = new SemanticExtractionResult(status, null,
+                        java.util.List.of(status == SemanticExtractionStatus.UNSUPPORTED
+                                ? "지원하지 않는 semantic operation 또는 diagram입니다."
+                                : "semantic model이 원본 snapshot과 일치하지 않습니다."));
             }
         }
         SemanticExtractionResult toStore = finalResult;
@@ -111,10 +136,17 @@ public class ProblemSemanticExtractionService {
             switch (toStore.status()) {
                 case EXTRACTED -> question.attachSemanticModel(codec.semanticModel(toStore.semanticModel()));
                 case UNSUPPORTED -> question.markSemanticModelUnsupported();
-                case INVALID_SOURCE, TECHNICAL_ERROR -> question.markSemanticModelFailed();
+                case INVALID_SOURCE, TECHNICAL_ERROR -> question.markSemanticModelFailed(
+                        writeFindings(toStore.findings()));
             }
         });
         return toStore;
+    }
+
+    private boolean unsupported(RuntimeException exception) {
+        String message = exception.getMessage();
+        return message != null && (message.contains("지원하지") || message.contains("operation")
+                || message.contains("diagram"));
     }
 
     private boolean answerCompatible(MaterializedProblem materialized, QuestionSnapshotV1 source) {
@@ -132,6 +164,11 @@ public class ProblemSemanticExtractionService {
     private void markFailed(long questionId) {
         transactionTemplate.executeWithoutResult(status -> questionRepository.findByIdForUpdate(questionId)
                 .ifPresent(ProblemQuestion::markSemanticModelFailed));
+    }
+
+    private String writeFindings(java.util.List<String> findings) {
+        try { return new ObjectMapper().writeValueAsString(findings == null ? java.util.List.of() : findings); }
+        catch (Exception exception) { return "[]"; }
     }
 
     private QuestionSnapshotV1 readSnapshot(String json) {

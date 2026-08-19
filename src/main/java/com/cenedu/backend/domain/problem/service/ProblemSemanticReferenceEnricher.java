@@ -16,11 +16,22 @@ public class ProblemSemanticReferenceEnricher {
     /** ORIGIN만 즉시 보강하고 EXAMPLE은 snapshot-only로 유지한다. */
     public ProblemGenerationCommand enrich(ProblemGenerationCommand command) {
         var references = new ArrayList<GenerationReference>();
+        int extractedExamples = 0;
+        boolean extractExamples = command.purpose() == GenerationPurpose.PERSONALIZED_APPLICATION;
         for (GenerationReference reference : command.references()) {
             if (reference.role() == GenerationReferenceRole.ORIGIN
                     && reference.semanticModel() == null && reference.sourceQuestionId() != null) {
                 var result = extractionService.ensureQuestionSemantic(reference.sourceQuestionId(),
                         command.curriculum(), reference.snapshot());
+                references.add(new GenerationReference(reference.role(), reference.sourceQuestionId(),
+                        reference.snapshot(), result.status() == com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionStatus.EXTRACTED
+                                ? result.semanticModel() : null));
+            } else if (extractExamples && reference.role() == GenerationReferenceRole.EXAMPLE
+                    && reference.semanticModel() == null && reference.sourceQuestionId() != null
+                    && extractedExamples < 2) {
+                var result = extractionService.ensureQuestionSemantic(reference.sourceQuestionId(),
+                        command.curriculum(), reference.snapshot());
+                extractedExamples++;
                 references.add(new GenerationReference(reference.role(), reference.sourceQuestionId(),
                         reference.snapshot(), result.status() == com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionStatus.EXTRACTED
                                 ? result.semanticModel() : null));

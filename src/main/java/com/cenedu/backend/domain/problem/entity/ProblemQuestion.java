@@ -127,6 +127,10 @@ public class ProblemQuestion {
     @Column(name = "semantic_model_status", nullable = false, length = 20)
     private SemanticModelStatus semanticModelStatus = SemanticModelStatus.ABSENT;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "semantic_extraction_findings", columnDefinition = "jsonb")
+    private String semanticExtractionFindings;
+
     @Column(name = "verification_attempts", nullable = false)
     private short verificationAttempts;
 
@@ -194,9 +198,11 @@ public class ProblemQuestion {
         }
         semanticModelSchemaVersion = (short) document.schemaVersion(); semanticModel = document.json();
         semanticModelHash = document.sha256(); semanticModelStatus = SemanticModelStatus.READY;
+        semanticExtractionFindings = null;
     }
 
-    public void markSemanticModelUnsupported() { clearSemanticModel(SemanticModelStatus.UNSUPPORTED); }
-    public void markSemanticModelFailed() { clearSemanticModel(SemanticModelStatus.FAILED); }
-    private void clearSemanticModel(SemanticModelStatus status) { semanticModelSchemaVersion = null; semanticModel = null; semanticModelHash = null; semanticModelStatus = status; }
+    public void markSemanticModelUnsupported() { clearSemanticModel(SemanticModelStatus.UNSUPPORTED, null); }
+    public void markSemanticModelFailed() { clearSemanticModel(SemanticModelStatus.FAILED, null); }
+    public void markSemanticModelFailed(String findings) { clearSemanticModel(SemanticModelStatus.FAILED, findings); }
+    private void clearSemanticModel(SemanticModelStatus status, String findings) { semanticModelSchemaVersion = null; semanticModel = null; semanticModelHash = null; semanticModelStatus = status; semanticExtractionFindings = findings; }
 }

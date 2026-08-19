@@ -14,5 +14,11 @@ public final class SpringAiProblemGenerationAdapter implements ProblemGeneration
     public SpringAiProblemGenerationAdapter(SemanticAuthoringProperties properties,ProblemSemanticGenerationPipeline semanticPipeline,LegacyProblemGenerationPipeline legacyPipeline){this.properties=properties;this.semanticPipeline=semanticPipeline;this.legacyPipeline=legacyPipeline;}
     /** Legacy test and direct-construction compatibility; production routing uses the typed constructor. */
     public SpringAiProblemGenerationAdapter(com.cenedu.backend.ai.client.LlmClient client,ObjectProvider<ObjectMapper> mapper,ProblemGenerationPromptFactory prompts,ProblemGenerationOutputMapper output,com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator structural,com.cenedu.backend.domain.problem.authoring.validation.SnapshotNormalizedValidator normalized){this(new SemanticAuthoringProperties(false),null,new LegacyProblemGenerationPipeline(client,mapper,prompts,output,structural,normalized));}
-    @Override public ProblemCandidateDraft generate(ProblemGenerationCommand command){return properties.enabled()?semanticPipeline.generate(command):legacyPipeline.generate(command);}
+    @Override public ProblemCandidateDraft generate(ProblemGenerationCommand command){
+        if (!properties.enabled()) return legacyPipeline.generate(command);
+        boolean originUnavailable = command.references().stream().anyMatch(reference ->
+                reference.role() == com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole.ORIGIN
+                        && reference.semanticModel() == null);
+        return originUnavailable ? legacyPipeline.generate(command) : semanticPipeline.generate(command);
+    }
 }
