@@ -38,6 +38,11 @@ public class ProblemEditOutputGuard implements OutputGuard {
                         || !payload.baseVersionId().equals(patch.baseVersionId())
                         || patch.schemaVersion() != ProblemSemanticPatch.CURRENT_SCHEMA_VERSION)
                     return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_BINDING", "semantic patch binding이 올바르지 않습니다.");
+                if ((patch.mode() == SemanticEditMode.STRUCTURAL_REGENERATION
+                        || patch.mode() == SemanticEditMode.RESTORE
+                        || patch.mode() == SemanticEditMode.REJECTED)
+                        && !patch.operations().isEmpty())
+                    return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_OPERATIONS", "해당 semantic patch mode에는 operation을 포함할 수 없습니다.");
                 if (new ProblemSemanticPatchClassifier().classify(patch) != patch.mode())
                     return GuardDecision.block("PROBLEM_EDIT_SEMANTIC_PATCH_INVALID", "semantic patch가 허용된 분류와 일치하지 않습니다.");
             } else if (result.semanticPatch() != null) {

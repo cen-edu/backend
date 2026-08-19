@@ -85,4 +85,21 @@ class ProblemEditOutputGuardTest {
                 AgentResponse.ofData(Map.of(ProblemEditAgentResultEnvelope.RESPONSE_KEY, result)));
         assertThat(decision.reasonCode()).isEqualTo("PROBLEM_EDIT_OUTPUT_LEAKAGE");
     }
+
+    @Test
+    void rejected_patch의_non_empty_operations는_차단한다() {
+        ObjectProvider<ObjectMapper> provider = org.mockito.Mockito.mock(ObjectProvider.class);
+        when(provider.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(new ObjectMapper());
+        var guard = new ProblemEditOutputGuard(provider);
+        UUID requestId = UUID.randomUUID();
+        var payload = new ProblemEditAgentPayload(2, requestId, 1L, 20L, AuthoringInteractionStatus.COLLECTING,
+                null, ProblemSnapshotFixtures.shortInput(), org.mockito.Mockito.mock(com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1.class), List.of());
+        var patch = new ProblemSemanticPatch(1, requestId, 20L, SemanticEditMode.REJECTED,
+                List.of(new SemanticPatchOperation(SemanticPatchOperationType.SET_TEMPLATE_TEXT, "/presentation/questionTemplate", "x", "y")), "지원하지 않습니다");
+        var result = new ProblemEditConversationResult(EditConversationAction.REQUEST_CONFIRMATION, List.of(), patch, "지원하지 않습니다");
+        GuardDecision decision = guard.inspect(AgentRequest.of(AgentKind.PROBLEM_EDIT,
+                new Actor(7L, Actor.Role.TEACHER), "수정", Map.of(ProblemEditAgent.REQUEST_KEY, payload)),
+                AgentResponse.ofData(Map.of(ProblemEditAgentResultEnvelope.RESPONSE_KEY, result)));
+        assertThat(decision.reasonCode()).isEqualTo("PROBLEM_EDIT_SEMANTIC_PATCH_OPERATIONS");
+    }
 }
