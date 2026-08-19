@@ -40,7 +40,10 @@ class EssayGradingAdapterTest {
             chatModel,
             OpenAiChatOptions.builder().model("test-model").build(),
             new ObjectMapper(),
-            new GradingMathTools(new ExpressionEvaluator()));
+            new GradingMathTools(new ExpressionEvaluator()),
+            // 이 테스트는 run(command, withTools) 로 군을 직접 지정하므로 이 값을 타지 않는다.
+            // 운영 기본값과 같게 둔다.
+            false);
 
     private static final EssayGradingCommand TWO_ITEMS = new EssayGradingCommand(
             IMAGE_URL,

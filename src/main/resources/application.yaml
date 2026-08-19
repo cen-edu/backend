@@ -104,6 +104,11 @@ app:
           model: ${OPENAI_ESSAY_GRADING_MODEL:gpt-5-mini}
           reasoning-effort: ${OPENAI_ESSAY_GRADING_REASONING_EFFORT:medium}
           max-completion-tokens: ${OPENAI_ESSAY_GRADING_MAX_COMPLETION_TOKENS:3000}
+    grading:
+      # 서술형 채점이 math 도구를 실을지. 단계 4 측정에서 도구 42회 호출이 판정을 바꾼 항목이
+      # 0건이었고 프롬프트 토큰만 3.5배가 됐다(측정 문서 4_essay_grading_tool_ab.md).
+      # 코드는 남겨 뒀으므로 문항 난이도가 오르면 켜서 다시 잰다.
+      tools-enabled: ${AI_GRADING_TOOLS_ENABLED:false}
     verification:
       content-check:
         # 정답이 든 원본으로 해설 정합·개념 안내 누출을 본다. 끄면 문항당 LLM 호출이 절반이 된다.

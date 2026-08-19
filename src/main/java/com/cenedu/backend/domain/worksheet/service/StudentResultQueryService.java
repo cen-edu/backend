@@ -67,11 +67,22 @@ import tools.jackson.databind.ObjectMapper;
  * 계산한다 — 그 컬럼은 "종합평가 전용"이라 일반학습에선 비어 있을 수 있어, 응답에 실제로
  * 나가는 문항별 점수와 항상 같은 축이 되도록 여기서 다시 더한다.
  *
- * <p><b>TODO(배세빈, 도메인 경계 정리):</b> Problem·Submission·Grading Repository와 Entity를
- * 직접 참조하는 현재 조회는 AGENTS.md 3절 1·2번과 맞지 않는다. 각 소유 도메인의 공개 배치
- * Response/Service로 교체하고, S2로 최종화된 문항은
- * {@link com.cenedu.backend.domain.problem.service.ProblemSnapshotQueryService#getFinalized(long)}를
- * 통해 저장 당시 S1을 조회한다.
+ * <p><b>승인된 예외 — 학생 결과 화면의 배치 조회.</b> Problem·Submission·Grading 의 Repository 와
+ * Entity 를 직접 참조하는 것은 AGENTS.md 3절 1·2번과 맞지 않는다. 이 화면은 한 번에 문항 20개
+ * 남짓의 발문·보기·정답·판정·필기를 함께 그려야 하는데, 소유 도메인에 그 배치 조회 API 가 아직
+ * 없다. 화면마다 소유자에게 API 신설을 요청하며 기다리는 대신 <b>읽기 전용 조회를 이 서비스 안에
+ * 두기로 했다.</b> 다른 도메인 쪽 파일은 만들지도 고치지도 않는다.
+ *
+ * <p><b>이관 조건.</b> 아래 중 하나라도 걸리면 그때 소유 도메인의 공개 Service 로 옮긴다.
+ * <ul>
+ *   <li>소유 도메인이 학생 화면용 배치 조회 API 를 공개하면 — 그 시점에 즉시</li>
+ *   <li>이 서비스가 남의 Entity 를 <b>쓰기</b>로 다루게 되면</li>
+ *   <li>같은 조회를 다른 화면이 필요로 하면 — 중복이 두 벌이 되는 순간</li>
+ * </ul>
+ *
+ * <p>S2 로 최종화된 문항은 이 예외에 넣지 않는다.
+ * {@link com.cenedu.backend.domain.problem.service.ProblemSnapshotQueryService#getFinalized(long)}
+ * 로 저장 당시 S1 을 읽는다 — 공개 경로가 이미 있는 것을 우회할 이유가 없다.
  */
 @Service
 @RequiredArgsConstructor

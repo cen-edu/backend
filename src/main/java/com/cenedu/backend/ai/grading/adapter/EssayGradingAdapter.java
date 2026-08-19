@@ -22,6 +22,7 @@ import com.cenedu.backend.domain.grading.port.RubricVerdict;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -62,6 +63,30 @@ import tools.jackson.databind.ObjectMapper;
  * 자리가 없고, 인터페이스를 바꾸면 검증 세션과의 유일한 접점을 건드린다.
  *
  * <p><b>학생 답안 원문·전사·도구 인자를 로그에 남기지 않는다.</b> 남기는 것은 개수와 상태뿐이다.
+ *
+ * <h2>도구 루프는 기본으로 꺼져 있다 (단계 4 측정 결과)</h2>
+ *
+ * <p>골든셋 16케이스 41항목을 도구 있음(A)·없음(B) 두 군으로 돌린 결과다
+ * ({@code EduCenDocs/docs/measurements/4_essay_grading_tool_ab.md}, {@code gpt-5-mini} · medium).
+ *
+ * <table border="1">
+ *   <caption>단계 4-1</caption>
+ *   <tr><th>군</th><th>정확도</th><th>프롬프트 토큰</th><th>칸당 소요</th></tr>
+ *   <tr><td>B (도구 없음)</td><td>37/41 (90.2%)</td><td>22,803</td><td>12.2초</td></tr>
+ *   <tr><td>A (도구 42회 호출)</td><td>37/41 (90.2%)</td><td>79,861 (3.50배)</td><td>23.8초 (1.96배)</td></tr>
+ * </table>
+ *
+ * <p><b>도구 호출이 판정을 바꾼 항목은 0건이다.</b> 도구 채택의 근거로 설계한 케이스(A03 —
+ * 과정은 맞고 마지막 곱만 틀린 답안)에서 <b>도구 없는 B 군도 해당 항목을 {@code NOT_SATISFIED}
+ * 로 맞혔다.</b> 가설이 반증됐으므로 켤 이유가 지금은 없다.
+ *
+ * <p><b>코드를 지우지 않고 설정으로 끈다</b>({@code app.ai.grading.tools-enabled}, 기본
+ * {@code false}). 재측정 경로({@code EssayGradingToolAbLiveTest})와 도구·가드·단위 테스트를 모두
+ * 남겨 둔 이유가 이것이다 — <b>문항 난이도가 오르거나 계산 비중이 큰 단원이 들어오면 다시 잰다.</b>
+ * 이번 세트는 중1 범위이고 루브릭 항목이 2~3개였다.
+ *
+ * <p>같이 확정된 것: {@code UNREADABLE} 사유 중 {@code IMPLICIT_MULT} 가 <b>0건</b>이라
+ * 곱셈 기호 보정(D9)은 넣지 않는다.
  */
 @Component
 public class EssayGradingAdapter implements EssayGradingPort {
@@ -81,6 +106,9 @@ public class EssayGradingAdapter implements EssayGradingPort {
     private static final String RETRY_JSON =
             "약속한 JSON 하나만 출력한다. 설명도 코드 블록 표시도 붙이지 않는다.";
 
+    /** 운영 경로가 도구를 실을지. 단계 4 결과로 기본이 {@code false} 다. */
+    private final boolean toolsEnabled;
+
     private final OpenAiChatModel chatModel;
     private final OpenAiChatOptions baseOptions;
     private final ObjectMapper objectMapper;
@@ -96,7 +124,9 @@ public class EssayGradingAdapter implements EssayGradingPort {
     public EssayGradingAdapter(OpenAiChatModel loopChatModel,
                                OpenAiChatOptions essayGradingChatOptions,
                                ObjectMapper objectMapper,
-                               GradingMathTools gradingMathTools) {
+                               GradingMathTools gradingMathTools,
+                               @Value("${app.ai.grading.tools-enabled:false}") boolean toolsEnabled) {
+        this.toolsEnabled = toolsEnabled;
         this.chatModel = loopChatModel;
         this.baseOptions = essayGradingChatOptions;
         this.objectMapper = objectMapper;
@@ -109,7 +139,8 @@ public class EssayGradingAdapter implements EssayGradingPort {
 
     @Override
     public EssayGradingResult grade(EssayGradingCommand command) {
-        return run(command, true).result();
+        // 기본은 도구 없는 단일 호출이다. 위 표가 그 근거다.
+        return run(command, toolsEnabled).result();
     }
 
     /**
