@@ -1,5 +1,7 @@
 package com.cenedu.backend.domain.problem.service;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -40,7 +42,7 @@ class ProblemAssetStorageWorkerTest {
         when(repository.findByIdForUpdate(1L)).thenReturn(Optional.of(task));
         ProblemAssetStorageWorker worker = new ProblemAssetStorageWorker(repository, storage,
                 new S3Properties("ap-northeast-2", "problem", "answer", "key", "secret",
-                        Duration.ofHours(2), Duration.ofHours(6)),
+                        Duration.ofHours(2), Duration.ofHours(6), Duration.ofMinutes(15)),
                 draftRoot.toString());
 
         worker.runOne(1L);
@@ -66,7 +68,7 @@ class ProblemAssetStorageWorkerTest {
         when(repository.findByIdForUpdate(2L)).thenReturn(Optional.of(task));
         ProblemAssetStorageWorker worker = new ProblemAssetStorageWorker(repository, storage,
                 new S3Properties("ap-northeast-2", "problem", "answer", "key", "secret",
-                        Duration.ofHours(2), Duration.ofHours(6)),
+                        Duration.ofHours(2), Duration.ofHours(6), Duration.ofMinutes(15)),
                 draftRoot.toString());
 
         worker.runOne(2L);

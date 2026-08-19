@@ -53,11 +53,21 @@ import tools.jackson.databind.ObjectMapper;
  * <p>{@code domain/problem}의 기존 배치 리포지토리({@link ProblemChoiceRepository} 등)를 그대로
  * 재사용한다 — {@code domain/problem} 파일은 하나도 만들거나 고치지 않는다.
  *
- * <p><b>TODO(배세빈, 도메인 경계 정리):</b> 이 직접 Repository·Entity 참조는 현재
- * AGENTS.md 3절 1·2번과 맞지 않는다. Problem·Submission 도메인에 학생 화면용 배치 Response와
- * public Service를 먼저 만든 뒤 그 경계로 교체한다. 새 S2 저작 문항 연동에서는 이 방식을
- * 확대하지 않고 {@link com.cenedu.backend.domain.problem.service.ProblemSnapshotQueryService}를
- * 사용한다.
+ * <p><b>승인된 예외 — 학생 풀이 화면의 배치 조회.</b> Problem·Submission 의 Repository 와 Entity 를
+ * 직접 참조하는 것은 AGENTS.md 3절 1·2번과 맞지 않는다. 소유 도메인에 학생 화면용 배치 조회 API 가
+ * 아직 없어, 화면마다 신설을 요청하며 기다리는 대신 <b>읽기 전용 조회를 이 서비스 안에 두기로
+ * 했다.</b> 다른 도메인 쪽 파일은 만들지도 고치지도 않는다.
+ * {@code StudentResultQueryService} 와 같은 예외이고 같은 이관 조건을 따른다.
+ *
+ * <p><b>이관 조건.</b>
+ * <ul>
+ *   <li>소유 도메인이 학생 화면용 배치 조회 API 를 공개하면 — 그 시점에 즉시</li>
+ *   <li>이 서비스가 남의 Entity 를 <b>쓰기</b>로 다루게 되면</li>
+ *   <li>같은 조회를 다른 화면이 필요로 하면</li>
+ * </ul>
+ *
+ * <p><b>이 방식을 넓히지 않는다.</b> 새 S2 저작 문항 연동은
+ * {@link com.cenedu.backend.domain.problem.service.ProblemSnapshotQueryService} 를 쓴다.
  */
 @Service
 @RequiredArgsConstructor

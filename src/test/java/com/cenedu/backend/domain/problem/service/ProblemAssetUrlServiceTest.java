@@ -38,7 +38,8 @@ class ProblemAssetUrlServiceTest {
                 "test-access-key",
                 "test-secret-key",
                 Duration.ofHours(2),
-                Duration.ofHours(6)
+                Duration.ofHours(6),
+                Duration.ofMinutes(15)
             )
         );
     }
