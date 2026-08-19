@@ -16,7 +16,7 @@ import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProcessing
 import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProvenance;
 import com.cenedu.backend.domain.problem.authoring.candidate.CandidateSourceType;
 import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
-import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemAssetProductionPort;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemVerificationPort;
@@ -143,8 +143,9 @@ class ProblemCandidateProcessingServiceTest {
                 List.of(),
                 new CandidateProvenance(
                         CandidateSourceType.AI_GENERATE, null, List.of()));
-        CurriculumContext curriculum = new CurriculumContext(
-                1L, 1, 1, "수와 연산", "사칙연산", "덧셈");
+        CurriculumScope curriculum = new CurriculumScope(
+                "2022_REVISED", "MIDDLE", 1, 1, null, 1L,
+                "수와 연산", "사칙연산", "덧셈");
         return new CandidateProcessingRequest(
                 7L, 31L, null,
                 AuthoringOperationType.AI_GENERATE,

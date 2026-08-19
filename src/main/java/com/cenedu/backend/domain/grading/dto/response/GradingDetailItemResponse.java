@@ -35,6 +35,14 @@ public record GradingDetailItemResponse(
 
         List<GradingAnswerUnitResponse> answerUnits,
 
+        @Schema(description = "객관식 보기 전체. 객관식이 아니면 null. 어느 보기가 정답·선택인지는 "
+                + "answerUnits[].correctChoiceId·selectedChoiceId 가 가리킨다")
+        List<GradingChoiceResponse> choices,
+
+        @Schema(description = "빈칸형 풀이 단계. 빈칸형이 아니면 null. "
+                + "segments[].answerUnitId 로 answerUnits 와 이어진다")
+        List<GradingStepResponse> steps,
+
         @Schema(description = "발문 이미지. contentBlocks[].assetRef 와 assets[].assetKey 를 맞춰 렌더한다")
         List<ProblemAssetResponse> assets
 ) {

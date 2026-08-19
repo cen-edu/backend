@@ -63,8 +63,8 @@ class GradingAutoGradingTest {
     }
 
     @Test
-    @DisplayName("서술형은 FAILED로 남고 auto_score를 비워 둔다 — 0을 넣으면 영원히 0으로 굳는다")
-    void rubricAnswer_isFailedWithNullAutoScore() {
+    @DisplayName("필기 이미지가 없는 서술형은 NO_IMAGE로 FAILED — 채점 입력이 이미지다")
+    void rubricAnswerWithoutImage_isFailedWithNullAutoScore() {
         Fixture fixture = fixture("ESSAY", "RUBRIC", null, new BigDecimal("10.00"), "학생 서술 답안");
 
         AnswerGradingService.Outcome outcome =
@@ -72,9 +72,39 @@ class GradingAutoGradingTest {
 
         assertThat(outcome).isEqualTo(AnswerGradingService.Outcome.FAILED);
         assertThat(column(fixture.answerId(), "grading_status", String.class)).isEqualTo("FAILED");
-        assertThat(column(fixture.answerId(), "auto_score", BigDecimal.class)).isNull();
+        assertThat(column(fixture.answerId(), "auto_score", BigDecimal.class))
+                .as("0을 넣으면 최초 기록 후 불변 때문에 영원히 0으로 굳는다")
+                .isNull();
         assertThat(column(fixture.answerId(), "failure_reason", String.class))
-                .isEqualTo("서술형 자동채점 미구현");
+                .as("교사가 다시 돌릴 값이 없는 구조적 실패다")
+                .isEqualTo("NO_IMAGE");
+    }
+
+    @Test
+    @DisplayName("채점이 끝난 서술형 칸은 다시 대상이 되지 않는다 — LLM 채점은 1회다(D17)")
+    void gradedRubricAnswer_isSkipped() {
+        Fixture fixture = fixture("ESSAY", "RUBRIC", null, new BigDecimal("10.00"), "학생 서술 답안");
+        jdbcTemplate.update(
+                "UPDATE submission_answer SET grading_status = 'GRADED' WHERE id = ?",
+                fixture.answerId());
+
+        GradingAutoStartResponse response = start(fixture.assignmentId());
+
+        assertThat(response.targetAnswerCount()).isZero();
+        assertThat(response.skippedCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("실패한 서술형 칸은 다시 대상이 된다 — auto_score가 아니라 상태로 가른다")
+    void failedRubricAnswer_returnsToTargets() {
+        Fixture fixture = fixture("ESSAY", "RUBRIC", null, new BigDecimal("10.00"), "학생 서술 답안");
+        answerGradingService.gradeOne(fixture.answerId(), fixture.maxScore());
+        assertThat(column(fixture.answerId(), "grading_status", String.class)).isEqualTo("FAILED");
+
+        GradingAutoStartResponse response = start(fixture.assignmentId());
+
+        assertThat(response.targetAnswerCount()).isEqualTo(1);
+        assertThat(response.skippedCount()).isZero();
     }
 
     @Test

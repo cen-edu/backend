@@ -24,7 +24,7 @@ public class ProblemGenerationOutputMapper {
         List<SnapshotContentBlock> blocks = mapBlocks(output, assets);
         List<SnapshotStep> steps = mapSteps(output.steps());
         SnapshotMetadata metadata = new SnapshotMetadata(command.specification().questionType(),
-                presentation(blocks), command.specification().difficulty(), command.curriculumContext().subUnitId(),
+                presentation(blocks), command.specification().difficulty(), command.curriculum().subUnitId(),
                 null, command.specification().targetEvaluationArea(), null);
         QuestionSnapshotV1 snapshot = new QuestionSnapshotV1(QuestionSnapshotV1.CURRENT_SCHEMA_VERSION,
                 metadata, blocks, assets, mapChoices(output.choices()), steps,

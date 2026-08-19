@@ -12,3 +12,8 @@ logging:
 app:
   cors:
     allowed-origins: http://localhost:5173   # Vite 기본 포트. 5단계 CorsConfig 에서 소비한다.
+  storage:
+    s3:
+      # 측정 중 실패한 실행의 이미지를 사람이 다시 열어 봐야 "모델이 잘못 읽었는가" 와
+      # "이미지가 잘못 올라갔는가" 가 갈린다. 그래서 local 만 길게 둔다.
+      grading-pipeline-url-expiration: ${AWS_S3_GRADING_PIPELINE_URL_EXPIRATION:2h}

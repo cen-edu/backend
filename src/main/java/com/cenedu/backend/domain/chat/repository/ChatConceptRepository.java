@@ -11,10 +11,22 @@ import org.springframework.data.repository.query.Param;
 /**
  * 개념 조회. 개념 챗봇의 도구 3종(이름 검색 / 선수 확장 / 소단원 목록)이 쓰는 DB 계층이다.
  *
- * <p><b>TODO(배세빈):</b> 아래 PostgreSQL 네이티브 쿼리 4개는 현재 AGENTS.md 6절의
- * "네이티브 쿼리는 pgvector 유사도 검색만 허용" 규칙 밖에 있다. 재귀 CTE·ILIKE·LIMIT를
- * JPQL로 대체할 수 있는지 검토하고, 대체가 불가능하면 구현을 유지하기 전에 팀 합의로 예외 범위와
- * 테스트 기준을 AGENTS.md에 먼저 명시한다.
+ * <p><b>예외 — 검토 완료, 팀 합의 대기.</b> 아래 PostgreSQL 네이티브 쿼리 4개는 AGENTS.md 6절의
+ * "네이티브 쿼리는 pgvector 유사도 검색만 허용" 규칙 밖에 있다. <b>JPQL 대체 가능성을 검토했고
+ * 불가능하다</b> — 선수 개념 그래프를 따라 올라가는 <b>재귀 CTE</b> 는 JPQL 에 대응 문법이 없고,
+ * 애플리케이션에서 반복 조회로 풀면 깊이만큼 쿼리가 늘어 그 자리에서 N+1 이 된다.
+ *
+ * <p>따라서 남는 선택은 규칙에 예외를 적는 것뿐인데, <b>AGENTS.md 는 팀 공유 문서라 합의 없이
+ * 고치지 않는다.</b> 문안을 준비해 팀에 올린 상태이며, 합의되면 이 주석은 그 조항을 가리키도록
+ * 바꾼다.
+ *
+ * <p><b>그때까지 지키는 것.</b>
+ * <ul>
+ *   <li>네이티브 쿼리를 <b>이 Repository 밖으로 늘리지 않는다.</b> 개념 그래프 탐색에 한정한다</li>
+ *   <li>재귀 CTE 는 깊이 상한을 쿼리 안에 둔다 — 사이클이 있으면 무한히 돈다</li>
+ *   <li>파라미터를 문자열로 이어 붙이지 않는다. 바인딩만 쓴다</li>
+ *   <li>쿼리마다 통합 테스트로 결과를 고정한다. 네이티브라 컴파일이 잡아 주지 않는다</li>
+ * </ul>
  */
 public interface ChatConceptRepository extends JpaRepository<ChatConcept, Long> {
 

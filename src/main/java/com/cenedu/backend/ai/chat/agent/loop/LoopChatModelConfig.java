@@ -1,6 +1,9 @@
 package com.cenedu.backend.ai.chat.agent.loop;
 
+import com.cenedu.backend.ai.client.LlmModelOptions;
+import com.cenedu.backend.ai.client.LlmUseCase;
 import com.cenedu.backend.ai.client.OpenAiProperties;
+import com.cenedu.backend.ai.client.OpenAiClientConfig;
 import com.openai.client.OpenAIClient;
 
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -28,24 +31,48 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class LoopChatModelConfig {
 
-    /**
-     * 모델 파라미터는 고정 파이프라인과 같은 값을 쓴다. 이번 측정의 대상은 구조지 모델 설정이
-     * 아니므로, {@code reasoning_effort=minimal} 이 도구 선택에 통하는지까지 그대로 관찰한다.
-     */
+    /** 개념 챗봇 루프. 측정으로 맞춰 놓은 경로라 모델을 고정한다({@link LlmUseCase#CONCEPT_CHAT_LOOP}). */
     @Bean
     public OpenAiChatOptions loopChatOptions(OpenAiProperties properties) {
-        return OpenAiChatOptions.builder()
-                .model(properties.model())
-                .reasoningEffort(properties.reasoningEffort())
-                .maxCompletionTokens(Math.toIntExact(properties.maxCompletionTokens()))
-                .apiKey(properties.apiKey())
-                .timeout(properties.timeout())
-                .maxRetries(properties.maxRetries())
-                .build();
+        return build(properties, LlmUseCase.CONCEPT_CHAT_LOOP);
+    }
+
+    /** 서술형 채점 루프. 어느 모델로 채점할지를 재는 중이라 설정으로 뺀다. */
+    @Bean
+    public OpenAiChatOptions essayGradingChatOptions(OpenAiProperties properties) {
+        return build(properties, LlmUseCase.ESSAY_GRADING);
     }
 
     /**
-     * 옵션을 빈으로 따로 내는 이유: 루프가 호출마다 도구 목록만 갈아끼운 사본을 만들어야 한다.
+     * 목적별 설정을 <b>세 값 한 묶음</b>으로 받아 옵션을 만든다.
+     *
+     * <p>{@code properties.model()} 을 직접 읽지 않는다. 그러면 목적별 분리 기구를 지나쳐 전역
+     * 기본값을 그대로 물고 가는데, 도구를 싣는 경로는 모델이 바뀌면 조합 자체가 거절될 수 있다.
+     *
+     * <p><b>모델만 갈아끼우지 않는다.</b> Spring AI 는 런타임 옵션에 기본 옵션을 물려주지 않아,
+     * 하나만 덮으면 나머지 둘이 요청에서 조용히 사라진다. {@code optionsFor} 가 빠진 값을 기본값으로
+     * 채워 주므로 여기서는 그 셋을 그대로 싣기만 한다.
+     */
+    private OpenAiChatOptions build(OpenAiProperties properties, LlmUseCase useCase) {
+        LlmModelOptions options = properties.optionsFor(useCase);
+        OpenAiChatOptions.Builder builder = OpenAiChatOptions.builder()
+                .model(options.model())
+                .maxCompletionTokens(Math.toIntExact(options.maxCompletionTokens()))
+                .apiKey(properties.apiKey())
+                .timeout(properties.timeout())
+                .maxRetries(properties.maxRetries());
+        if (OpenAiClientConfig.supportsReasoningEffort(options.model())) {
+            builder.reasoningEffort(options.reasoningEffort());
+        }
+        return builder.build();
+    }
+
+    /**
+     * 루프가 쓰는 모델 빈. <b>옵션 빈이 둘이라도 모델 빈은 하나면 된다</b> — 두 루프 모두 호출마다
+     * {@code Prompt} 에 자기 옵션을 실어 보내고, 그 옵션이 모델의 기본 옵션을 이긴다. 여기 실린
+     * 옵션은 아무도 쓰지 않지만 빌더가 요구해서 넘긴다.
+     *
+     * <p>옵션을 빈으로 따로 내는 이유: 루프가 호출마다 도구 목록만 갈아끼운 사본을 만들어야 한다.
      * 모델의 기본 옵션을 읽는 접근자는 제거 예정으로 표시돼 있어 쓰지 않는다.
      */
     @Bean

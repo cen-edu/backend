@@ -17,6 +17,12 @@ import org.springframework.stereotype.Component;
 /**
  * 규칙 채점 5종. 결정론적 비교뿐이며 LLM 을 부르지 않는다.
  *
+ * <p><b>{@code RUBRIC} 을 다루지 않는 것은 미구현이 아니라 의도다.</b> 서술형 채점은 구현돼 있고
+ * ({@code EssayGradingService} → {@code EssayGradingPort}), {@code AnswerGradingService.gradeOne}
+ * 이 트랜잭션을 열기 전에 그쪽으로 갈라 보낸다. 이 클래스가 결정론 전용으로 남아야 규칙 채점의
+ * 판정이 모델 사정에 흔들리지 않고, 검증 어댑터도 그 전제로 이 클래스를 읽는다.
+ * 아래 {@code RUBRIC} 분기는 호출부가 잘못 불렀을 때를 위한 방어다.
+ *
  * <p>판정은 <b>정답 / 오답 / 판정 불가</b> 셋이다. 못 읽은 답을 오답으로 접으면 채점기 결함이 학생
  * 점수로 조용히 흘러가므로, 읽지 못한 것은 {@link Verdict#failure}로 남겨 호출부가 {@code FAILED}로
  * 기록하게 한다.
@@ -64,7 +70,7 @@ public class RuleGrader {
      */
     public Verdict grade(CompareMethod compareMethod, String studentAnswer, String correctAnswer) {
         if (compareMethod == CompareMethod.RUBRIC) {
-            return Verdict.failure("서술형 자동채점 미구현");
+            return Verdict.failure("서술형은 규칙 채점 대상이 아니다");
         }
         if (studentAnswer == null) {
             return Verdict.failure("학생 답을 정규화하지 못함");
@@ -79,7 +85,7 @@ public class RuleGrader {
             case SUBST -> gradeSubstitution(studentAnswer, correctAnswer);
             // CHOICE 는 보기 ID 로 판정한다(gradeChoice). 여기 오면 호출부가 잘못 부른 것이다.
             case CHOICE -> Verdict.failure("객관식은 보기 ID로 채점한다");
-            case RUBRIC -> Verdict.failure("서술형 자동채점 미구현");
+            case RUBRIC -> Verdict.failure("서술형은 규칙 채점 대상이 아니다");
         };
     }
 

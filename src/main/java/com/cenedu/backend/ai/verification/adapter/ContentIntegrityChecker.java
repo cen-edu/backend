@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationCheckType;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationFinding;
@@ -56,7 +56,7 @@ public class ContentIntegrityChecker {
      */
     public List<VerificationFinding> check(
             QuestionSnapshotV1 snapshot,
-            CurriculumContext expectedCurriculum
+            CurriculumScope expectedCurriculum
     ) {
         boolean essay = isEssay(snapshot);
 

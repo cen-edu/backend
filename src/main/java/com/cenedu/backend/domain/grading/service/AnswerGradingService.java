@@ -16,22 +16,28 @@ import com.cenedu.backend.domain.submission.repository.SubmissionAnswerRepositor
 import com.cenedu.backend.domain.worksheet.repository.WorksheetAssignmentStudentRepository;
 import com.cenedu.backend.global.common.enums.CompareMethod;
 
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 칸 하나를 채점해 기록한다.
+ * 칸 하나를 채점해 기록한다. 채점 경로를 고르는 곳이기도 하다.
  *
  * <p><b>칸 하나가 트랜잭션 하나다</b>(명세 7절). 중간에 끊겨도 반쯤 쓰인 행이 남지 않고, 한 칸이
  * 실패해도 다음 칸으로 계속 갈 수 있다. 그래서 {@link Propagation#REQUIRES_NEW}로 매번 새 트랜잭션을
  * 연다 — 바깥에 트랜잭션이 있으면 한 칸의 실패가 전체를 되돌린다.
  *
+ * <p><b>{@link #gradeOne} 자체에는 트랜잭션이 없다.</b> 서술형은 LLM 을 부르는 동안 커넥션을 쥐면
+ * 안 되는데(타임아웃 60초 × 재시도 2회), 메서드에 트랜잭션을 걸어 두면 어느 분기로 가든 이미 열린
+ * 뒤다. 그래서 <b>경로를 고른 다음</b>에 트랜잭션을 연다 — 규칙 채점은 예전처럼 한 칸이 한
+ * 트랜잭션이고, 서술형은 {@link EssayGradingService} 가 읽기·호출·쓰기를 따로 연다.
+ *
  * <p>실행 대상 산정·진행률은 이 클래스의 일이 아니다(단계 4).
  */
 @Service
-@RequiredArgsConstructor
 public class AnswerGradingService {
 
     private static final BigDecimal DEFAULT_MAX_SCORE = BigDecimal.ONE;
@@ -42,6 +48,28 @@ public class AnswerGradingService {
     private final ProblemAnswerUnitService problemAnswerUnitService;
     private final AnswerNormalizer answerNormalizer;
     private final RuleGrader ruleGrader;
+    private final EssayGradingService essayGradingService;
+    private final TransactionTemplate transactionTemplate;
+
+    public AnswerGradingService(SubmissionAnswerRepository submissionAnswerRepository,
+                                WorksheetAssignmentStudentRepository worksheetAssignmentStudentRepository,
+                                GradingRubricResultRepository gradingRubricResultRepository,
+                                ProblemAnswerUnitService problemAnswerUnitService,
+                                AnswerNormalizer answerNormalizer,
+                                RuleGrader ruleGrader,
+                                EssayGradingService essayGradingService,
+                                PlatformTransactionManager transactionManager) {
+        this.submissionAnswerRepository = submissionAnswerRepository;
+        this.worksheetAssignmentStudentRepository = worksheetAssignmentStudentRepository;
+        this.gradingRubricResultRepository = gradingRubricResultRepository;
+        this.problemAnswerUnitService = problemAnswerUnitService;
+        this.answerNormalizer = answerNormalizer;
+        this.ruleGrader = ruleGrader;
+        this.essayGradingService = essayGradingService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        // 규칙 채점은 예전 그대로 "칸 하나 = 새 트랜잭션" 이다.
+        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
 
     /** 채점 한 칸의 결과. 진행률 집계가 이 값을 센다. */
     public enum Outcome { GRADED, FAILED }
@@ -51,19 +79,26 @@ public class AnswerGradingService {
      *
      * @param maxScore 문항 배점. {@code null}이면 일반·맞춤 학습이라 만점을 {@code 1.00}으로 본다
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Outcome gradeOne(long submissionAnswerId, BigDecimal maxScore) {
-        SubmissionAnswer answer = submissionAnswerRepository.findById(submissionAnswerId).orElse(null);
-        if (answer == null) {
+        // 트랜잭션을 열기 전에 경로만 고른다. 행 전체는 각 경로가 자기 트랜잭션 안에서 다시 읽는다.
+        CompareMethod compareMethod =
+                submissionAnswerRepository.findCompareMethodById(submissionAnswerId).orElse(null);
+        if (compareMethod == null) {
             // 채점 시작 후 지워진 칸. 다음 칸으로 계속 간다.
             return Outcome.FAILED;
         }
-
-        CompareMethod compareMethod = answer.getCompareMethod();
         if (compareMethod == CompareMethod.RUBRIC) {
-            // auto_score 를 비워 둔다 — 0을 넣으면 "최초 기록 후 불변" 때문에 영원히 0으로 굳어
-            // task_06b 가 진짜 자동채점값을 기록할 수 없다(명세 7절).
-            answer.recordGradingFailure(null, "서술형 자동채점 미구현");
+            // 서술형은 LLM 이 판정한다. RuleGrader 는 결정론 전용으로 남는다.
+            return essayGradingService.grade(submissionAnswerId, maxScore);
+        }
+        return transactionTemplate.execute(status -> gradeByRule(submissionAnswerId, compareMethod, maxScore));
+    }
+
+    /** 규칙 채점 5종. 예전 {@code gradeOne} 그대로이고, 트랜잭션 경계만 호출부로 올라갔다. */
+    private Outcome gradeByRule(long submissionAnswerId, CompareMethod compareMethod,
+                                BigDecimal maxScore) {
+        SubmissionAnswer answer = submissionAnswerRepository.findById(submissionAnswerId).orElse(null);
+        if (answer == null) {
             return Outcome.FAILED;
         }
 
@@ -138,8 +173,12 @@ public class AnswerGradingService {
     /**
      * 학생의 전 칸이 {@code GRADED}면 채점 완료로 표시한다(명세 7절 6번).
      *
-     * <p>서술형이 든 학습지는 여기 도달하지 못한다 — {@code RUBRIC} 칸이 {@code FAILED}로 남기
-     * 때문이다. 교사가 그 칸을 손으로 채워야 완료되고, 그래야 확정이 열린다. 정상 동작이다.
+     * <p><b>서술형이 든 학습지도 여기 도달한다.</b> 예전에는 {@code RUBRIC} 칸이 무조건
+     * {@code FAILED}로 남아 그 학습지가 영영 완료되지 않았으나, 지금은 LLM 판정이 붙으면
+     * {@code GRADED}가 된다. 배점이 없는 학습지는 점수 없이 판정만 남기고도 완료된다(D25).
+     *
+     * <p>다만 판정 불가({@code UNJUDGEABLE})가 하나라도 있거나 루브릭이 없는 칸은 여전히
+     * {@code FAILED}다. 그 칸은 교사가 손으로 채워야 완료되고, 그래야 확정이 열린다.
      *
      * @param assessment 종합평가면 총점을 다시 계산한다. 일반·맞춤 학습은 {@code total_score}가
      *                   "종합평가 전용" 컬럼이라 채우지 않는다
