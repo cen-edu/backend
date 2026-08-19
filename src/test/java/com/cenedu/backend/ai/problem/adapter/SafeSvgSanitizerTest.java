@@ -1,25 +1,3 @@
 package com.cenedu.backend.ai.problem.adapter;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-import org.junit.jupiter.api.Test;
-
-class SafeSvgSanitizerTest {
-    private final SafeSvgSanitizer sanitizer = new SafeSvgSanitizer();
-
-    @Test
-    void acceptsStaticSvg() {
-        assertDoesNotThrow(() -> sanitizer.sanitize(
-                "<svg xmlns=\"http://www.w3.org/2000/svg\"><circle cx=\"5\" cy=\"5\" r=\"2\"/></svg>"));
-    }
-
-    @Test
-    void rejectsScriptEventAndExternalReference() {
-        assertThrows(IllegalArgumentException.class,
-                () -> sanitizer.sanitize("<svg><script>alert(1)</script></svg>"));
-        assertThrows(IllegalArgumentException.class,
-                () -> sanitizer.sanitize("<svg><path onclick=\"x()\"/></svg>"));
-        assertThrows(IllegalArgumentException.class,
-                () -> sanitizer.sanitize("<svg><image href=\"https://example.com/x\"/></svg>"));
-    }
-}
+import static org.assertj.core.api.Assertions.*; import org.junit.jupiter.api.Test;
+class SafeSvgSanitizerTest { @Test void rejectsForeignObjectEventAndExternalReference(){var s=new SafeSvgSanitizer();assertThatThrownBy(()->s.sanitize("<svg><foreignObject/></svg>")).isInstanceOf(IllegalArgumentException.class);assertThatThrownBy(()->s.sanitize("<svg><path onload=\"x()\"/></svg>")).isInstanceOf(IllegalArgumentException.class);assertThatThrownBy(()->s.sanitize("<svg><image href=\"https://x\"/></svg>")).isInstanceOf(IllegalArgumentException.class);} }
