@@ -35,7 +35,7 @@ class ProblemAuthoringEndToEndTest {
             var request = new ProblemVerificationRequest(UUID.randomUUID(), VerificationScope.CONTENT,
                     VerificationOperationType.CREATE, candidate, DraftAssetManifest.planned(List.of()),
                     new VerificationExpectation(QuestionType.SHORT_INPUT, "mid",
-                            command().curriculumContext(), null, List.of(), List.of()),
+                            command().curriculum(), null, List.of(), List.of()),
                     new GenerationVerificationContext(GenerationPurpose.GENERAL_LEARNING_SHORTAGE, List.of()));
             assertThat(verification.verify(request).overallStatus()).isEqualTo(VerificationOverallStatus.PASSED);
             ProblemQuestionPersistenceBundle bundle = persistenceMapper.map(candidate.snapshot(), Map.of());
@@ -62,9 +62,10 @@ class ProblemAuthoringEndToEndTest {
     }
 
     private ProblemGenerationCommand command() {
-        return new ProblemGenerationCommand(UUID.randomUUID(), GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
+        return new ProblemGenerationCommand(UUID.randomUUID(), null, GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
                 new GenerationSpecification(QuestionType.SHORT_INPUT, "mid", null, List.of()),
-                new CurriculumContext(1L, 1, 1, "수와 연산", "사칙연산", "덧셈"),
+                new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L,
+                        "수와 연산", "사칙연산", "덧셈"),
                 List.of(), List.of());
     }
 }

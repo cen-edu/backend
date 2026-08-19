@@ -12,6 +12,7 @@ import java.util.Optional;
 
 import com.cenedu.backend.domain.problem.entity.ProblemAsset;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
+import com.cenedu.backend.domain.problem.entity.enums.ProblemAssetStorageStatus;
 import com.cenedu.backend.domain.problem.repository.ProblemAssetRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
 import com.cenedu.backend.global.common.BusinessException;
@@ -56,7 +57,8 @@ class ProblemImageServiceTest {
                 imageStorageService,
                 new S3Properties(
                         "ap-northeast-2", "problem-bucket", "answer-bucket",
-                        "test-access-key", "test-secret-key", Duration.ofMinutes(15))
+                        "test-access-key", "test-secret-key",
+                        Duration.ofHours(2), Duration.ofHours(6), Duration.ofMinutes(15))
         );
     }
 
@@ -99,7 +101,7 @@ class ProblemImageServiceTest {
     }
 
     @Test
-    @DisplayName("저장된 문항 대표 이미지의 1시간 조회 URL을 반환한다")
+    @DisplayName("저장된 문항 대표 이미지의 설정된 만료 시간 조회 URL을 반환한다")
     void createsProblemImageGetUrl() {
         ProblemQuestion question = mock(ProblemQuestion.class);
         ProblemAsset asset = mock(ProblemAsset.class);
@@ -108,11 +110,45 @@ class ProblemImageServiceTest {
                 .thenReturn(Optional.of(asset));
         when(asset.getStorageKey()).thenReturn("problems/1");
         when(imageStorageService.createGetUrl(
-                "problem-bucket", "problems/1", Duration.ofHours(1)))
+                "problem-bucket", "problems/1", Duration.ofHours(6)))
                 .thenReturn("https://example.com/problem");
 
         String url = problemImageService.createGetUrl(1L);
 
         assertThat(url).isEqualTo("https://example.com/problem");
+    }
+
+    @Test
+    @DisplayName("READY 자산은 자산 키로 조회 URL을 다시 발급한다")
+    void reissuesReadyAssetUrl() {
+        ProblemQuestion question = mock(ProblemQuestion.class);
+        ProblemAsset asset = mock(ProblemAsset.class);
+        when(questionRepository.findById(1L)).thenReturn(Optional.of(question));
+        when(assetRepository.findByQuestionIdAndAssetKey(1L, "F1"))
+                .thenReturn(Optional.of(asset));
+        when(asset.getStorageStatus()).thenReturn(ProblemAssetStorageStatus.READY);
+        when(asset.getStorageKey()).thenReturn("questions/30/F1.png");
+        when(imageStorageService.createGetUrl(
+                "problem-bucket", "questions/30/F1.png", Duration.ofHours(6)))
+                .thenReturn("https://example.com/asset");
+
+        String url = problemImageService.createAssetGetUrl(1L, "F1");
+
+        assertThat(url).isEqualTo("https://example.com/asset");
+    }
+
+    @Test
+    @DisplayName("READY 가 아닌 자산은 재발급하지 않는다")
+    void rejectsNonReadyAssetReissue() {
+        ProblemQuestion question = mock(ProblemQuestion.class);
+        ProblemAsset asset = mock(ProblemAsset.class);
+        when(questionRepository.findById(1L)).thenReturn(Optional.of(question));
+        when(assetRepository.findByQuestionIdAndAssetKey(1L, "F1"))
+                .thenReturn(Optional.of(asset));
+        when(asset.getStorageStatus()).thenReturn(ProblemAssetStorageStatus.PENDING);
+
+        assertThatThrownBy(() -> problemImageService.createAssetGetUrl(1L, "F1"))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PROBLEM_ASSET_NOT_READY);
     }
 }

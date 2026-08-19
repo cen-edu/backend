@@ -16,9 +16,8 @@ import com.cenedu.backend.domain.grading.port.EssayGradingResult;
 import com.cenedu.backend.domain.grading.port.EssayGradingStatus;
 import com.cenedu.backend.domain.grading.port.RubricCriterion;
 import com.cenedu.backend.domain.grading.port.RubricJudgement;
+import com.cenedu.backend.ai.client.OpenAiDiagnostics;
 import com.cenedu.backend.domain.grading.port.RubricVerdict;
-import com.openai.errors.OpenAIServiceException;
-import com.openai.models.completions.CompletionUsage;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -163,7 +162,7 @@ public class EssayGradingAdapter implements EssayGradingPort {
             Usage usage = response.getMetadata().getUsage();
             promptTokens = add(promptTokens, usage == null ? null : usage.getPromptTokens());
             completionTokens = add(completionTokens, usage == null ? null : usage.getCompletionTokens());
-            reasoningTokens = add(reasoningTokens, reasoningTokensOf(usage));
+            reasoningTokens = add(reasoningTokens, OpenAiDiagnostics.reasoningTokens(usage));
 
             if (output.hasToolCalls()) {
                 messages.add(output);
@@ -243,16 +242,16 @@ public class EssayGradingAdapter implements EssayGradingPort {
      * 인증 실패·정원 초과·요청 거절이 갈린다. <b>{@code message} 와 {@code body} 는 남기지
      * 않는다</b> — 거절 사유에 우리가 보낸 프롬프트 조각이 실려 오고, 그 조각이 곧 학생 답안이다.
      *
-     * <p>여기서 잡는 이유는 {@code com.openai} 를 아는 계층이 여기라서다. 도메인이 SDK 예외를
-     * 열어 보게 하면 SDK 를 갈아끼울 때 도메인까지 열어야 한다.
+     * <p>SDK 예외를 직접 열지 않는다. {@code com.openai} 를 참조해도 되는 곳은 {@code ai/client}
+     * 뿐이고({@code AiClientAccessTest} 가 CI 에서 막는다), 무엇을 남겨도 되는지를 아는 것도
+     * 거기다 — 특히 무엇을 남기면 안 되는지가 그렇다.
      */
     private ChatResponse call(Prompt prompt, int modelCall) {
         try {
             return chatModel.call(prompt);
-        } catch (OpenAIServiceException exception) {
-            log.warn("[서술형] 모델 호출 실패 차수={} status={} type={} code={}",
-                    modelCall, exception.statusCode(),
-                    exception.type().orElse("-"), exception.code().orElse("-"));
+        } catch (RuntimeException exception) {
+            log.warn("[서술형] 모델 호출 실패 차수={} {}",
+                    modelCall, OpenAiDiagnostics.describe(exception));
             throw exception;
         }
     }
@@ -374,22 +373,6 @@ public class EssayGradingAdapter implements EssayGradingPort {
 
     private static void count(Map<String, Integer> counts, String key) {
         counts.merge(key, 1, Integer::sum);
-    }
-
-    /**
-     * 추론 토큰. Spring AI 의 공통 {@code Usage} 에는 자리가 없어 SDK 원본에서 꺼낸다.
-     *
-     * <p><b>완성 토큰에 이미 포함된 값이다.</b> 따로 더하면 비용이 두 번 세어진다 — 여기서는
-     * "완성 토큰 중 얼마가 추론이었나" 를 보려고 따로 센다. 모델이 안 내려주면 {@code null} 이다.
-     */
-    private static Integer reasoningTokensOf(Usage usage) {
-        if (usage == null || !(usage.getNativeUsage() instanceof CompletionUsage native_)) {
-            return null;
-        }
-        return native_.completionTokensDetails()
-                .flatMap(CompletionUsage.CompletionTokensDetails::reasoningTokens)
-                .map(Long::intValue)
-                .orElse(null);
     }
 
     private static Integer add(Integer left, Integer right) {

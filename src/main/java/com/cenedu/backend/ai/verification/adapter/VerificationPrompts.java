@@ -2,7 +2,7 @@ package com.cenedu.backend.ai.verification.adapter;
 
 import java.util.List;
 
-import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotLearningGuide;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotRubricItem;
@@ -107,7 +107,7 @@ final class VerificationPrompts {
     /** 원본 검사에 넣는 입력. 정답·해설·개념 안내·채점 기준을 모두 담는다. */
     static String contentIntegrityUserPrompt(
             QuestionSnapshotV1 snapshot,
-            CurriculumContext expectedCurriculum
+            CurriculumScope expectedCurriculum
     ) {
         StringBuilder builder = new StringBuilder();
         builder.append("[유형] ").append(snapshot.metadata() == null

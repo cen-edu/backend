@@ -35,6 +35,15 @@ public record StudentResultItemResponse(
         StudentResultChatContextResponse chatContext,
         List<StudentResultAnswerUnitResponse> answerUnits,
         List<StudentRubricItemResponse> rubric,
+
+        @Schema(description = "객관식 보기 전체. 객관식이 아니면 null. 정답 표시는 담지 않는다 — "
+                + "정답은 answerUnits[].correctAnswer 가 가지고, 공개 전이면 그쪽이 null 이다")
+        List<StudentChoiceResponse> choices,
+
+        @Schema(description = "빈칸형 풀이 단계. 빈칸형이 아니면 null. "
+                + "segments[].answerUnitId 로 answerUnits 와 이어진다")
+        List<StudentStepResponse> steps,
+
         List<ProblemAssetResponse> assets
 ) {
 
@@ -49,6 +58,8 @@ public record StudentResultItemResponse(
             StudentResultChatContextResponse chatContext,
             List<StudentResultAnswerUnitResponse> answerUnits,
             List<StudentRubricItemResponse> rubric,
+            List<StudentChoiceResponse> choices,
+            List<StudentStepResponse> steps,
             List<ProblemAssetResponse> assets
     ) {
         return new StudentResultItemResponse(
@@ -65,6 +76,8 @@ public record StudentResultItemResponse(
                 chatContext,
                 List.copyOf(answerUnits),
                 rubric,
+                choices,
+                steps,
                 List.copyOf(assets)
         );
     }

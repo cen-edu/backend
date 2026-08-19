@@ -27,6 +27,7 @@ public class ProblemDraftAssetCleanupService {
     private final ProblemAssetStorageTaskRepository storageTaskRepository;
     private final ObjectMapper objectMapper;
     private final Path draftRoot;
+    private ProblemTeacherDecisionEventService decisionEventService;
 
     public ProblemDraftAssetCleanupService(ProblemAuthoringSessionRepository sessionRepository,
             ProblemAuthoringVersionRepository versionRepository,
@@ -38,6 +39,10 @@ public class ProblemDraftAssetCleanupService {
         this.objectMapper = objectMapper;
         this.draftRoot = Path.of(draftRoot).toAbsolutePath().normalize();
     }
+
+    /** 문제 폐기 결정 이벤트 기록기를 선택적으로 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setDecisionEventService(ProblemTeacherDecisionEventService service) { this.decisionEventService = service; }
 
     /** TTL이 지난 DRAFT Session의 파일을 지우고 EXPIRED로 닫는다. */
     @Transactional
@@ -60,6 +65,9 @@ public class ProblemDraftAssetCleanupService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.PROBLEM_AUTHORING_SESSION_NOT_FOUND));
         deleteSessionDrafts(sessionId);
         session.cancelDraft();
+        if (decisionEventService != null) {
+            decisionEventService.recordDiscard(ownerTeacherId, sessionId, session.getCurrentVersionId());
+        }
     }
 
     /** 보존기간이 지난 FAILED Task 원본을 지우고 중복 정리를 막도록 시각을 기록한다. */

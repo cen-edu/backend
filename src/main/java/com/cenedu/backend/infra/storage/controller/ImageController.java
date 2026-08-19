@@ -51,6 +51,16 @@ public class ImageController {
         return ApiResponse.success(new ImageUrlResponse(url));
     }
 
+    @GetMapping("/problems/{questionId}/assets/{assetKey}")
+    public ApiResponse<ImageUrlResponse> getProblemAssetUrl(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long questionId,
+            @PathVariable String assetKey
+    ) {
+        String url = problemImageService.createAssetGetUrl(questionId, assetKey);
+        return ApiResponse.success(new ImageUrlResponse(url));
+    }
+
     @PostMapping(path = "/answers/{assignmentStudentId}/answer-units/{answerUnitId}",
             consumes = "multipart/form-data")
     @ResponseStatus(HttpStatus.NO_CONTENT)

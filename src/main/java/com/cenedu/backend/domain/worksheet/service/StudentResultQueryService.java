@@ -27,6 +27,8 @@ import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
 import com.cenedu.backend.domain.submission.entity.SubmissionAnswer;
 import com.cenedu.backend.domain.submission.entity.enums.GradingStatus;
 import com.cenedu.backend.domain.submission.repository.SubmissionAnswerRepository;
+import com.cenedu.backend.domain.submission.service.SubmissionImageService;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentChoiceResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentContentBlockResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultAnswerUnitResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultChatContextResponse;
@@ -35,6 +37,8 @@ import com.cenedu.backend.domain.worksheet.dto.response.StudentResultExplanation
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultItemResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultStepResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentSegmentResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.StudentStepResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentRubricItemResponse;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignmentStudent;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetItem;
@@ -44,8 +48,10 @@ import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.AssignmentStatus;
 import com.cenedu.backend.global.common.enums.QuestionType;
+import com.cenedu.backend.global.common.enums.UserRole;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
@@ -83,6 +89,13 @@ public class StudentResultQueryService {
     private final ProblemQuestionDetailService problemQuestionDetailService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * S3가 꺼진 환경(로컬 기본값 {@code S3_ENABLED=false})에서는 이 빈이 아예 없다. 생성자 주입으로
+     * 받으면 앱이 기동조차 못 하므로 {@link ObjectProvider}로 받고, 없으면 필기 URL 을
+     * {@code null}로 내린다 — {@code hasHandwriting}은 그때도 정확하다.
+     */
+    private final ObjectProvider<SubmissionImageService> submissionImageServiceProvider;
+
     public StudentResultResponse getResult(long studentId, long assignmentStudentId) {
         WorksheetAssignmentStudent was = worksheetAssignmentStudentRepository.findDetailById(assignmentStudentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.WORKSHEET_ASSIGNMENT_NOT_FOUND));
@@ -118,8 +131,11 @@ public class StudentResultQueryService {
         Map<Long, List<ProblemRubricItem>> rubricItemsByQuestionId = gradingRubricResultRepository
                 .findRubricItemsByQuestionIdIn(questionIds).stream()
                 .collect(Collectors.groupingBy(item -> item.getQuestion().getId()));
-        // 모범 풀이는 공개 대상일 때만 필요하다. 가릴 응답이면 조회 자체를 하지 않는다.
-        Map<Long, List<ProblemStep>> stepsByQuestionId = disclose
+        // 빈칸형은 단계 구조 자체가 화면 배치라 공개 전에도 필요하다. 모범 풀이(explanation)만
+        // 공개 대상일 때 만든다 — 같은 행을 읽지만 내보내는 필드가 다르다.
+        boolean needsSteps = disclose || questionsById.values().stream()
+                .anyMatch(question -> question.getQuestionType() == QuestionType.STEP_FILL);
+        Map<Long, List<ProblemStep>> stepsByQuestionId = needsSteps
                 ? problemStepRepository.findAllByQuestionIds(questionIds).stream()
                         .collect(Collectors.groupingBy(step -> step.getQuestion().getId()))
                 : Map.of();
@@ -130,6 +146,9 @@ public class StudentResultQueryService {
 
         Map<Long, List<ProblemAssetResponse>> assetsByQuestionId = problemQuestionDetailService
                 .getAssetsByQuestionIds(questionIds);
+
+        Map<Long, String> handwritingUrls = createHandwritingUrls(
+                studentId, assignmentStudentId, savedByAnswerUnitId);
 
         List<Long> submissionAnswerIds = savedByAnswerUnitId.values().stream()
                 .map(SubmissionAnswer::getId)
@@ -170,9 +189,16 @@ public class StudentResultQueryService {
                         unit.getDisplayOrder(),
                         resolveMyAnswer(question.getQuestionType(), answer, choices),
                         disclose ? resolveCorrectAnswer(question.getQuestionType(), unit, choices) : null,
+                        question.getQuestionType() == QuestionType.MULTIPLE_CHOICE && answer != null
+                                ? answer.getSelectedChoiceId()
+                                : null,
+                        disclose
+                                ? resolveCorrectChoiceId(question.getQuestionType(), unit, choices)
+                                : null,
                         unitResult,
                         score,
-                        answer != null && answer.getAnswerImageRef() != null));
+                        answer != null && answer.getAnswerImageRef() != null,
+                        handwritingUrls.get(unit.getId())));
             }
 
             String itemResult = aggregateItemResult(unitResults);
@@ -203,6 +229,9 @@ public class StudentResultQueryService {
                     item, question, itemResult, itemScore, itemMaxScore,
                     parseContentBlocks(question.getContentBlocks()),
                     explanation, chatContext, unitResponses, rubric,
+                    buildChoices(question.getQuestionType(), choices),
+                    buildSteps(question.getQuestionType(), units,
+                            stepsByQuestionId.getOrDefault(item.getQuestionId(), List.of())),
                     assetsByQuestionId.getOrDefault(question.getId(), List.of())));
         }
 
@@ -277,6 +306,56 @@ public class StudentResultQueryService {
             }
         }
         return formula.toString();
+    }
+
+    /**
+     * 내가 쓴 필기 이미지 URL. 이미지를 실제로 올린 칸만 요청한다 — 없는 칸까지 URL 을 만들면
+     * 만료 있는 서명이 헛돌고 권한 검증만 늘어난다.
+     *
+     * <p>공개 게이트({@code disclose})를 걸지 않는다. 정답·해설과 달리 <b>학생 본인이 쓴 것</b>이라
+     * 가릴 대상이 아니다. 남의 답안은 {@code SubmissionImageService}가 배정 소유자를 확인해 막는다.
+     */
+    private Map<Long, String> createHandwritingUrls(
+            long studentId, long assignmentStudentId, Map<Long, SubmissionAnswer> savedByAnswerUnitId) {
+        SubmissionImageService imageService = submissionImageServiceProvider.getIfAvailable();
+        if (imageService == null) {
+            return Map.of();
+        }
+        List<Long> unitIds = savedByAnswerUnitId.entrySet().stream()
+                .filter(entry -> entry.getValue().getAnswerImageRef() != null)
+                .map(Map.Entry::getKey)
+                .toList();
+        return imageService.createGetUrls(studentId, UserRole.STUDENT, assignmentStudentId, unitIds);
+    }
+
+    /** 객관식 보기 전체. 다른 형식이면 {@code null}이다 — 빈 배열은 "보기가 비어 있는 객관식"과 섞인다. */
+    private List<StudentChoiceResponse> buildChoices(QuestionType questionType,
+                                                     List<ProblemChoice> choices) {
+        if (questionType != QuestionType.MULTIPLE_CHOICE) {
+            return null;
+        }
+        return choices.stream().map(StudentChoiceResponse::from).toList();
+    }
+
+    /**
+     * 빈칸형 풀이 단계. 다른 형식이면 {@code null}이다.
+     *
+     * <p>정답은 담기지 않는다 — 빈칸 세그먼트는 {@code answerUnitId}만 내려가고, 그 칸의 정답은
+     * 공개 여부를 이미 판단한 {@code answerUnits[].correctAnswer}가 가진다.
+     */
+    private List<StudentStepResponse> buildSteps(QuestionType questionType,
+                                                 List<ProblemAnswerUnit> units,
+                                                 List<ProblemStep> steps) {
+        if (questionType != QuestionType.STEP_FILL) {
+            return null;
+        }
+        Map<String, Long> answerUnitIdByUnitKey = units.stream()
+                .collect(Collectors.toMap(ProblemAnswerUnit::getUnitKey, ProblemAnswerUnit::getId));
+        return steps.stream()
+                .map(step -> StudentStepResponse.from(step, parseSegments(step.getSegments()).stream()
+                        .map(segment -> StudentSegmentResponse.from(segment, answerUnitIdByUnitKey))
+                        .toList()))
+                .toList();
     }
 
     private List<ProblemStepSegmentResponse> parseSegments(String segments) {
@@ -372,6 +451,25 @@ public class StudentResultQueryService {
      * 1-based 표시 순서를 담고 있어(실측 확인) 보기 텍스트로 풀어야 한다 — 컬럼값을 그대로
      * 내보내면 학생 화면에 원시 순번이 나간다.
      */
+    /**
+     * 정답 보기 ID. {@code answer_raw}가 1-based 보기 순번이라 그 순번의 보기를 찾는다.
+     *
+     * <p>공개 게이트는 호출부가 건다 — {@code correctAnswer}와 같은 조건이어야 한다. 텍스트만
+     * 가리고 ID를 내보내면 프론트가 {@code choices}에서 정답을 그대로 짚을 수 있다.
+     */
+    private Long resolveCorrectChoiceId(QuestionType questionType, ProblemAnswerUnit unit,
+                                        List<ProblemChoice> choices) {
+        if (questionType != QuestionType.MULTIPLE_CHOICE || unit.getAnswerRaw() == null) {
+            return null;
+        }
+        int oneBasedOrder = Integer.parseInt(unit.getAnswerRaw());
+        return choices.stream()
+                .filter(choice -> choice.getDisplayOrder() + 1 == oneBasedOrder)
+                .findFirst()
+                .map(ProblemChoice::getId)
+                .orElse(null);
+    }
+
     private String resolveCorrectAnswer(QuestionType questionType, ProblemAnswerUnit unit, List<ProblemChoice> choices) {
         String answerRaw = unit.getAnswerRaw();
         if (answerRaw == null) {
@@ -413,17 +511,14 @@ public class StudentResultQueryService {
         List<GradingRubricResult> results = essayAnswerId == null
                 ? List.of()
                 : rubricResultsByAnswerId.getOrDefault(essayAnswerId, List.of());
-        // 행 부재 = 판정 안 함(채점 실패 또는 미채점) — satisfied=false로 채우지 않고 빈 배열을 낸다.
-        if (results.isEmpty()) {
-            return List.of();
-        }
-
+        // 행 부재 = 판정 안 함(채점 실패 또는 미채점) — satisfied=false로 채우지 않고 null로 둔다.
+        // 기준 목록 자체는 판정 전에도 내려보낸다. 목록이 없으면 화면이 채점 기준을 못 그린다.
         Map<Long, Boolean> satisfiedByRubricItemId = results.stream()
                 .collect(Collectors.toMap(GradingRubricResult::getRubricItemId, GradingRubricResult::isSatisfied));
         return rubricItems.stream()
                 .sorted(Comparator.comparingInt(ProblemRubricItem::getDisplayOrder))
                 .map(rubricItem -> StudentRubricItemResponse.from(
-                        rubricItem, satisfiedByRubricItemId.getOrDefault(rubricItem.getId(), false)))
+                        rubricItem, satisfiedByRubricItemId.get(rubricItem.getId())))
                 .toList();
     }
 

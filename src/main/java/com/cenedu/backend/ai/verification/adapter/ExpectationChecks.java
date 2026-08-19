@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotAnswerUnit;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotMetadata;
@@ -70,7 +70,7 @@ public class ExpectationChecks {
     public VerificationFinding curriculumAlignment(
             QuestionSnapshotV1 snapshot, VerificationExpectation expectation
     ) {
-        CurriculumContext expected = expectation == null ? null : expectation.expectedCurriculum();
+        CurriculumScope expected = expectation == null ? null : expectation.expectedCurriculum();
         if (expected == null || expected.subUnitId() == null) {
             return Findings.notApplicable(VerificationCheckType.CURRICULUM_ALIGNMENT,
                     "기대 교육과정이 주어지지 않았습니다.");

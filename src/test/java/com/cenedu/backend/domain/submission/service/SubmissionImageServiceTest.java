@@ -48,7 +48,8 @@ class SubmissionImageServiceTest {
     void setUp() {
         S3Properties properties = new S3Properties(
                 "ap-northeast-2", "problem-bucket", "answer-bucket",
-                "test-access-key", "test-secret-key", Duration.ofMinutes(15));
+                "test-access-key", "test-secret-key",
+                Duration.ofHours(2), Duration.ofHours(6), Duration.ofMinutes(15));
         submissionImageService = new SubmissionImageService(
                 worksheetImageAccessService,
                 answerUnitService,
@@ -98,7 +99,7 @@ class SubmissionImageServiceTest {
                 7L, UserRole.TEACHER, 1001L)).thenReturn(101L);
         when(answerUnitService.getQuestionId(501L)).thenReturn(35L);
         when(imageStorageService.createGetUrl(
-                "answer-bucket", "answers/1001/501", Duration.ofMinutes(10)))
+                "answer-bucket", "answers/1001/501", Duration.ofHours(2)))
                 .thenReturn("https://example.com/image");
 
         String url = submissionImageService.createGetUrl(
@@ -116,10 +117,10 @@ class SubmissionImageServiceTest {
         when(answerUnitService.getQuestionId(501L)).thenReturn(35L);
         when(answerUnitService.getQuestionId(502L)).thenReturn(36L);
         when(imageStorageService.createGetUrl(
-                "answer-bucket", "answers/1001/501", Duration.ofMinutes(10)))
+                "answer-bucket", "answers/1001/501", Duration.ofHours(2)))
                 .thenThrow(new BusinessException(ErrorCode.IMAGE_NOT_FOUND));
         when(imageStorageService.createGetUrl(
-                "answer-bucket", "answers/1001/502", Duration.ofMinutes(10)))
+                "answer-bucket", "answers/1001/502", Duration.ofHours(2)))
                 .thenReturn("https://example.com/second");
 
         Map<Long, String> urls = submissionImageService.createGetUrls(
@@ -136,7 +137,7 @@ class SubmissionImageServiceTest {
                 7L, UserRole.TEACHER, 1001L)).thenReturn(101L);
         when(answerUnitService.getQuestionId(501L)).thenReturn(35L);
         when(imageStorageService.createGetUrl(
-                "answer-bucket", "answers/1001/501", Duration.ofMinutes(10)))
+                "answer-bucket", "answers/1001/501", Duration.ofHours(2)))
                 .thenThrow(new BusinessException(ErrorCode.IMAGE_STORAGE_FAILED));
 
         assertThatThrownBy(() -> submissionImageService.createGetUrls(
