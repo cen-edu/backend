@@ -7,6 +7,8 @@ import com.cenedu.backend.domain.analysis.service.PlacementScorer.PlacementTally
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /** 설계서 2절의 가중 배점과 컷오프를 고정한다. */
 class PlacementScorerTest {
@@ -58,37 +60,35 @@ class PlacementScorerTest {
                 .isEqualByComparingTo(MasteryStatusJudge.SUPPORT_CUTOFF);
     }
 
-    @Test
-    @DisplayName("중 난이도만 출제된 진단지는 설계서 2.3 예시대로 배정한다")
-    void followsSingleBandExample() {
-        // 80% 이상 → 상
-        PlacementResult cleared = PlacementScorer.score(new PlacementTally(0, 0, 5, 4, 0, 0));
-        assertThat(cleared.mixed()).isFalse();
-        assertThat(cleared.difficulty()).isEqualTo(DifficultyLadder.HIGH);
+    /**
+     * 단일 난이도 진단의 9칸을 전부 고정한다. 출제된 난이도에서 한 칸씩만 움직이는 것이 규칙이라
+     * 하 난이도를 다 맞혀도 상으로 뛰지 않고, 상 난이도를 다 틀려도 하로 떨어지지 않는다.
+     */
+    @ParameterizedTest(name = "{0} 난이도만 5문항 출제, {1}개 정답이면 {2}")
+    @CsvSource({
+            "low,  5, MID",
+            "low,  3, LOW",
+            "low,  1, LOW",
+            "mid,  4, HIGH",
+            "mid,  3, MID",
+            "mid,  1, LOW",
+            "high, 5, HIGH",
+            "high, 3, HIGH",
+            "high, 1, MID"
+    })
+    @DisplayName("한 난이도로만 출제되면 그 난이도에서 한 칸씩만 움직인다")
+    void adjustsOneStepFromSingleBand(String band, int correctCount, String expected) {
+        PlacementTally tally = switch (band) {
+            case "low" -> new PlacementTally(5, correctCount, 0, 0, 0, 0);
+            case "mid" -> new PlacementTally(0, 0, 5, correctCount, 0, 0);
+            default -> new PlacementTally(0, 0, 0, 0, 5, correctCount);
+        };
 
-        // 40~79% → 중
-        assertThat(PlacementScorer.score(new PlacementTally(0, 0, 4, 3, 0, 0)).difficulty())
-                .isEqualTo(DifficultyLadder.MID);
+        PlacementResult result = PlacementScorer.score(tally);
 
-        // 40% 미만 → 하
-        assertThat(PlacementScorer.score(new PlacementTally(0, 0, 5, 1, 0, 0)).difficulty())
-                .isEqualTo(DifficultyLadder.LOW);
-    }
-
-    @Test
-    @DisplayName("하 난이도만 다 맞혀도 상까지 뛰지 않는다 — 풀지 않은 난이도를 실력으로 보지 않는다")
-    void neverSkipsALadderStep() {
-        PlacementResult result = PlacementScorer.score(new PlacementTally(5, 5, 0, 0, 0, 0));
-
-        assertThat(result.rate()).isEqualByComparingTo("100.00");
-        assertThat(result.difficulty()).isEqualTo(DifficultyLadder.MID);
-    }
-
-    @Test
-    @DisplayName("상 난이도만 출제된 진단지에서 부진하면 한 칸 아래인 중에서 시작한다")
-    void demotesOneStepFromHighBand() {
-        assertThat(PlacementScorer.score(new PlacementTally(0, 0, 0, 0, 5, 1)).difficulty())
-                .isEqualTo(DifficultyLadder.MID);
+        assertThat(result.mixed()).isFalse();
+        assertThat(DifficultyLadder.code(result.difficulty()))
+                .isEqualTo(expected.toLowerCase());
     }
 
     @Test
