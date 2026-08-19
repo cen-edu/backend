@@ -788,7 +788,7 @@ public record TableCellAddress(int row, int column) {}
 
 Validation limits: viewport 240–1200 by 120–900, padding 8–96; font family is `sans-serif` only; colors are `#[0-9A-F]{6}` uppercase; stroke 1–8; font 10–32; labels are at most 80 Unicode code points and match letters/numbers/Korean/space/math punctuation `[-+−×÷=().,°%/:]`; no control character. All referenced semantic keys and plane/coordinate point keys exist. Ranges/ticks are positive and contain zero where axes require it. Tables are rectangular, at most 12x12, and have one cell per coordinate. Solid kinds enforce required dimensions: prism/pyramid width+depth+height, cylinder radius+height, cone radius+height+slant, sphere radius.
 
-- [ ] **Step 1: Write failing family and injection tests**
+- [x] **Step 1: Write failing family and injection tests** *(RED 단계는 사용자 지시에 따라 생략하고 구현 후 집중 테스트로 검증)*
 
 ```java
 @Test
@@ -809,23 +809,23 @@ void rejectsExternalMarkupInLabels() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED** *(사용자 지정 방식에 따라 생략)*
 
 Run: `bash gradlew test --tests '*DiagramSpecValidatorTest'`
 
 Expected: FAIL because the base interface is not yet a closed tagged union and the family validator does not exist.
 
-- [ ] **Step 3: Implement the closed records and validator**
+- [x] **Step 3: Implement the closed records and validator**
 
 The validator dispatches with an exhaustive Java 21 pattern switch. It reads values only from `Map<String, SemanticResolvedValue>` and never parses provider-supplied pixel coordinates or raw markup. `SemanticAssetPlanFactory` appends diagram content blocks in declaration order as `CB2`, `CB3`; DATA_TABLE uses TABLE and safe server markup, while other kinds use FIGURE and `assetRef=assetKey`. It creates one typed `GeneratedAssetPlan` per diagram and the materializer reruns snapshot validators after adding those blocks.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 Run: `bash gradlew test --tests '*DiagramSpecValidatorTest' --tests '*ProblemSemanticModelValidatorTest' --tests '*DefaultProblemSemanticMaterializerTest'`
 
 Expected: PASS for five valid families and invalid label, range, point reference, table shape, and solid-dimension cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/authoring/diagram \
