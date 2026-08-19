@@ -104,6 +104,33 @@ class ProblemSemanticAuthoringScenarioTest {
         assertThat(tableSvg).contains("row").contains("column").contains("7");
     }
 
+    @Test
+    void inverse_prism_and_rubric_scenarios_keep_dependent_contracts() {
+        var viewport = new DiagramViewport(640, 240, 16);
+        var style = new DiagramStyle("#000000", "#FFFFFF", "#FF0000", 1, "sans-serif", 12);
+        var renderer = new ProblemDiagramRenderer(new SafeSvgSanitizer());
+        var inverse = new CoordinateGraphDiagramSpecV1(1, "INV", DiagramKind.COORDINATE_GRAPH, viewport, style,
+                "X0", "X1", "Y0", "Y1", null, null, List.of(), List.of(), List.of(),
+                List.of(new CoordinateFunctionSpec("F", CoordinateFunctionKind.INVERSE_PROPORTION, "K", "inverse")));
+        var inverseSvg = renderer.render(inverse, new DiagramRenderContext(values(Map.of(
+                "X0", "-10", "X1", "10", "Y0", "-10", "Y1", "10", "K", "12")))).svg();
+        assertThat(inverseSvg).contains("<path");
+
+        var prism = new SolidGeometryDiagramSpecV1(1, "PRISM", DiagramKind.SOLID_GEOMETRY, viewport, style,
+                SolidGeometryKind.PRISM, "W", "D", "H", null, null, null,
+                List.of(new SolidLabelSpec("width", "W", "width"),
+                        new SolidLabelSpec("depth", "D", "depth"),
+                        new SolidLabelSpec("height", "H", "height")));
+        var prismSvg = renderer.render(prism, new DiagramRenderContext(values(Map.of(
+                "W", "3", "D", "4", "H", "5")))).svg();
+        assertThat(prismSvg).contains("width 3").contains("depth 4").contains("height 5");
+
+        var rubrics = List.of(new SemanticRubricTemplate("R1", 1, "근거", 40),
+                new SemanticRubricTemplate("R2", 2, "계산", 60));
+        assertThat(rubrics.stream().mapToInt(SemanticRubricTemplate::weightPercent).sum()).isEqualTo(100);
+        assertThat(rubrics.toString()).doesNotContain("answerRaw", "answerNormalized");
+    }
+
     private Map<String, SemanticResolvedValue> values(Map<String, String> source) {
         var result = new LinkedHashMap<String, SemanticResolvedValue>();
         source.forEach((key, value) -> result.put(key,
