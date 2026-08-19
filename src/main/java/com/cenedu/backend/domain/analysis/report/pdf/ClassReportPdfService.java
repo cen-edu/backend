@@ -93,7 +93,7 @@ public class ClassReportPdfService {
         List<ClassReportView.PriorityItem> priority = insights.priorityItems().stream()
                 .map(item -> new ClassReportView.PriorityItem(
                         item.itemNumber(),
-                        item.questionTitle(),
+                        QuestionTextNormalizer.toPlainText(item.questionTitle()),
                         ReportLabels.of(item.evaluationArea()),
                         ReportLabels.of(item.difficultyBand()),
                         item.correctStudentCount(),
@@ -132,7 +132,7 @@ public class ClassReportPdfService {
         List<ClassReportView.PriorityItem> priority = insights.priorityItems().stream()
                 .map(item -> new ClassReportView.PriorityItem(
                         item.itemNumber(),
-                        item.questionTitle(),
+                        QuestionTextNormalizer.toPlainText(item.questionTitle()),
                         ReportLabels.of(item.questionTypeGroup()),
                         ReportLabels.of(item.difficultyBand()),
                         item.correctStudentCount(),

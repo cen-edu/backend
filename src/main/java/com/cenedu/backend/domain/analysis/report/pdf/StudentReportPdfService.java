@@ -164,7 +164,7 @@ public class StudentReportPdfService {
                             messages.get(item.worksheetItemId());
                     return new StudentReportView.ItemRow(
                             item.itemNumber(),
-                            item.questionTitle(),
+                            QuestionTextNormalizer.toPlainText(item.questionTitle()),
                             comprehensive
                                     ? ReportLabels.of(item.questionTypeGroup())
                                     : ReportLabels.of(item.evaluationArea()),
