@@ -1,0 +1,185 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8"/>
+    <th:block th:replace="~{common-style :: style}"/>
+</head>
+<body>
+
+<div class="doc-title">학급 분석 보고서</div>
+<div class="doc-meta">
+    <span th:text="${view.overview.context.className}">1반</span> ·
+    <span th:text="${view.overview.context.worksheetTitle}">학습지</span> ·
+    <span th:text="${view.generatedAt}">2026-08-19</span>
+</div>
+
+<h2>학급 요약</h2>
+<table>
+    <thead>
+    <tr>
+        <th>참여 학생</th>
+        <th>채점 대기 학생</th>
+        <th>채점 대기 답안</th>
+        <th>학급 성취율</th>
+        <th>취약 학생</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+        <td th:text="${view.overview.summary.participantCount}">0</td>
+        <td th:text="${view.overview.summary.gradingPendingStudentCount}">0</td>
+        <td th:text="${view.overview.summary.gradingPendingAnswerCount}">0</td>
+        <td th:text="${view.overview.summary.classPerformanceRate != null
+                      ? view.overview.summary.classPerformanceRate + '%' : '-'}">-</td>
+        <td th:text="${view.overview.summary.weaknessStudentCount}">0</td>
+    </tr>
+    </tbody>
+</table>
+
+<h2 th:text="${view.comparisonTitle}">평가 영역별 성취</h2>
+<div th:if="${view.comparisonBars.isEmpty()}" class="empty">표시할 결과가 없습니다.</div>
+<div th:each="bar : ${view.comparisonBars}" class="bar-row">
+    <div class="bar-label">
+        <span th:text="${bar.label}">항목</span>
+        <span class="bar-note">
+            · <span th:text="${bar.itemCount}">0</span>문항<span
+                th:if="${bar.referenceOnly}"> · 참고</span>
+        </span>
+    </div>
+    <div class="bar-line">
+        <span class="bar-caption">학급</span>
+        <span class="bar-track">
+            <span class="bar" th:style="'width:' + ${bar.studentWidth} + '%'"></span>
+        </span>
+        <span class="bar-value"
+              th:text="${bar.studentRate != null ? bar.studentRate + '%' : '-'}">-</span>
+    </div>
+    <div class="bar-line" th:if="${bar.classRate != null}">
+        <span class="bar-caption">학급</span>
+        <span class="bar-track">
+            <span class="bar bar-class" th:style="'width:' + ${bar.classWidth} + '%'"></span>
+        </span>
+        <span class="bar-value" th:text="${bar.classRate} + '%'">-</span>
+    </div>
+</div>
+
+<h2>난이도별 성취</h2>
+<div th:if="${view.difficultyBars.isEmpty()}" class="empty">표시할 결과가 없습니다.</div>
+<div th:each="bar : ${view.difficultyBars}" class="bar-row">
+    <div class="bar-label">
+        <span th:text="${bar.label}">항목</span>
+        <span class="bar-note">
+            · <span th:text="${bar.itemCount}">0</span>문항<span
+                th:if="${bar.referenceOnly}"> · 참고</span>
+        </span>
+    </div>
+    <div class="bar-line">
+        <span class="bar-caption">학급</span>
+        <span class="bar-track">
+            <span class="bar" th:style="'width:' + ${bar.studentWidth} + '%'"></span>
+        </span>
+        <span class="bar-value"
+              th:text="${bar.studentRate != null ? bar.studentRate + '%' : '-'}">-</span>
+    </div>
+    <div class="bar-line" th:if="${bar.classRate != null}">
+        <span class="bar-caption">학급</span>
+        <span class="bar-track">
+            <span class="bar bar-class" th:style="'width:' + ${bar.classWidth} + '%'"></span>
+        </span>
+        <span class="bar-value" th:text="${bar.classRate} + '%'">-</span>
+    </div>
+</div>
+
+<h2>우선 확인 문항</h2>
+<div th:if="${view.priorityItems.isEmpty()}" class="empty">채점된 문항이 없습니다.</div>
+<table th:unless="${view.priorityItems.isEmpty()}">
+    <thead>
+    <tr>
+        <th>번호</th>
+        <th class="left">문항</th>
+        <th th:if="${view.showPriorityType()}"
+            th:text="${view.priorityTypeColumnLabel}">영역</th>
+        <th>난이도</th>
+        <th>정답 학생</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="item : ${view.priorityItems}">
+        <td th:text="${item.itemNumber}">1</td>
+        <td class="left" th:text="${item.questionTitle}">문항</td>
+        <td th:if="${view.showPriorityType()}"
+            th:text="${item.typeLabel != null ? item.typeLabel : '-'}">-</td>
+        <td th:text="${item.difficultyBand}">중</td>
+        <td><span th:text="${item.correctStudentCount}">0</span> /
+            <span th:text="${item.gradedStudentCount}">0</span></td>
+    </tr>
+    </tbody>
+</table>
+
+<h2>학생 목록</h2>
+<table>
+    <thead>
+    <tr>
+        <th class="left">학생</th>
+        <th>성취율</th>
+        <th>분석 상태</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="student : ${view.students}">
+        <td class="left" th:text="${student.studentName}">학생</td>
+        <td th:text="${student.performanceRate != null
+                      ? student.performanceRate + '%' : '-'}">-</td>
+        <td th:text="${student.statusLabel}">상태</td>
+    </tr>
+    </tbody>
+</table>
+
+<h2 th:text="${view.matrix.title}">소분류별 성취</h2>
+<div th:if="${view.matrix.isEmpty()}" class="empty">표시할 결과가 없습니다.</div>
+<table th:unless="${view.matrix.isEmpty()}">
+    <thead>
+    <tr>
+        <th class="left">학생</th>
+        <th th:each="column : ${view.matrix.columnLabels}" th:text="${column}">열</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:each="row : ${view.matrix.rows}">
+        <td class="left" th:text="${row.studentName}">학생</td>
+        <td th:each="cell : ${row.cells}" th:class="${cell.heatClass}"
+            th:text="${cell.text}">-</td>
+    </tr>
+    </tbody>
+</table>
+
+<div th:if="${view.hasScoreTimes()}">
+    <h2>점수와 풀이시간</h2>
+    <p class="bar-note">
+        학급 중앙값 —
+        점수 <span th:text="${view.scoreMedian != null
+                             ? view.scoreMedian + '%' : '-'}">-</span>,
+        시간 <span th:text="${view.durationMedian != null
+                             ? view.durationMedian / 60000 + '분' : '-'}">-</span>
+    </p>
+    <table>
+        <thead>
+        <tr>
+            <th class="left">학생</th>
+            <th>득점률</th>
+            <th>총 풀이시간</th>
+            <th>분석 상태</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="row : ${view.scoreTimes}">
+            <td class="left" th:text="${row.studentName}">학생</td>
+            <td th:text="${row.scoreRate != null ? row.scoreRate + '%' : '-'}">-</td>
+            <td th:text="${row.durationText}">-</td>
+            <td th:text="${row.statusLabel}">상태</td>
+        </tr>
+        </tbody>
+    </table>
+</div>
+
+</body>
+</html>

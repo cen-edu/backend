@@ -142,6 +142,8 @@ class ComprehensiveAssessmentQueryRepositoryTest {
         List<AssessmentPriorityItemRow> rows = repository.findPriorityItems(assignmentId);
 
         assertThat(rows).hasSize(2);
+        assertThat(rows).allSatisfy(row ->
+                assertThat(row.questionType()).isNotNull());
         assertThat(rows).extracting(AssessmentPriorityItemRow::worksheetItemId)
                 .containsExactly(firstItemId, secondItemId);
         assertThat(rows.getFirst().questionTitle()).isEqualTo("객관식 발문");

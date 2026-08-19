@@ -34,10 +34,15 @@ public record ComprehensiveAssessmentInsightsResponse(
     ) {
     }
 
+    /**
+     * @param questionTypeGroup 객관식·주관식·서술형. 종합평가 문항에는 평가 영역이 없어서
+     *                          문항을 분류해 보여줄 축이 유형뿐이다
+     */
     public record ComprehensiveAssessmentPriorityItem(
             Long worksheetItemId,
             int itemNumber,
             String questionTitle,
+            AssessmentQuestionTypeGroup questionTypeGroup,
             DifficultyBand difficultyBand,
             int correctStudentCount,
             int gradedStudentCount

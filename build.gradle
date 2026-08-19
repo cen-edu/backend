@@ -33,6 +33,7 @@ ext {
     springAiVersion = '2.0.0'
     awsSdkVersion = '2.49.6'
     archunitVersion = '1.5.0'
+    openhtmltopdfVersion = '1.1.31'
 }
 
 dependencies {
@@ -59,6 +60,12 @@ dependencies {
     runtimeOnly "io.jsonwebtoken:jjwt-jackson:${jjwtVersion}"
 
     // Swagger UI — 프론트와의 API 계약서 (5단계)
+    // 분석 보고서 PDF. HTML/CSS 를 그려 PDF 로 만든다 — 표와 막대가 대부분이라 CSS 로 충분하고,
+    // 자바스크립트를 실행하지 않으므로 화면의 차트 라이브러리 결과는 가져올 수 없다.
+    implementation "io.github.openhtmltopdf:openhtmltopdf-pdfbox:${openhtmltopdfVersion}"
+    // PDF 로 넘길 HTML 을 만든다. 보고서 분량이 커서 Java 문자열로 조립하면 유지보수가 어렵다.
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
     implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
     // Boot BOM의 이전 버전과 springdoc이 사용하는 swagger-core 버전이 섞이지 않도록 맞춘다.
     implementation "io.swagger.core.v3:swagger-annotations-jakarta:${swaggerAnnotationsVersion}"
