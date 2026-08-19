@@ -31,6 +31,7 @@ public class ProblemGenerationWorker {
     private final ObjectProvider<ProblemGenerationPort> generationPortProvider;
     private final ProblemAiConcurrencyLimiter concurrencyLimiter;
     private final ObjectProvider<ProblemRetrievalTracePort> tracePort;
+    private final ProblemSemanticReferenceEnricher semanticReferenceEnricher;
 
     public ProblemGenerationWorker(
             ProblemGenerationJobService jobService,
@@ -38,7 +39,7 @@ public class ProblemGenerationWorker {
             ObjectProvider<ProblemGenerationPort> generationPortProvider,
             ProblemAiConcurrencyLimiter concurrencyLimiter
     ) {
-        this(jobService, candidateProcessingService, generationPortProvider, concurrencyLimiter, null);
+        this(jobService, candidateProcessingService, generationPortProvider, concurrencyLimiter, null, null);
     }
 
     /** retrieval trace 연결 Port를 선택적으로 주입한다. */
@@ -48,13 +49,15 @@ public class ProblemGenerationWorker {
             ProblemCandidateProcessingService candidateProcessingService,
             ObjectProvider<ProblemGenerationPort> generationPortProvider,
             ProblemAiConcurrencyLimiter concurrencyLimiter,
-            ObjectProvider<ProblemRetrievalTracePort> tracePort
+            ObjectProvider<ProblemRetrievalTracePort> tracePort,
+            ProblemSemanticReferenceEnricher semanticReferenceEnricher
     ) {
         this.jobService = jobService;
         this.candidateProcessingService = candidateProcessingService;
         this.generationPortProvider = generationPortProvider;
         this.concurrencyLimiter = concurrencyLimiter;
         this.tracePort = tracePort;
+        this.semanticReferenceEnricher = semanticReferenceEnricher;
     }
 
     /** 선점한 Item을 생성·검증하고 의미 실패 시 최대 두 번 같은 명령으로 재생성한다. */
@@ -66,6 +69,7 @@ public class ProblemGenerationWorker {
         int attempt = 0;
         while (true) {
             ProblemGenerationCommand attemptCommand = commandForAttempt(workItem.command(), attempt);
+            if (semanticReferenceEnricher != null) attemptCommand = semanticReferenceEnricher.enrich(attemptCommand);
             ProblemCandidateDraft candidate;
             try (ProblemAiConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire()) {
                 candidate = generationPort().generate(attemptCommand);

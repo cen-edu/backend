@@ -1436,7 +1436,7 @@ Behavior is exact:
 - `ProblemSemanticReferenceEnricher.enrich(ProblemGenerationCommand command)` extracts every ORIGIN with a null semantic model. EXAMPLE models remain lazy unless the semantic prompt asks for solution structure; then extract at most two EXAMPLEs in reference order. Failed examples are retained as snapshot-only references; a failed ORIGIN causes semantic generation to return UNSUPPORTED and the caller uses the existing generation fallback.
 - `ProblemGenerationWorker` calls the enricher before `ProblemGenerationPort.generate`; retry request IDs remain deterministic.
 
-- [ ] **Step 1: Write failing idempotence and failure-preservation tests**
+- [x] **Step 1: Write idempotence and failure-preservation tests** *(사용자 지정 방식에 따라 RED 단계는 생략)*
 
 ```java
 @Test
@@ -1460,23 +1460,23 @@ void unsupportedOriginKeepsSnapshotAndSignalsLegacyFallback() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED** *(사용자 지정 방식에 따라 생략)*
 
 Run: `bash gradlew test --tests '*ProblemSemanticExtractionServiceTest' --tests '*ProblemSemanticReferenceEnricherTest' --tests '*ProblemSemanticExtractionAdapterTest'`
 
 Expected: FAIL because extraction contracts and services do not exist.
 
-- [ ] **Step 3: Implement extraction port/adapter, persistence, and generation-reference enrichment**
+- [x] **Step 3: Implement extraction port/adapter, persistence, and generation-reference enrichment**
 
 The adapter uses the semantic schema from Task 8, does not pass through Dispatcher, and never logs the snapshot or model. It returns UNSUPPORTED for unsupported operation/diagram types, INVALID_SOURCE when the materialized answer cannot match the source snapshot, and TECHNICAL_ERROR for provider/parse failures.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN** *(Task10 관련 테스트 통과)*
 
 Run: `bash gradlew test --tests '*ProblemSemanticExtractionServiceTest' --tests '*ProblemSemanticReferenceEnricherTest' --tests '*ProblemSemanticExtractionAdapterTest' --tests '*ProblemGenerationWorkerTest'`
 
 Expected: PASS for READY idempotence, all four statuses, source preservation, ORIGIN enrichment, optional EXAMPLE enrichment, and fallback signaling.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/authoring/semantic/extraction \
