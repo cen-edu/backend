@@ -46,7 +46,10 @@ public record LearningStatusAssignmentResponse(
         long submittedCount,
 
         @Schema(description = "맞춤 학습지를 만들어 낸 배포 ID. 학습지 ID가 아니다", nullable = true)
-        Long sourceAssignmentId
+        Long sourceAssignmentId,
+
+        @Schema(description = "이 배정에서 파생된 맞춤 학습 요약. 맞춤이 없으면 null", nullable = true)
+        CustomLearningSummaryResponse customLearningSummary
 ) {
 
     public static LearningStatusAssignmentResponse from(
@@ -55,7 +58,8 @@ public record LearningStatusAssignmentResponse(
             String status,
             int totalUnits,
             int studentCount,
-            long submittedCount
+            long submittedCount,
+            CustomLearningSummaryResponse customLearningSummary
     ) {
         return new LearningStatusAssignmentResponse(
                 row.assignmentId(),
@@ -73,7 +77,8 @@ public record LearningStatusAssignmentResponse(
                 totalUnits,
                 studentCount,
                 submittedCount,
-                row.sourceAssignmentId()
+                row.sourceAssignmentId(),
+                customLearningSummary
         );
     }
 }

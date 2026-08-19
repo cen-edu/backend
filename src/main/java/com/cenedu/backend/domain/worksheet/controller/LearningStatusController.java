@@ -1,8 +1,10 @@
 package com.cenedu.backend.domain.worksheet.controller;
 
 import com.cenedu.backend.domain.worksheet.dto.request.LearningStatusListRequest;
+import com.cenedu.backend.domain.worksheet.dto.response.CustomLearningStatusResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.LearningStatusListResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.LearningStatusStudentsResponse;
+import com.cenedu.backend.domain.worksheet.service.CustomLearningStatusQueryService;
 import com.cenedu.backend.domain.worksheet.service.LearningStatusQueryService;
 import com.cenedu.backend.global.common.ApiResponse;
 import com.cenedu.backend.global.security.AuthenticatedUser;
@@ -32,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class LearningStatusController {
 
     private final LearningStatusQueryService learningStatusQueryService;
+    private final CustomLearningStatusQueryService customLearningStatusQueryService;
 
     @GetMapping
     @Operation(summary = "요약 카드와 학습지 목록", description = """
@@ -72,5 +75,29 @@ public class LearningStatusController {
     ) {
         return ApiResponse.success(
                 learningStatusQueryService.getStudents(user.memberId(), assignmentId, status));
+    }
+
+    @GetMapping("/{sourceAssignmentId}/custom-learning")
+    @Operation(summary = "맞춤 학습 현황", description = """
+            원본 배정에서 파생된 맞춤 학습을 학습지별로 묶어 학생 현황과 함께 반환한다.
+
+            맞춤 배정은 학생 한 명씩이라 카드는 맞춤 학습지 단위로 묶고,
+            배정 ID 는 students[].assignmentId 에 있다.
+
+            sessionNumber 는 저장 컬럼이 없어 배정일 오름차순으로 파생하며 1부터 시작한다.
+            displayNumber 는 원본 배정 명단 기준이라 1, 4, 6 처럼 띄엄띄엄 나오는 것이 정상이다.
+            """)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "조회 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "배포가 없거나 내 학습지가 아님", content = @Content)
+    })
+    public ApiResponse<CustomLearningStatusResponse> getCustomLearning(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long sourceAssignmentId
+    ) {
+        return ApiResponse.success(
+                customLearningStatusQueryService.getCustomLearning(user.memberId(), sourceAssignmentId));
     }
 }
