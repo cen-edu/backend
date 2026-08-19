@@ -5,10 +5,12 @@ import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationC
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
 import org.springframework.stereotype.Component;
+import com.cenedu.backend.ai.problem.adapter.FewShotReferenceSerializer;
 
 @Component
 public final class ProblemSemanticGenerationPromptFactory {
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = new ObjectMapper(); private final FewShotReferenceSerializer references;
+    public ProblemSemanticGenerationPromptFactory(FewShotReferenceSerializer references) { this.references = references; }
 
     public String create(ProblemGenerationCommand command, List<String> repairFindings) {
         String request;
@@ -28,7 +30,7 @@ public final class ProblemSemanticGenerationPromptFactory {
 
     public List<ChatMessage> messages(ProblemGenerationCommand command) {
         List<ChatMessage> messages = new ArrayList<>();
-        if (!command.references().isEmpty()) messages.add(ChatMessage.user("FEW_SHOT_REFERENCES\n" + command.references()));
+        if (!command.references().isEmpty()) messages.add(ChatMessage.user("FEW_SHOT_JSON\n" + references.serialize(command.curriculum(), command.references())));
         messages.add(ChatMessage.user("GENERATE_SEMANTIC_MODEL"));
         return List.copyOf(messages);
     }
