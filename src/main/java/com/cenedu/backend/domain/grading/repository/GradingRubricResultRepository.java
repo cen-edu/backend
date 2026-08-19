@@ -18,9 +18,18 @@ import org.springframework.data.repository.query.Param;
  * 채점 기준(항목)과 판정 결과가 같은 화면(학생 결과 조회)에서 함께 필요해서다.
  * domain/problem 쪽 파일은 만들거나 고치지 않는다 — 읽기 전용 쿼리만 내 패키지 안에 둔다.
  *
- * <p><b>TODO(배세빈, 도메인 경계 정리):</b> 다른 도메인의 Entity를 이 Repository에서 직접
- * 조회하는 현재 방식은 AGENTS.md 3절 1·2번과 맞지 않는다. Problem 도메인의 공개 루브릭
- * Response/Service를 통해 조회하도록 교체하고, 이 Repository는 Grading Entity만 반환한다.
+ * <p><b>D24 — 승인된 예외(서술형 채점 작업 한정).</b> 다른 도메인({@code domain/problem})의
+ * Entity를 이 Repository에서 직접 조회하는 것은 AGENTS.md 3절 1·2번과 맞지 않는다. 서술형 채점은
+ * 루브릭 항목과 가중치를 문항에서 읽어야 하는데, problem 도메인에 그 용도의 공개 API가 없다.
+ * 소유자에게 신설을 요청하는 대신 <b>이번 작업에 한해 읽기 전용 쿼리를 이 패키지 안에 두기로
+ * 승인됐다.</b> domain/problem 쪽 파일은 만들지도 고치지도 않는다.
+ *
+ * <p><b>이관 조건.</b> 아래 중 하나라도 걸리면 그때 problem 도메인의 공개 Service로 옮긴다.
+ * <ul>
+ *   <li>problem 도메인이 루브릭 조회 API를 공개하면 — 그 시점에 즉시</li>
+ *   <li>이 Repository가 problem Entity를 <b>쓰기</b>로 다루게 되면</li>
+ *   <li>채점 밖의 다른 도메인이 같은 쿼리를 필요로 하면 — 중복이 두 벌이 되는 순간</li>
+ * </ul>
  */
 public interface GradingRubricResultRepository extends JpaRepository<GradingRubricResult, Long> {
 
