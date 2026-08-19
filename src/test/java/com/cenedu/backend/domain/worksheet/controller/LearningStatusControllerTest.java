@@ -439,28 +439,61 @@ class LearningStatusControllerTest {
     }
 
     @Test
-    @DisplayName("회차는 배정일 오름차순으로 1부터 붙는다")
-    void customLearning_sessionNumberByAssignedAt() throws Exception {
+    @DisplayName("차수는 parent 체인의 깊이라 배정일 순서와 어긋나도 1차가 먼저다")
+    void customLearning_sessionNumberByParentChain() throws Exception {
         long worksheetId = insertWorksheet("GENERAL_LEARNING", "2단원 연습", "COMMON");
         long assignmentId = insertAssignment(worksheetId, classId, 7);
         long minjun = student("김민준");
         insertAssignmentStudent(assignmentId, minjun, "SUBMITTED", (short) 3, true, false);
 
-        long older = insertCustomWorksheet("1회차 맞춤", assignmentId, "GENERAL_LEARNING");
-        long newer = insertCustomWorksheet("2회차 맞춤", assignmentId, "GENERAL_LEARNING");
-        // 늦게 만들어진 학습지를 더 이른 배정일로 둬서 정렬축이 생성순이 아님을 확인한다.
-        long newerAssignment = insertStudentAssignment(newer, minjun, 5, 7);
-        long olderAssignment = insertStudentAssignment(older, minjun, 1, 7);
-        insertAssignmentStudent(newerAssignment, minjun, "NOT_STARTED", (short) 0, false, false);
-        insertAssignmentStudent(olderAssignment, minjun, "NOT_STARTED", (short) 0, false, false);
+        long first = insertCustomWorksheet("1차 맞춤", assignmentId, "GENERAL_LEARNING", worksheetId);
+        long second = insertCustomWorksheet("2차 맞춤", assignmentId, "GENERAL_LEARNING", first);
+        // 2차를 1차보다 더 이른 배정일로 둔다. 배정일로 매기면 2차가 1차로 뒤집힌다.
+        long secondAssignment = insertStudentAssignment(second, minjun, 5, 7);
+        long firstAssignment = insertStudentAssignment(first, minjun, 1, 7);
+        insertAssignmentStudent(secondAssignment, minjun, "NOT_STARTED", (short) 0, false, false);
+        insertAssignmentStudent(firstAssignment, minjun, "NOT_STARTED", (short) 0, false, false);
 
         mockMvc.perform(get(LIST + "/" + assignmentId + "/custom-learning")
                         .header("Authorization", "Bearer " + teacherToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.worksheets[0].title").value("2회차 맞춤"))
+                .andExpect(jsonPath("$.data.worksheets[0].title").value("1차 맞춤"))
                 .andExpect(jsonPath("$.data.worksheets[0].sessionNumber").value(1))
-                .andExpect(jsonPath("$.data.worksheets[1].title").value("1회차 맞춤"))
+                .andExpect(jsonPath("$.data.worksheets[1].title").value("2차 맞춤"))
                 .andExpect(jsonPath("$.data.worksheets[1].sessionNumber").value(2));
+    }
+
+    @Test
+    @DisplayName("늦게 받은 학생의 첫 맞춤도 1차다 — 차수가 학생을 가로지른다")
+    void customLearning_sessionNumberCrossesStudents() throws Exception {
+        long worksheetId = insertWorksheet("GENERAL_LEARNING", "2단원 연습", "COMMON");
+        long assignmentId = insertAssignment(worksheetId, classId, 7);
+        long minjun = student("김민준");
+        long seoyun = student("이서윤");
+        insertAssignmentStudent(assignmentId, minjun, "SUBMITTED", (short) 3, true, false);
+        insertAssignmentStudent(assignmentId, seoyun, "SUBMITTED", (short) 3, true, false);
+
+        // 김민준 1차·2차, 이서윤 1차. 이서윤이 가장 늦게 받는다.
+        long minjunFirst = insertCustomWorksheet("민준 1차", assignmentId, "GENERAL_LEARNING", worksheetId);
+        long minjunSecond = insertCustomWorksheet("민준 2차", assignmentId, "GENERAL_LEARNING", minjunFirst);
+        long seoyunFirst = insertCustomWorksheet("서윤 1차", assignmentId, "GENERAL_LEARNING", worksheetId);
+        insertAssignmentStudent(insertStudentAssignment(minjunFirst, minjun, 10, 7),
+                minjun, "NOT_STARTED", (short) 0, false, false);
+        insertAssignmentStudent(insertStudentAssignment(minjunSecond, minjun, 3, 7),
+                minjun, "NOT_STARTED", (short) 0, false, false);
+        insertAssignmentStudent(insertStudentAssignment(seoyunFirst, seoyun, 1, 7),
+                seoyun, "NOT_STARTED", (short) 0, false, false);
+
+        mockMvc.perform(get(LIST + "/" + assignmentId + "/custom-learning")
+                        .header("Authorization", "Bearer " + teacherToken))
+                .andExpect(status().isOk())
+                // 배정일 축이면 서윤 1차가 3회차로 나온다.
+                .andExpect(jsonPath("$.data.worksheets[?(@.worksheetId == " + seoyunFirst
+                        + ")].sessionNumber").value(1))
+                .andExpect(jsonPath("$.data.worksheets[?(@.worksheetId == " + minjunFirst
+                        + ")].sessionNumber").value(1))
+                .andExpect(jsonPath("$.data.worksheets[?(@.worksheetId == " + minjunSecond
+                        + ")].sessionNumber").value(2));
     }
 
     @Test
@@ -675,13 +708,27 @@ class LearningStatusControllerTest {
                 """, Long.class, worksheetId, targetClassId, dueInDays);
     }
 
-    /** 맞춤 학습지. origin=CUSTOM 이고 어느 배정에서 파생됐는지를 가리킨다. */
+    /** 1차 맞춤 학습지. 부모는 정의상 출처 배정의 학습지다. */
     private long insertCustomWorksheet(String title, long sourceAssignmentId, String type) {
+        Long parentWorksheetId = jdbcTemplate.queryForObject(
+                "SELECT worksheet_id FROM worksheet_assignment WHERE id = ?",
+                Long.class, sourceAssignmentId);
+        return insertCustomWorksheet(title, sourceAssignmentId, type, parentWorksheetId);
+    }
+
+    /**
+     * 맞춤 학습지. origin=CUSTOM 이고 어느 배정에서 파생됐는지를 가리킨다.
+     *
+     * <p>{@code parentWorksheetId} 가 차수를 정한다 — 원본 학습지를 가리키면 1차, 1차 맞춤을
+     * 가리키면 2차다. {@code sourceAssignmentId} 는 차수와 무관하게 항상 원본 배정이다.
+     */
+    private long insertCustomWorksheet(String title, long sourceAssignmentId, String type,
+                                       long parentWorksheetId) {
         return jdbcTemplate.queryForObject("""
                 INSERT INTO worksheet(title, type, origin, owner_teacher_id, grade, semester,
-                                      source_assignment_id, created_at)
-                VALUES (?, ?, 'CUSTOM', ?, 1, 'COMMON', ?, now()) RETURNING id
-                """, Long.class, title, type, teacherId, sourceAssignmentId);
+                                      source_assignment_id, parent_worksheet_id, created_at)
+                VALUES (?, ?, 'CUSTOM', ?, 1, 'COMMON', ?, ?, now()) RETURNING id
+                """, Long.class, title, type, teacherId, sourceAssignmentId, parentWorksheetId);
     }
 
     /**

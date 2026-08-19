@@ -36,6 +36,11 @@ public record WorksheetCreateRequest(
 
         Long sourceAssignmentId,
 
+        @Schema(description = "직전 차수 학습지 ID. origin=custom 이면 필수이고 아니면 금지한다. "
+                + "1차 맞춤은 원본 학습지를, 2차는 1차 맞춤을 가리킨다. 차수는 이 체인의 깊이로 파생한다",
+                nullable = true)
+        Long parentWorksheetId,
+
         @NotNull(message = "genSpec은 필수입니다.")
         @Valid
         List<WorksheetGenSpecRequest> genSpec,

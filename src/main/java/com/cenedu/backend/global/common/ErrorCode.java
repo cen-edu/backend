@@ -82,6 +82,8 @@ public enum ErrorCode {
     WORKSHEET_DUE_IN_PAST(HttpStatus.BAD_REQUEST, "제출 기한은 현재 시각 이후여야 합니다."),
     WORKSHEET_ASSIGNMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "배정된 학습지를 찾을 수 없습니다."),
     WORKSHEET_RESULT_NOT_RELEASED(HttpStatus.CONFLICT, "아직 채점 결과가 공개되지 않았습니다."),
+    WORKSHEET_PARENT_MISMATCH(HttpStatus.BAD_REQUEST,
+            "직전 차수 학습지가 이 맞춤 학습의 출처 배정과 맞지 않습니다."),
 
     // ===== submission (배세빈) =====
     SUBMISSION_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 제출한 학습지입니다."),

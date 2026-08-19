@@ -50,6 +50,14 @@ public class GradingController {
     @Operation(summary = "평가 결과 목록", description = """
             채점할 학습지 배포 목록을 배포일 최신순으로 반환한다.
             채점 상태(grading/graded/confirmed)는 컬럼이 아니라 서버가 파생한 값이다.
+
+            맞춤 학습은 최상위에 형제로 나오지 않고, 파생된 원본의 customLearning 안에
+            학생 → 차수 2단으로 들어간다. 차수는 저장 컬럼이 아니라 학습지 계보의 깊이다.
+            그래서 status 필터로 원본이 걸러지면 그 아래 맞춤도 함께 사라지고,
+            반 필터를 걸면 맞춤은 필터를 통과한 원본 아래에 그대로 남는다.
+
+            문항별 정오는 여기 없다. 행을 열 때 점수표 API(GET /{assignmentId})를 부르며,
+            맞춤은 customLearning...sessions[].assignmentId 를 그 경로에 넣으면 된다.
             """)
     public ApiResponse<GradingWorksheetListResponse> getWorksheets(
             @AuthenticationPrincipal AuthenticatedUser user,

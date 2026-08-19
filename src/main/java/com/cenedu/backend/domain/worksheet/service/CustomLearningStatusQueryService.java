@@ -59,7 +59,7 @@ public class CustomLearningStatusQueryService {
                         .get(source.getClassId());
 
         List<CustomLearningAssignmentRow> rows =
-                worksheetAssignmentRepository.findCustomLearningAssignments(sourceAssignmentId);
+                worksheetAssignmentRepository.findCustomLearningAssignments(List.of(sourceAssignmentId));
         if (rows.isEmpty()) {
             return CustomLearningStatusResponse.of(source, className, List.of());
         }
@@ -97,31 +97,51 @@ public class CustomLearningStatusQueryService {
                 .collect(Collectors.groupingBy(
                         CustomLearningAssignmentRow::worksheetId, LinkedHashMap::new, Collectors.toList()));
 
-        // 회차는 저장 컬럼이 없다. 학습지의 가장 이른 배정일 오름차순으로 매기고, 같으면 학습지 ID로
-        // 안정 정렬한다 — 한 배치로 만들어지면 배정일이 같을 수 있고, 그때 순서가 흔들리면 안 된다.
+        // 차수는 저장 컬럼이 없다. parentWorksheet 체인의 깊이로 매긴다 — 배정일로 매기면 늦게 받은
+        // 학생의 첫 맞춤이 3차로 보인다. 카드가 곧 학습지라 카드마다 깊이가 하나로 정해진다.
+        Map<Long, Integer> sessionNumbers = CustomSessionNumbering.depthByWorksheetId(
+                rows.getFirst().rootWorksheetId(), sessionNodes(rows));
+
         List<Map.Entry<Long, List<CustomLearningAssignmentRow>>> ordered =
                 rowsByWorksheetId.entrySet().stream()
                         .sorted(Comparator
-                                .comparing((Map.Entry<Long, List<CustomLearningAssignmentRow>> entry) ->
-                                        earliestAssignedAt(entry.getValue()))
+                                .comparingInt((Map.Entry<Long, List<CustomLearningAssignmentRow>> entry) ->
+                                        sortKey(sessionNumbers.get(entry.getKey())))
                                 .thenComparing(Map.Entry::getKey))
                         .toList();
 
         List<CustomLearningWorksheetResponse> worksheets = new ArrayList<>(ordered.size());
-        for (int index = 0; index < ordered.size(); index++) {
-            List<CustomLearningAssignmentRow> worksheetRows = ordered.get(index).getValue();
+        for (Map.Entry<Long, List<CustomLearningAssignmentRow>> entry : ordered) {
+            List<CustomLearningAssignmentRow> worksheetRows = entry.getValue();
             CustomLearningAssignmentRow first = worksheetRows.getFirst();
             worksheets.add(CustomLearningWorksheetResponse.of(
                     first.worksheetId(),
                     first.title(),
                     first.type(),
-                    index + 1,
+                    sessionNumbers.getOrDefault(first.worksheetId(), 0),
                     earliestAssignedAt(worksheetRows),
                     latestDueAt(worksheetRows),
                     totalUnitsByWorksheetId.getOrDefault(first.worksheetId(), 0),
                     students(worksheetRows, studentRowByAssignmentId, namesByStudentId, displayNumbers)));
         }
         return worksheets;
+    }
+
+    /** 학습지 하나가 여러 배정으로 나뉘어 오므로 학습지 축으로 접어서 차수 계산에 넘긴다. */
+    private List<CustomSessionNumbering.Node> sessionNodes(List<CustomLearningAssignmentRow> rows) {
+        return rows.stream()
+                .collect(Collectors.toMap(
+                        CustomLearningAssignmentRow::worksheetId,
+                        row -> new CustomSessionNumbering.Node(
+                                row.worksheetId(), row.parentWorksheetId()),
+                        (left, right) -> left))
+                .values().stream()
+                .toList();
+    }
+
+    /** 차수 미상(계보가 끊긴 데이터)은 0으로 내려가고 카드도 맨 뒤로 보낸다. */
+    private int sortKey(Integer sessionNumber) {
+        return sessionNumber == null ? Integer.MAX_VALUE : sessionNumber;
     }
 
     /**

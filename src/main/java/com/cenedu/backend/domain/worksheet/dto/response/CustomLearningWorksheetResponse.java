@@ -23,10 +23,12 @@ public record CustomLearningWorksheetResponse(
                 allowableValues = {"practice", "assessment"})
         String type,
 
-        @Schema(description = "회차. 저장 컬럼이 없어 배정일 오름차순으로 파생한다. 1부터 시작")
+        @Schema(description = "차수. 저장 컬럼이 없어 parent_worksheet_id 체인의 깊이로 파생한다. "
+                + "1부터 시작하고, 계보가 끊긴 데이터는 0이다. 배정일과 무관하므로 늦게 받은 학생의 "
+                + "첫 맞춤도 1차다")
         int sessionNumber,
 
-        @Schema(description = "가장 이른 배정일. 회차 정렬축과 같은 값이다")
+        @Schema(description = "가장 이른 배정일. 차수 파생에는 쓰지 않는다")
         OffsetDateTime assignedAt,
 
         @Schema(description = "가장 늦은 마감일. 한 명이라도 마감 전이면 카드는 열려 있는 것으로 본다. "
