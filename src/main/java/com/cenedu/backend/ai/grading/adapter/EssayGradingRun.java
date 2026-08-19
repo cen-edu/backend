@@ -18,14 +18,18 @@ public record EssayGradingRun(EssayGradingResult result, Trace trace) {
      * @param toolsOffered      도구를 실은 호출인지. 단계 4 의 A 군·B 군을 가른다
      * @param modelCalls        LLM 호출 차수
      * @param toolCalls         도구 호출 횟수
-     * @param toolStatusCounts  도구가 돌려준 {@code status} 별 횟수. 인자는 담지 않는다(D11)
+     * @param toolStatusCounts  도구가 돌려준 {@code status} 별 횟수. 인자는 담지 않는다(D11).
+     *                          {@code UNREADABLE} 은 {@code UNREADABLE:IMPLICIT_MULT} 처럼
+     *                          사유까지 붙은 키로 센다 — D9 의 분자가 거기서 나온다
      * @param droppedItems      우리가 준 목록에 없어서 버린 판정 수
      * @param malformedOutputs  약속한 JSON 으로 읽지 못한 최종 응답 수
-     * @param elapsedMillis     칸당 소요. 단계 6 의 60칸 직렬 추산이 이 값을 쓴다
+     * @param reasoningTokens   추론 토큰. 완성 토큰에 이미 포함된 값이라 <b>더하지 않는다</b>.
+     *                          모델이 안 내려주면 {@code null}
+     * @param elapsedMillis     칸당 소요. 단계 6 이 "교사가 기다릴 만한가" 를 이 값으로 본다
      */
     public record Trace(boolean toolsOffered, int modelCalls, int toolCalls,
                         Map<String, Integer> toolStatusCounts, int droppedItems,
                         int malformedOutputs, Integer promptTokens, Integer completionTokens,
-                        long elapsedMillis) {
+                        Integer reasoningTokens, long elapsedMillis) {
     }
 }

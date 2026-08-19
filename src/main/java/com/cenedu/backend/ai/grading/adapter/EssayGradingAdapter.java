@@ -17,6 +17,8 @@ import com.cenedu.backend.domain.grading.port.EssayGradingStatus;
 import com.cenedu.backend.domain.grading.port.RubricCriterion;
 import com.cenedu.backend.domain.grading.port.RubricJudgement;
 import com.cenedu.backend.domain.grading.port.RubricVerdict;
+import com.openai.errors.OpenAIServiceException;
+import com.openai.models.completions.CompletionUsage;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +38,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
+import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -112,13 +115,26 @@ public class EssayGradingAdapter implements EssayGradingPort {
      * 단일 호출이고, 그 밖의 모든 것(프롬프트·출력 순서·파싱)은 A 군과 같은 코드를 탄다.
      */
     public EssayGradingRun run(EssayGradingCommand command, boolean withTools) {
+        return run(command, withTools, null);
+    }
+
+    /**
+     * seed 를 고정해 부르는 측정용 진입점(D18).
+     *
+     * <p><b>운영은 seed 를 쓰지 않는다.</b> 재현성은 운영이 요구한 적 없고, 고정하면 그 seed 가
+     * 특별히 잘 맞는(또는 안 맞는) 경우를 실력으로 착각하게 된다. 두 군을 비교할 때만 노이즈를
+     * 줄이려고 쓴다.
+     *
+     * @param seed {@code null} 이면 싣지 않는다
+     */
+    public EssayGradingRun run(EssayGradingCommand command, boolean withTools, Integer seed) {
         long startedAt = System.nanoTime();
 
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(EssayGradingPrompts.system(command.criteria())));
         messages.add(UserMessage.builder()
                 .text(USER_INSTRUCTION)
-                .media(new Media(MimeTypeUtils.IMAGE_PNG, URI.create(command.imageUrl())))
+                .media(new Media(mimeTypeOf(command.imageUrl()), URI.create(command.imageUrl())))
                 .build());
 
         Set<Long> allowedIds = new LinkedHashSet<>();
@@ -134,10 +150,11 @@ public class EssayGradingAdapter implements EssayGradingPort {
         int malformed = 0;
         Integer promptTokens = null;
         Integer completionTokens = null;
+        Integer reasoningTokens = null;
 
         for (int call = 1; call <= MAX_MODEL_CALLS; call++) {
             modelCalls = call;
-            ChatResponse response = chatModel.call(new Prompt(messages, options(withTools)));
+            ChatResponse response = call(new Prompt(messages, options(withTools, seed)), call);
             Generation generation = response.getResult();
             if (generation == null) {
                 throw new IllegalStateException("모델이 응답을 하나도 돌려주지 않았다");
@@ -146,6 +163,7 @@ public class EssayGradingAdapter implements EssayGradingPort {
             Usage usage = response.getMetadata().getUsage();
             promptTokens = add(promptTokens, usage == null ? null : usage.getPromptTokens());
             completionTokens = add(completionTokens, usage == null ? null : usage.getCompletionTokens());
+            reasoningTokens = add(reasoningTokens, reasoningTokensOf(usage));
 
             if (output.hasToolCalls()) {
                 messages.add(output);
@@ -179,7 +197,8 @@ public class EssayGradingAdapter implements EssayGradingPort {
                 return new EssayGradingRun(
                         EssayGradingResult.judged(transcription, List.copyOf(judgements.values())),
                         new Trace(withTools, modelCalls, toolCalls, Map.copyOf(toolStatusCounts),
-                                dropped, malformed, promptTokens, completionTokens, elapsed(startedAt)));
+                                dropped, malformed, promptTokens, completionTokens, reasoningTokens,
+                                elapsed(startedAt)));
             }
 
             pending = EssayGradingStatus.TURN_LIMIT_REACHED;
@@ -192,17 +211,63 @@ public class EssayGradingAdapter implements EssayGradingPort {
         return new EssayGradingRun(
                 EssayGradingResult.incomplete(pending, transcription, List.copyOf(judgements.values())),
                 new Trace(withTools, modelCalls, toolCalls, Map.copyOf(toolStatusCounts),
-                        dropped, malformed, promptTokens, completionTokens, elapsed(startedAt)));
+                        dropped, malformed, promptTokens, completionTokens, reasoningTokens,
+                        elapsed(startedAt)));
+    }
+
+    /**
+     * 이미지 형식. <b>data URI 일 때만 거기 적힌 것을 믿는다</b> — 측정 하네스가 파일을 그대로
+     * 실어 보내는 경로다.
+     *
+     * <p>그 밖에는 PNG 로 둔다. 운영이 넘기는 것은 S3 presigned URL 이라 확장자가 없고, 형식은
+     * 쿼리스트링 뒤에 숨어 있지 않다. 업로드는 PNG·JPEG 둘 다 받으므로
+     * <b>JPEG 필기가 PNG 로 선언돼 나가는 자리가 여기다</b> — 형식을 칸에서 들고 오지 않는 한
+     * 여기서는 알 수 없다.
+     */
+    private static MimeType mimeTypeOf(String imageUrl) {
+        if (imageUrl == null || !imageUrl.startsWith("data:")) {
+            return MimeTypeUtils.IMAGE_PNG;
+        }
+        int separator = imageUrl.indexOf(';');
+        if (separator < 0) {
+            return MimeTypeUtils.IMAGE_PNG;
+        }
+        String declared = imageUrl.substring("data:".length(), separator);
+        return declared.isBlank() ? MimeTypeUtils.IMAGE_PNG : MimeTypeUtils.parseMimeType(declared);
+    }
+
+    /**
+     * 모델을 부르고, 실패하면 <b>귀속에 필요한 것만</b> 남기고 그대로 올린다.
+     *
+     * <p>남기는 것은 HTTP 상태와 OpenAI 가 붙인 {@code type}·{@code code} 뿐이다. 이 셋이면
+     * 인증 실패·정원 초과·요청 거절이 갈린다. <b>{@code message} 와 {@code body} 는 남기지
+     * 않는다</b> — 거절 사유에 우리가 보낸 프롬프트 조각이 실려 오고, 그 조각이 곧 학생 답안이다.
+     *
+     * <p>여기서 잡는 이유는 {@code com.openai} 를 아는 계층이 여기라서다. 도메인이 SDK 예외를
+     * 열어 보게 하면 SDK 를 갈아끼울 때 도메인까지 열어야 한다.
+     */
+    private ChatResponse call(Prompt prompt, int modelCall) {
+        try {
+            return chatModel.call(prompt);
+        } catch (OpenAIServiceException exception) {
+            log.warn("[서술형] 모델 호출 실패 차수={} status={} type={} code={}",
+                    modelCall, exception.statusCode(),
+                    exception.type().orElse("-"), exception.code().orElse("-"));
+            throw exception;
+        }
     }
 
     /**
      * 도구를 빼고 부르면 그것이 B 군이다. 프롬프트의 도구 문단은 그대로 둔다 — 프롬프트까지 바꾸면
      * 두 군의 차이가 도구 유무 하나로 남지 않는다(금지 16).
      */
-    private OpenAiChatOptions options(boolean withTools) {
-        return withTools
-                ? baseOptions.mutate().toolCallbacks(toolCallbacks).build()
-                : baseOptions.mutate().toolCallbacks(List.of()).build();
+    private OpenAiChatOptions options(boolean withTools, Integer seed) {
+        OpenAiChatOptions.Builder builder = baseOptions.mutate()
+                .toolCallbacks(withTools ? toolCallbacks : List.of());
+        if (seed != null) {
+            builder.seed(seed);
+        }
+        return builder.build();
     }
 
     /**
@@ -309,6 +374,22 @@ public class EssayGradingAdapter implements EssayGradingPort {
 
     private static void count(Map<String, Integer> counts, String key) {
         counts.merge(key, 1, Integer::sum);
+    }
+
+    /**
+     * 추론 토큰. Spring AI 의 공통 {@code Usage} 에는 자리가 없어 SDK 원본에서 꺼낸다.
+     *
+     * <p><b>완성 토큰에 이미 포함된 값이다.</b> 따로 더하면 비용이 두 번 세어진다 — 여기서는
+     * "완성 토큰 중 얼마가 추론이었나" 를 보려고 따로 센다. 모델이 안 내려주면 {@code null} 이다.
+     */
+    private static Integer reasoningTokensOf(Usage usage) {
+        if (usage == null || !(usage.getNativeUsage() instanceof CompletionUsage native_)) {
+            return null;
+        }
+        return native_.completionTokensDetails()
+                .flatMap(CompletionUsage.CompletionTokensDetails::reasoningTokens)
+                .map(Long::intValue)
+                .orElse(null);
     }
 
     private static Integer add(Integer left, Integer right) {
