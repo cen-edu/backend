@@ -58,7 +58,7 @@ class ProblemImageServiceTest {
                 new S3Properties(
                         "ap-northeast-2", "problem-bucket", "answer-bucket",
                         "test-access-key", "test-secret-key",
-                        Duration.ofHours(2), Duration.ofHours(6))
+                        Duration.ofHours(2), Duration.ofHours(6), Duration.ofMinutes(15))
         );
     }
 

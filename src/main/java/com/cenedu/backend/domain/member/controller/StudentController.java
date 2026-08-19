@@ -4,6 +4,7 @@ import com.cenedu.backend.domain.member.dto.request.StudentCreateRequest;
 import com.cenedu.backend.domain.member.dto.request.StudentListRequest;
 import com.cenedu.backend.domain.member.dto.response.StudentBulkCreateResponse;
 import com.cenedu.backend.domain.member.dto.response.StudentCreateResponse;
+import com.cenedu.backend.domain.member.dto.response.StudentDetailResponse;
 import com.cenedu.backend.domain.member.dto.response.StudentListResponse;
 import com.cenedu.backend.domain.member.service.StudentListQueryService;
 import com.cenedu.backend.domain.member.service.StudentService;
@@ -44,6 +45,15 @@ public class StudentController {
             @Valid @ParameterObject @ModelAttribute StudentListRequest request
     ) {
         return ApiResponse.success(studentListQueryService.getStudents(user.memberId(), request));
+    }
+
+    @GetMapping("/{studentId}")
+    public ApiResponse<StudentDetailResponse> getStudentDetail(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long studentId
+    ) {
+        return ApiResponse.success(
+                studentListQueryService.getStudentDetail(user.memberId(), studentId));
     }
 
     @PostMapping

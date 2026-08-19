@@ -65,7 +65,8 @@ class ComprehensiveAssessmentQueryServiceTest {
                 aggregate(AssessmentGroupAggregateRow.GroupDimension.DIFFICULTY,
                         "LOW", 1, 0, null)));
         when(repository.findPriorityItems(101L)).thenReturn(List.of(
-                new AssessmentPriorityItemRow(501L, 2, "우선 문항", 3, 1, 4)));
+                new AssessmentPriorityItemRow(
+                        501L, 2, "우선 문항", "ESSAY", 3, 1, 4)));
 
         ComprehensiveAssessmentInsightsResponse response = service.getInsights(7L, 101L);
 
@@ -81,6 +82,8 @@ class ComprehensiveAssessmentQueryServiceTest {
                                 ::difficultyBand)
                 .containsExactly(DifficultyBand.HIGH, DifficultyBand.MID, DifficultyBand.LOW);
         assertThat(response.difficultyBands().get(2).referenceOnly()).isTrue();
+        assertThat(response.priorityItems().getFirst().questionTypeGroup())
+                .isEqualTo(AssessmentQuestionTypeGroup.ESSAY);
         assertThat(response.priorityItems().getFirst().difficultyBand())
                 .isEqualTo(DifficultyBand.HIGH);
     }

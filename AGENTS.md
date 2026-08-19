@@ -50,6 +50,8 @@ com.cenedu.backend
 │   │   └── adapter/            배세빈   시스템 트리거 chat Port 구현
 │   ├── verification/           배세빈   생성·수정된 문제 후보 검증
 │   │   └── adapter/            배세빈   시스템 문제 검증 — problem Port 구현
+│   ├── grading/                배세빈   서술형 채점 AI 소유 경계
+│   │   └── adapter/            배세빈   시스템 서술형 채점 — grading Port 구현
 │   └── embedding/              모수환   임베딩 클라이언트
 ├── domain/
 │   ├── auth/                   이동규   로그인, 토큰 재발급, 비밀번호 변경
