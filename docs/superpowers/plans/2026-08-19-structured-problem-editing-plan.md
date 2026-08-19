@@ -1835,13 +1835,13 @@ Expected: FAIL because confirmed execution cannot apply semantic patches or retu
 
 Keep `ProblemModificationSnapshotMerger` production code unchanged. Adapt only its callers and regression tests so it remains a visible, tested fallback rather than silently participating in semantic patches.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN** *(Task13 집중 회귀 테스트 통과; 별도 ProblemModificationWorkerTest는 현재 저장소에 없음)*
 
 Run: `bash gradlew test --tests '*ProblemSemanticModificationServiceTest' --tests '*ProblemStructuralRegenerationServiceTest' --tests '*ProblemEditConversationServiceTest' --tests '*ProblemModificationExecutionCoordinatorTest' --tests '*ProblemModificationSnapshotMergerTest' --tests '*ProblemModificationWorkerTest'`
 
 Expected: PASS for presentational, parametric, structural, restore, rejected, stale, extraction-success, extraction-failure fallback, and current merger regression cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/service/ProblemSemanticModificationService.java \
