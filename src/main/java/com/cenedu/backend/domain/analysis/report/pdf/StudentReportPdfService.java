@@ -71,9 +71,10 @@ public class StudentReportPdfService {
                 .getItems(teacherId, assignmentId, studentId);
         AnalysisReportResponse report = reportService
                 .getReport(teacherId, assignmentId, studentId);
-        List<CustomLearningSessionListResponse.CustomLearningSession> sessions =
-                customLearningQueryService.getSessions(teacherId, assignmentId, studentId)
-                        .sessions();
+        List<StudentReportView.CustomSession> sessions = customLearningQueryService
+                .getSessions(teacherId, assignmentId, studentId).sessions().stream()
+                .map(this::toCustomSession)
+                .toList();
 
         boolean comprehensive = summary.worksheetType()
                 == WorksheetType.COMPREHENSIVE_ASSESSMENT;
@@ -177,6 +178,25 @@ public class StudentReportPdfService {
                             message == null ? null : message.retryGuide());
                 })
                 .toList();
+    }
+
+    /** 맞춤 학습 회차를 인쇄용으로 옮긴다. 상태와 난이도를 한국어로 바꾸는 자리다. */
+    private StudentReportView.CustomSession toCustomSession(
+            CustomLearningSessionListResponse.CustomLearningSession session
+    ) {
+        return new StudentReportView.CustomSession(
+                session.assignedAt() == null ? "-" : session.assignedAt().toLocalDate()
+                        .format(DATE),
+                ReportLabels.of(session.overallResolutionStatus()),
+                session.completedItemCount(),
+                session.totalItemCount(),
+                session.subcategories().stream()
+                        .map(sub -> new StudentReportView.CustomSubcategory(
+                                sub.subcategoryName(),
+                                ReportLabels.of(sub.resolutionStatus()),
+                                ReportLabels.of(sub.currentDifficultyBand()),
+                                sub.accuracyRate()))
+                        .toList());
     }
 
     private record Comparison(

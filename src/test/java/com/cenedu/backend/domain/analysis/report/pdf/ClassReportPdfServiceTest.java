@@ -79,6 +79,8 @@ class ClassReportPdfServiceTest {
         assertThat(text).contains("우선 확인 문항", "소인수분해로 나타내기");
         assertThat(text).contains("소분류별 성취", "일차방정식");
         assertThat(text).contains("김민수");
+        // 분석 상태를 코드가 아니라 한국어로 인쇄한다
+        assertThat(text).contains("복습 권장").doesNotContain("REVIEW");
         assertThat(text).doesNotContain("점수와 풀이시간");
     }
 
@@ -100,6 +102,7 @@ class ClassReportPdfServiceTest {
         assertThat(text).contains("점수와 풀이시간", "30분 30초");
         // 우선 확인 문항의 분류 열도 평가 영역이 아니라 문항 유형이다
         assertThat(text).contains("이차방정식의 근", "서술형");
+        assertThat(text).contains("복습 권장").doesNotContain("REVIEW");
         assertThat(text).doesNotContain("평가 영역별 성취");
     }
 

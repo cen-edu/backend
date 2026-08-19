@@ -1,6 +1,8 @@
 package com.cenedu.backend.domain.analysis.report.pdf;
 
+import com.cenedu.backend.domain.analysis.entity.enums.AnalysisStatus;
 import com.cenedu.backend.domain.analysis.entity.enums.AssessmentQuestionTypeGroup;
+import com.cenedu.backend.domain.analysis.entity.enums.CustomResolutionStatus;
 import com.cenedu.backend.domain.analysis.entity.enums.DifficultyBand;
 import com.cenedu.backend.domain.analysis.entity.enums.StudentItemResultType;
 import com.cenedu.backend.global.common.enums.EvaluationArea;
@@ -50,6 +52,31 @@ final class ReportLabels {
             case MULTIPLE_CHOICE -> "객관식";
             case SHORT_ANSWER -> "주관식";
             case ESSAY -> "서술형";
+        };
+    }
+
+    /** 지도 우선순위. 교사가 읽을 문서라 REVIEW 같은 코드를 그대로 두면 안 된다. */
+    static String of(AnalysisStatus status) {
+        if (status == null) {
+            return "-";
+        }
+        return switch (status) {
+            case INSUFFICIENT_DATA -> "자료 부족";
+            case INTENSIVE -> "집중 지도";
+            case REVIEW -> "복습 권장";
+            case STABLE -> "안정";
+        };
+    }
+
+    /** 맞춤 학습으로 취약점이 풀렸는지. */
+    static String of(CustomResolutionStatus status) {
+        if (status == null) {
+            return "-";
+        }
+        return switch (status) {
+            case RESOLVED -> "해결";
+            case IN_PROGRESS -> "진행 중";
+            case UNRESOLVED -> "미해결";
         };
     }
 

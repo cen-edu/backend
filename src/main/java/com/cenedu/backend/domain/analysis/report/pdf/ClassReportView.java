@@ -3,7 +3,6 @@ package com.cenedu.backend.domain.analysis.report.pdf;
 import java.math.BigDecimal;
 import java.util.List;
 
-import com.cenedu.backend.domain.analysis.dto.response.AnalysisStudentListResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ClassAnalysisOverviewResponse;
 
 /**
@@ -18,7 +17,7 @@ import com.cenedu.backend.domain.analysis.dto.response.ClassAnalysisOverviewResp
  */
 public record ClassReportView(
         ClassAnalysisOverviewResponse overview,
-        List<AnalysisStudentListResponse.StudentItem> students,
+        List<StudentRow> students,
         String comparisonTitle,
         List<StudentReportView.ComparisonBar> comparisonBars,
         List<StudentReportView.ComparisonBar> difficultyBars,
@@ -45,6 +44,14 @@ public record ClassReportView(
     /** 우선 확인 문항에 분류 열을 보일지. 값이 하나도 없으면 빈 열을 인쇄하지 않는다. */
     public boolean showPriorityType() {
         return priorityItems.stream().anyMatch(item -> item.typeLabel() != null);
+    }
+
+    /** 학생 목록 한 줄. 분석 상태는 코드가 아니라 교사가 읽을 한국어로 담는다. */
+    public record StudentRow(
+            String studentName,
+            BigDecimal performanceRate,
+            String statusLabel
+    ) {
     }
 
     /**
@@ -100,7 +107,7 @@ public record ClassReportView(
     /** 점수와 풀이시간. 산점도 대신 표로 낸다. */
     public record ScoreTimeRow(
             String studentName,
-            String analysisStatus,
+            String statusLabel,
             BigDecimal scoreRate,
             Long totalSolvingDurationMs
     ) {

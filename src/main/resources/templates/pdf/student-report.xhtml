@@ -40,31 +40,55 @@
 <h2 th:text="${view.comparisonTitle}">평가 영역별 성취</h2>
 <div th:if="${view.comparisonBars.isEmpty()}" class="empty">표시할 결과가 없습니다.</div>
 <div th:each="bar : ${view.comparisonBars}" class="bar-row">
-    <span class="bar-label" th:text="${bar.label}">영역</span>
-    <span class="bar-track">
-        <span class="bar" th:style="'width:' + ${bar.studentWidth} + '%'"></span>
-    </span>
-    <span class="bar-value" th:text="${bar.studentRate != null ? bar.studentRate + '%' : '-'}">-</span>
-    <span class="bar-note">
-        학급 <span th:text="${bar.classRate != null ? bar.classRate + '%' : '-'}">-</span>
-        · <span th:text="${bar.itemCount}">0</span>문항
-        <span th:if="${bar.referenceOnly}">· 참고</span>
-    </span>
+    <div class="bar-label">
+        <span th:text="${bar.label}">항목</span>
+        <span class="bar-note">
+            · <span th:text="${bar.itemCount}">0</span>문항<span
+                th:if="${bar.referenceOnly}"> · 참고</span>
+        </span>
+    </div>
+    <div class="bar-line">
+        <span class="bar-caption">학생</span>
+        <span class="bar-track">
+            <span class="bar" th:style="'width:' + ${bar.studentWidth} + '%'"></span>
+        </span>
+        <span class="bar-value"
+              th:text="${bar.studentRate != null ? bar.studentRate + '%' : '-'}">-</span>
+    </div>
+    <div class="bar-line" th:if="${bar.classRate != null}">
+        <span class="bar-caption">학급</span>
+        <span class="bar-track">
+            <span class="bar bar-class" th:style="'width:' + ${bar.classWidth} + '%'"></span>
+        </span>
+        <span class="bar-value" th:text="${bar.classRate} + '%'">-</span>
+    </div>
 </div>
 
 <h2>난이도별 성취</h2>
 <div th:if="${view.difficultyBars.isEmpty()}" class="empty">표시할 결과가 없습니다.</div>
 <div th:each="bar : ${view.difficultyBars}" class="bar-row">
-    <span class="bar-label" th:text="${bar.label}">난이도</span>
-    <span class="bar-track">
-        <span class="bar" th:style="'width:' + ${bar.studentWidth} + '%'"></span>
-    </span>
-    <span class="bar-value" th:text="${bar.studentRate != null ? bar.studentRate + '%' : '-'}">-</span>
-    <span class="bar-note">
-        학급 <span th:text="${bar.classRate != null ? bar.classRate + '%' : '-'}">-</span>
-        · <span th:text="${bar.itemCount}">0</span>문항
-        <span th:if="${bar.referenceOnly}">· 참고</span>
-    </span>
+    <div class="bar-label">
+        <span th:text="${bar.label}">항목</span>
+        <span class="bar-note">
+            · <span th:text="${bar.itemCount}">0</span>문항<span
+                th:if="${bar.referenceOnly}"> · 참고</span>
+        </span>
+    </div>
+    <div class="bar-line">
+        <span class="bar-caption">학생</span>
+        <span class="bar-track">
+            <span class="bar" th:style="'width:' + ${bar.studentWidth} + '%'"></span>
+        </span>
+        <span class="bar-value"
+              th:text="${bar.studentRate != null ? bar.studentRate + '%' : '-'}">-</span>
+    </div>
+    <div class="bar-line" th:if="${bar.classRate != null}">
+        <span class="bar-caption">학급</span>
+        <span class="bar-track">
+            <span class="bar bar-class" th:style="'width:' + ${bar.classWidth} + '%'"></span>
+        </span>
+        <span class="bar-value" th:text="${bar.classRate} + '%'">-</span>
+    </div>
 </div>
 
 <h2>취약 소분류</h2>
@@ -148,8 +172,8 @@
 <div th:if="${view.customSessions.isEmpty()}" class="empty">아직 맞춤 학습 회차가 없습니다.</div>
 <div th:each="session : ${view.customSessions}">
     <h3>
-        <span th:text="${#temporals.format(session.assignedAt, 'yyyy-MM-dd')}">날짜</span>
-        · <span th:text="${session.overallResolutionStatus}">상태</span>
+        <span th:text="${session.assignedAt}">날짜</span>
+        · <span th:text="${session.statusLabel}">상태</span>
         · <span th:text="${session.completedItemCount}">0</span>/<span
             th:text="${session.totalItemCount}">0</span>문항
     </h3>
@@ -165,9 +189,8 @@
         <tbody>
         <tr th:each="sub : ${session.subcategories}">
             <td class="left" th:text="${sub.subcategoryName}">소분류</td>
-            <td th:text="${sub.resolutionStatus}">상태</td>
-            <td th:text="${sub.currentDifficultyBand != null
-                          ? sub.currentDifficultyBand : '-'}">-</td>
+            <td th:text="${sub.statusLabel}">상태</td>
+            <td th:text="${sub.difficultyLabel}">-</td>
             <td th:text="${sub.accuracyRate != null ? sub.accuracyRate + '%' : '-'}">-</td>
         </tr>
         </tbody>

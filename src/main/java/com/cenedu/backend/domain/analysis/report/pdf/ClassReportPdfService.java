@@ -5,7 +5,6 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-import com.cenedu.backend.domain.analysis.dto.response.AnalysisStudentListResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ClassAnalysisOverviewResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ComprehensiveAssessmentInsightsResponse;
 import com.cenedu.backend.domain.analysis.dto.response.ComprehensiveAssessmentItemAchievementResponse;
@@ -57,8 +56,13 @@ public class ClassReportPdfService {
     private ClassReportView buildView(long teacherId, long assignmentId) {
         ClassAnalysisOverviewResponse overview = classQueryService
                 .getOverview(teacherId, assignmentId);
-        List<AnalysisStudentListResponse.StudentItem> students = classQueryService
-                .getStudents(teacherId, assignmentId).students();
+        List<ClassReportView.StudentRow> students = classQueryService
+                .getStudents(teacherId, assignmentId).students().stream()
+                .map(student -> new ClassReportView.StudentRow(
+                        student.studentName(),
+                        student.performanceRate(),
+                        ReportLabels.of(student.analysisStatus())))
+                .toList();
 
         return overview.context().worksheetType() == WorksheetType.COMPREHENSIVE_ASSESSMENT
                 ? comprehensiveView(teacherId, assignmentId, overview, students)
@@ -69,7 +73,7 @@ public class ClassReportPdfService {
             long teacherId,
             long assignmentId,
             ClassAnalysisOverviewResponse overview,
-            List<AnalysisStudentListResponse.StudentItem> students
+            List<ClassReportView.StudentRow> students
     ) {
         LearningAssessmentInsightsResponse insights = learningQueryService
                 .getInsights(teacherId, assignmentId);
@@ -106,7 +110,7 @@ public class ClassReportPdfService {
             long teacherId,
             long assignmentId,
             ClassAnalysisOverviewResponse overview,
-            List<AnalysisStudentListResponse.StudentItem> students
+            List<ClassReportView.StudentRow> students
     ) {
         ComprehensiveAssessmentInsightsResponse insights = comprehensiveQueryService
                 .getInsights(teacherId, assignmentId);
@@ -137,7 +141,7 @@ public class ClassReportPdfService {
         List<ClassReportView.ScoreTimeRow> scoreTimes = distribution.studentDistribution().stream()
                 .map(student -> new ClassReportView.ScoreTimeRow(
                         student.studentName(),
-                        String.valueOf(student.analysisStatus()),
+                        ReportLabels.of(student.analysisStatus()),
                         student.scoreRate(),
                         student.totalSolvingDurationMs()))
                 .toList();

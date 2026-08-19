@@ -60,18 +60,31 @@
     td.num { text-align: right; }
 
     /* ===== 막대 =====
-       값을 막대 옆에 그대로 적는다. 화면은 대략을 보면 되지만 인쇄물은 값이 남아야 한다. */
-    .bar-row { margin-bottom: 2.2mm; }
-    .bar-label { display: inline-block; width: 30mm; font-size: 9.5pt; }
+       값을 막대 옆에 그대로 적는다. 화면은 대략을 보면 되지만 인쇄물은 값이 남아야 한다.
+
+       .bar 를 block 으로 두는 것이 중요하다. span 인 채로 두면 인라인 요소라 width 가
+       적용되지 않아, 값과 무관하게 트랙이 통째로 칠해진 것처럼 보인다.
+
+       학생과 학급을 두 줄로 나눠 그린다. 한 트랙에 겹쳐 그리려면 절대 배치가 필요한데
+       인쇄 레이아웃에서 위치가 흔들린다. 두 줄이면 흑백에서도 어느 쪽이 큰지 바로 읽힌다. */
+    .bar-row { margin-bottom: 3.5mm; page-break-inside: avoid; }
+    .bar-label { font-size: 9.5pt; font-weight: 700; margin-bottom: 0.8mm; }
+    .bar-line { margin-bottom: 0.8mm; }
+    .bar-caption {
+        display: inline-block;
+        width: 12mm;
+        font-size: 9pt;
+        color: #555;
+    }
     .bar-track {
         display: inline-block;
-        width: 78mm;
-        height: 4.5mm;
+        width: 74mm;
+        height: 4.2mm;
         background-color: #eee;
         vertical-align: middle;
     }
-    .bar { height: 4.5mm; background-color: #555; }
-    .bar-compare { background-color: #aaa; }
+    .bar { display: block; height: 4.2mm; background-color: #444; }
+    .bar-class { background-color: #aaa; }
     .bar-value { display: inline-block; width: 18mm; text-align: right; font-size: 9.5pt; }
     .bar-note { color: #888; font-size: 8.5pt; }
 

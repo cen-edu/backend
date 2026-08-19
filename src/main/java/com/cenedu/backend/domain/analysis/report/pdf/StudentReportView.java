@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import com.cenedu.backend.domain.analysis.dto.response.AnalysisReportResponse;
-import com.cenedu.backend.domain.analysis.dto.response.CustomLearningSessionListResponse;
 import com.cenedu.backend.domain.analysis.dto.response.StudentAnalysisSummaryResponse;
 
 /**
@@ -28,7 +27,7 @@ public record StudentReportView(
         List<ComparisonBar> difficultyBars,
         List<ItemRow> items,
         AnalysisReportResponse report,
-        List<CustomLearningSessionListResponse.CustomLearningSession> customSessions,
+        List<CustomSession> customSessions,
         String generatedAt
 ) {
     public StudentReportView {
@@ -41,6 +40,32 @@ public record StudentReportView(
     /** AI 문장이 아직 없으면 그 영역만 비우고 나머지를 출력한다. */
     public boolean hasAiMessages() {
         return report != null && report.summaryMessage() != null;
+    }
+
+    /**
+     * 맞춤 학습 회차 한 건.
+     *
+     * <p>상태를 코드가 아니라 한국어로 담는다. 교사가 읽을 문서에 {@code IN_PROGRESS} 를
+     * 그대로 두면 무슨 뜻인지 알 수 없다.
+     */
+    public record CustomSession(
+            String assignedAt,
+            String statusLabel,
+            int completedItemCount,
+            int totalItemCount,
+            List<CustomSubcategory> subcategories
+    ) {
+        public CustomSession {
+            subcategories = List.copyOf(subcategories);
+        }
+    }
+
+    public record CustomSubcategory(
+            String subcategoryName,
+            String statusLabel,
+            String difficultyLabel,
+            BigDecimal accuracyRate
+    ) {
     }
 
     /**
