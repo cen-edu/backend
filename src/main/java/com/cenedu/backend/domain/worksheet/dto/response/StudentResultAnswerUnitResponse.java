@@ -24,6 +24,11 @@ public record StudentResultAnswerUnitResponse(
         String result,
 
         BigDecimal score,
-        boolean hasHandwriting
+
+        @Schema(description = "필기 이미지가 있는지. S3가 꺼져 있어도 값이 정확하다")
+        boolean hasHandwriting,
+
+        @Schema(description = "내가 쓴 필기 이미지의 만료 URL. 필기가 없거나 S3가 꺼져 있으면 null")
+        String handwritingUrl
 ) {
 }

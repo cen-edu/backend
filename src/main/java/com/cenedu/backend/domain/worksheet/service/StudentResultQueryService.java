@@ -27,6 +27,7 @@ import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
 import com.cenedu.backend.domain.submission.entity.SubmissionAnswer;
 import com.cenedu.backend.domain.submission.entity.enums.GradingStatus;
 import com.cenedu.backend.domain.submission.repository.SubmissionAnswerRepository;
+import com.cenedu.backend.domain.submission.service.SubmissionImageService;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentChoiceResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentContentBlockResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.StudentResultAnswerUnitResponse;
@@ -47,8 +48,10 @@ import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.AssignmentStatus;
 import com.cenedu.backend.global.common.enums.QuestionType;
+import com.cenedu.backend.global.common.enums.UserRole;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
@@ -85,6 +88,13 @@ public class StudentResultQueryService {
     private final GradingRubricResultRepository gradingRubricResultRepository;
     private final ProblemQuestionDetailService problemQuestionDetailService;
     private final ObjectMapper objectMapper;
+
+    /**
+     * S3가 꺼진 환경(로컬 기본값 {@code S3_ENABLED=false})에서는 이 빈이 아예 없다. 생성자 주입으로
+     * 받으면 앱이 기동조차 못 하므로 {@link ObjectProvider}로 받고, 없으면 필기 URL 을
+     * {@code null}로 내린다 — {@code hasHandwriting}은 그때도 정확하다.
+     */
+    private final ObjectProvider<SubmissionImageService> submissionImageServiceProvider;
 
     public StudentResultResponse getResult(long studentId, long assignmentStudentId) {
         WorksheetAssignmentStudent was = worksheetAssignmentStudentRepository.findDetailById(assignmentStudentId)
@@ -137,6 +147,9 @@ public class StudentResultQueryService {
         Map<Long, List<ProblemAssetResponse>> assetsByQuestionId = problemQuestionDetailService
                 .getAssetsByQuestionIds(questionIds);
 
+        Map<Long, String> handwritingUrls = createHandwritingUrls(
+                studentId, assignmentStudentId, savedByAnswerUnitId);
+
         List<Long> submissionAnswerIds = savedByAnswerUnitId.values().stream()
                 .map(SubmissionAnswer::getId)
                 .toList();
@@ -184,7 +197,8 @@ public class StudentResultQueryService {
                                 : null,
                         unitResult,
                         score,
-                        answer != null && answer.getAnswerImageRef() != null));
+                        answer != null && answer.getAnswerImageRef() != null,
+                        handwritingUrls.get(unit.getId())));
             }
 
             String itemResult = aggregateItemResult(unitResults);
@@ -292,6 +306,26 @@ public class StudentResultQueryService {
             }
         }
         return formula.toString();
+    }
+
+    /**
+     * 내가 쓴 필기 이미지 URL. 이미지를 실제로 올린 칸만 요청한다 — 없는 칸까지 URL 을 만들면
+     * 만료 있는 서명이 헛돌고 권한 검증만 늘어난다.
+     *
+     * <p>공개 게이트({@code disclose})를 걸지 않는다. 정답·해설과 달리 <b>학생 본인이 쓴 것</b>이라
+     * 가릴 대상이 아니다. 남의 답안은 {@code SubmissionImageService}가 배정 소유자를 확인해 막는다.
+     */
+    private Map<Long, String> createHandwritingUrls(
+            long studentId, long assignmentStudentId, Map<Long, SubmissionAnswer> savedByAnswerUnitId) {
+        SubmissionImageService imageService = submissionImageServiceProvider.getIfAvailable();
+        if (imageService == null) {
+            return Map.of();
+        }
+        List<Long> unitIds = savedByAnswerUnitId.entrySet().stream()
+                .filter(entry -> entry.getValue().getAnswerImageRef() != null)
+                .map(Map.Entry::getKey)
+                .toList();
+        return imageService.createGetUrls(studentId, UserRole.STUDENT, assignmentStudentId, unitIds);
     }
 
     /** 객관식 보기 전체. 다른 형식이면 {@code null}이다 — 빈 배열은 "보기가 비어 있는 객관식"과 섞인다. */
