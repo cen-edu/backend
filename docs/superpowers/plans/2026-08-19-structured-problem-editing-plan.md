@@ -1059,7 +1059,7 @@ Entity methods are exact:
 - `ProblemQuestion.attachSemanticModel(SemanticModelDocument document)`, `markSemanticModelUnsupported()`, and `markSemanticModelFailed()` enforce the status/tuple invariant.
 - `ProblemAsset.attachRenderSpec(RenderSpecDocument document)` sets all four render columns together.
 
-- [ ] **Step 1: Write failing canonical-hash and entity-state tests**
+- [x] **Step 1: Write canonical-hash and entity-state tests** *(사용자 지정 방식에 따라 RED 단계는 생략)*
 
 ```java
 @Test
@@ -1079,17 +1079,17 @@ void questionStatusChangesAtomicallyWithSemanticTuple() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED** *(사용자 지정 방식에 따라 생략)*
 
 Run: `bash gradlew test --tests '*ProblemSemanticDocumentCodecTest' --tests '*ProblemSemanticPersistenceStateTest'`
 
 Expected: FAIL because documents, fields, and status methods do not exist.
 
-- [ ] **Step 3: Add the fixed migration, codec, candidate field, and entity invariants**
+- [x] **Step 3: Add the fixed migration, codec, candidate field, and entity invariants**
 
 Update every existing four-argument `ProblemCandidateDraft` construction to call `ProblemCandidateDraft.legacy(requestId, snapshot, plans, provenance)` unless that path already has a server-normalized semantic model. Do not invent a semantic model for imported/bank-reuse snapshots.
 
-- [ ] **Step 4: Run GREEN and migration validation**
+- [x] **Step 4: Run GREEN and migration validation** *(Task7 순수·candidate·JPA 및 전체 테스트 통과)*
 
 Run:
 
@@ -1101,7 +1101,7 @@ JWT_SECRET='test-only-jwt-secret-value-at-least-32-bytes' bash gradlew test --te
 
 Expected: pure tests PASS; database-backed migration/JPA tests PASS with all three new tuple constraints. If the compose service is named `postgres` after A, use `docker compose config --services` and run that exact service instead of adding a second database service.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/resources/db/migration/V20260819_1000__problem_add_semantic_model.sql \
