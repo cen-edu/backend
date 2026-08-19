@@ -42,4 +42,15 @@ class OpenAiClientConfigTest {
 
         assertThat(options.getReasoningEffort()).isNull();
     }
+
+    @Test
+    @DisplayName("gpt-5.6-luna에는 설정한 reasoning_effort를 보낸다")
+    void includesReasoningEffortForGpt56Luna() {
+        OpenAiProperties properties = new OpenAiProperties(
+                "test-key", "gpt-5.6-luna", "medium", 3000, Duration.ofSeconds(60), 2, Map.of());
+
+        OpenAiChatOptions options = new OpenAiClientConfig().openAiChatOptions(properties);
+
+        assertThat(options.getReasoningEffort()).isEqualTo("medium");
+    }
 }

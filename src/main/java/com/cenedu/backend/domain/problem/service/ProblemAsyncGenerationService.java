@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import com.cenedu.backend.domain.curriculum.dto.response.CurriculumPathResponse;
 import com.cenedu.backend.domain.curriculum.service.CurriculumUnitQueryService;
-import com.cenedu.backend.domain.problem.authoring.generation.CurriculumContext;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationJobResult;
@@ -116,7 +116,8 @@ public class ProblemAsyncGenerationService {
                                                      CurriculumPathResponse path) {
         String difficultyLabel = switch (difficulty) { case 1 -> "low"; case 2 -> "mid"; case 3 -> "high";
             default -> throw new IllegalArgumentException("지원하지 않는 난이도입니다."); };
-        CurriculumContext context = new CurriculumContext(subUnitId, null, null,
+        CurriculumScope context = new CurriculumScope(path.curriculumRevision(), path.schoolLevel(),
+                path.grade(), path.semester() == null ? null : path.semester().intValue(), path.achievementStandardId(), subUnitId,
                 path.majorUnitName(), path.middleUnitName(), path.subUnitName());
         return new ProblemGenerationRequirement(subUnitId, difficulty, type, count, purpose,
                 new GenerationSpecification(type, difficultyLabel, null, List.of()), context,

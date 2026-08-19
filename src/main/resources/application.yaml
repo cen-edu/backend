@@ -27,15 +27,38 @@ server:
   port: ${SERVER_PORT:8080}
 
 app:
+  problem:
+    rag:
+      enabled: ${PROBLEM_RAG_ENABLED:false}
+      policy-version: A_DENSE_MMR_V1
+      candidate-limit: 40
+      standard-selection-limit: 3
+      personalized-selection-limit: 4
+      default-lambda: 0.70
+      application-lambda: 0.55
+      search-timeout: 2s
+      indexing:
+        enabled: ${PROBLEM_RAG_INDEXING_ENABLED:false}
+        batch-size: 20
+        max-attempts: 3
+        retry-delay: 30s
+        worker-delay: 5s
+        backfill-delay: 60s
   storage:
     s3:
       enabled: ${S3_ENABLED:false}
       region: ${AWS_REGION:ap-northeast-2}
       problem-bucket: ${AWS_S3_PROBLEM_BUCKET:}
       answer-bucket: ${AWS_S3_ANSWER_BUCKET:}
+      # 화면을 열어둔 채 이미지를 다시 그릴 때까지 서명이 살아 있어야 한다. 짧으면 S3가 403을 준다.
+      answer-url-expiration: ${AWS_S3_ANSWER_URL_EXPIRATION:2h}
+      problem-url-expiration: ${AWS_S3_PROBLEM_URL_EXPIRATION:6h}
       access-key-id: ${AWS_ACCESS_KEY_ID:}
       secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
   ai:
+    embedding:
+      model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+      dimensions: 1024
     guard:
       input:
         max-length: ${AI_INPUT_MAX_LENGTH:500}
@@ -43,10 +66,10 @@ app:
       # 키가 없어도 기동되도록 빈 문자열을 기본값으로 둔다. 챗봇을 쓰지 않는 팀원이
       # 키 없이 개발할 수 있어야 한다. 키가 비면 호출 시점에 실패한다.
       api-key: ${OPENAI_API_KEY:}
-      model: ${OPENAI_MODEL:gpt-5-mini}
+      model: ${OPENAI_MODEL:gpt-5.6-luna}
       # GPT-5 계열은 추론 토큰이 max-completion-tokens 에서 차감된다. 한도가 낮으면
       # content 가 빈 문자열로 잘려 돌아온다. minimal + 3000 은 실측으로 정한 값이다.
-      reasoning-effort: ${OPENAI_REASONING_EFFORT:minimal}
+      reasoning-effort: ${OPENAI_REASONING_EFFORT:medium}
       max-completion-tokens: ${OPENAI_MAX_COMPLETION_TOKENS:3000}
       timeout: ${OPENAI_TIMEOUT:60s}
       max-retries: ${OPENAI_MAX_RETRIES:2}
@@ -59,6 +82,13 @@ app:
           model: ${OPENAI_VERIFICATION_MODEL:gpt-5}
           reasoning-effort: ${OPENAI_VERIFICATION_REASONING_EFFORT:medium}
           max-completion-tokens: ${OPENAI_VERIFICATION_MAX_COMPLETION_TOKENS:6000}
+        # 분석 문장은 문항마다 문장 세 개를 한 번에 받아 출력이 길다. 실측으로 문항당
+        # 약 110 토큰이라 25문항 근처에서 기본 상한에 닿고, 넘으면 JSON 이 잘려 실패한다.
+        # 모델과 추론 강도는 기본값과 같게 두고 상한만 올린다.
+        analysis_report:
+          model: ${OPENAI_ANALYSIS_REPORT_MODEL:gpt-5-mini}
+          reasoning-effort: ${OPENAI_ANALYSIS_REPORT_REASONING_EFFORT:minimal}
+          max-completion-tokens: ${OPENAI_ANALYSIS_REPORT_MAX_COMPLETION_TOKENS:8000}
     verification:
       content-check:
         # 정답이 든 원본으로 해설 정합·개념 안내 누출을 본다. 끄면 문항당 LLM 호출이 절반이 된다.

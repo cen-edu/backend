@@ -32,9 +32,10 @@ class SpringAiProblemGenerationAdapterTest {
         var adapter = new SpringAiProblemGenerationAdapter(client, mapper,
                 new ProblemGenerationPromptFactory(), new ProblemGenerationOutputMapper(), structural,
                 new SnapshotNormalizedValidator(structural));
-        var command = new ProblemGenerationCommand(requestId, GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
+        var command = new ProblemGenerationCommand(requestId, null, GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
                 new GenerationSpecification(QuestionType.SHORT_INPUT, "mid", null, List.of()),
-                new CurriculumContext(1L, 1, 1, "대", "중", "소"), List.of(), List.of());
+                new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L,
+                        "대", "중", "소"), List.of(), List.of());
 
         var draft = adapter.generate(command);
 

@@ -26,6 +26,8 @@ import com.cenedu.backend.domain.problem.repository.ProblemGenerationJobReposito
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
+import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemRetrievalTracePort;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 멱등 Job과 문항별 Item을 생성하고 독립 실행·재시도·집계를 관리한다. */
@@ -37,17 +39,30 @@ public class ProblemGenerationJobService {
     private final ProblemAuthoringSessionRepository sessionRepository;
     private final ProblemAuthoringJsonCodec jsonCodec;
     private final ProblemAuthoringVersionService versionService;
+    private final ObjectProvider<ProblemRetrievalTracePort> tracePort;
 
     public ProblemGenerationJobService(ProblemGenerationJobRepository jobRepository,
                                        ProblemGenerationItemRepository itemRepository,
                                        ProblemAuthoringSessionRepository sessionRepository,
                                        ProblemAuthoringJsonCodec jsonCodec,
                                        ProblemAuthoringVersionService versionService) {
+        this(jobRepository, itemRepository, sessionRepository, jsonCodec, versionService, null);
+    }
+
+    /** retrieval trace 연결 Port를 선택적으로 주입해 기존 Job 저장 계약을 유지한다. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public ProblemGenerationJobService(ProblemGenerationJobRepository jobRepository,
+                                       ProblemGenerationItemRepository itemRepository,
+                                       ProblemAuthoringSessionRepository sessionRepository,
+                                       ProblemAuthoringJsonCodec jsonCodec,
+                                       ProblemAuthoringVersionService versionService,
+                                       ObjectProvider<ProblemRetrievalTracePort> tracePort) {
         this.jobRepository = jobRepository;
         this.itemRepository = itemRepository;
         this.sessionRepository = sessionRepository;
         this.jsonCodec = jsonCodec;
         this.versionService = versionService;
+        this.tracePort = tracePort;
     }
 
     /** 문제은행 재사용과 AI 생성 슬롯을 하나의 멱등 Job으로 저장한다. */
@@ -181,13 +196,22 @@ public class ProblemGenerationJobService {
             } else {
                 hasAi = true;
                 ProblemGenerationCommand command = slot.generationCommand();
-                itemRepository.save(ProblemGenerationItem.create(
+                ProblemGenerationItem savedItem = itemRepository.save(ProblemGenerationItem.create(
                         job.getId(), slot.slotIndex(), command.requestId(), session.getId(),
                         command.purpose(), 1, jsonCodec.write(command)));
+                linkGeneration(command, job, savedItem);
             }
         }
         if (!hasAi) job.completeWithoutExecution();
         return toResult(job);
+    }
+
+    private void linkGeneration(ProblemGenerationCommand command, ProblemGenerationJob job, ProblemGenerationItem item) {
+        if (command.retrievalRequestId() == null || tracePort == null) return;
+        ProblemRetrievalTracePort trace = tracePort.getIfAvailable();
+        if (trace == null) return;
+        try { trace.linkGeneration(command.retrievalRequestId(), job.getId(), item.getId()); }
+        catch (RuntimeException exception) { /* telemetry must not reverse Job creation */ }
     }
 
     private void aggregateJob(Long jobId) {

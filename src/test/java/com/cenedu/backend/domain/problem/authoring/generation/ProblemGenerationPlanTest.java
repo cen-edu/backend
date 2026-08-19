@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class ProblemGenerationPlanTest {
     @Test
     void 은행과_AI_슬롯은_화면순서를_보존한다() {
-        ProblemGenerationCommand command = new ProblemGenerationCommand(UUID.randomUUID(),
+        ProblemGenerationCommand command = new ProblemGenerationCommand(UUID.randomUUID(), null,
             GenerationPurpose.PERSONALIZED_APPLICATION, null, null, List.of(), List.of());
         ProblemGenerationPlan plan = new ProblemGenerationPlan(UUID.randomUUID(),
             GenerationJobType.PERSONALIZED, List.of(
