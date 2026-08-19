@@ -25,6 +25,12 @@ public class ProblemGenerationPromptFactory {
                 "발문", "문제", "문제 내용", "정답을 구하시오" 같은 자리표시자만 쓰면 안 된다.
                 문제를 푸는 데 필요한 수치·조건·데이터는 모두 text 안에 직접 포함한다.
                 포함하지 않은 그림·표·데이터를 "주어진", "다음", "아래"라고 참조하지 마라.
+                문제를 출력하기 전에 반드시 다음 순서로 자체 검산하라:
+                (1) 학생이 보는 contentBlocks[0].text만 읽고 풀이에 필요한 모든 정보를 확인한다.
+                (2) 문제를 처음부터 직접 풀어 최종값을 계산한다.
+                (3) answerUnits, choices의 정답, explanation의 결론에 같은 값을 대입해 일치 여부를 확인한다.
+                어느 하나라도 계산 불가·정보 부족·값 불일치이면 그 문항을 출력하지 말고 조건을 만족하는 새 문항을 만든다.
+                생성 과정의 검산 메모리나 숨은 전제는 JSON에 쓰지 말고, 검산된 결과만 출력한다.
                 최상위 question은 contentBlocks[0].text와 같은 실제 문제 문장으로 작성한다.
                 모든 최상위 목록(contentBlocks, choices, steps, answerUnits, rubricItems, assets)은
                 사용하지 않더라도 반드시 []로 출력한다. 단일 객체로 출력하지 마라.
@@ -58,7 +64,8 @@ public class ProblemGenerationPromptFactory {
             case "MULTIPLE_CHOICE" -> """
                     choices는 최소 2개이며 각 항목은 {"content":"보기 내용"} 형식이다.
                     발문에는 실제 계산에 필요한 모든 값과 무엇을 구하는지 명확히 적는다.
-                    보기 중 정확히 하나만 정답이 되게 검산한다. JSON을 만들기 전에 문제를 직접 풀고,
+                    보기 중 정확히 하나만 정답이 되게 검산한다. 오답 보기도 문제 조건과 모순되지 않는 수치로 만들되 정답과 중복하지 않는다.
+                    JSON을 만들기 전에 문제를 직접 풀고,
                     최종 결과와 동일한 content를 가진 보기의 1부터 시작하는 순번 n을 찾아 answerRaw=Cn으로 적는다.
                     explanation의 최종 결론, 정답 보기 content, answerRaw가 반드시 서로 일치해야 한다.
                     steps와 rubricItems는 []다. answerUnits는 정확히 한 항목이며
@@ -70,6 +77,7 @@ public class ProblemGenerationPromptFactory {
                     {"stepIndex":null,"answerRaw":"정답","compareMethod":"VALUE","diagnosticType":null,"displayUnit":null}
                     형식이다. compareMethod는 VALUE, EXACT, SET, SUBST 중 하나다.
                     발문에는 answerRaw를 계산할 수 있는 실제 수치와 질문을 모두 포함한다.
+                    정수·분수·소수 표현을 혼용하지 말고 answerRaw와 explanation의 최종 계산값을 문자 단위로 대조한다.
                     """;
             case "STEP_FILL" -> """
                     choices와 rubricItems는 []다. steps는 1~4개이며 각 항목은
@@ -82,6 +90,7 @@ public class ProblemGenerationPromptFactory {
                     answerUnits는 BLANK마다 하나씩 두고
                     {"stepIndex":0,"answerRaw":"정답","compareMethod":"VALUE","diagnosticType":"EXECUTE","displayUnit":null}
                     형식으로 작성한다. diagnosticType은 INTERPRET, MODEL, EXECUTE, ANSWER 중 하나다.
+                    각 BLANK의 answerRaw를 실제 수치로 계산하고, 앞 단계의 답을 뒤 단계에서 참조할 때도 같은 값을 사용한다.
                     """;
             case "ESSAY" -> """
                     학생이 무엇을 설명하고 어떤 근거 또는 풀이 과정을 제시해야 하는지 명확한 발문을 만든다.
