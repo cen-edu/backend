@@ -27,6 +27,9 @@ server:
   port: ${SERVER_PORT:8080}
 
 app:
+  problem-authoring:
+    semantic:
+      enabled: ${PROBLEM_SEMANTIC_AUTHORING_ENABLED:false}
   problem:
     rag:
       enabled: ${PROBLEM_RAG_ENABLED:false}

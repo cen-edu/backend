@@ -6,6 +6,15 @@ public final class ProblemStructuredOutputSchemas {
     private ProblemStructuredOutputSchemas() {
     }
 
+    public static final String SEMANTIC_MODEL = loadSemanticSchema();
+
+    private static String loadSemanticSchema() {
+        try (var stream = ProblemStructuredOutputSchemas.class.getResourceAsStream("/ai/problem/problem-semantic-model-v1.schema.json")) {
+            if (stream == null) throw new IllegalStateException("semantic model schema resource가 없습니다.");
+            return new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) { throw new IllegalStateException("semantic model schema를 읽을 수 없습니다.", e); }
+    }
+
     /** 생성 후보와 확정 수정 후보가 공유하는 교육 내용 출력 계약이다. */
     public static final String CANDIDATE = """
             {

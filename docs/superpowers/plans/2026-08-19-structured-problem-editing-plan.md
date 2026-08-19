@@ -1199,7 +1199,7 @@ public final class SpringAiProblemGenerationAdapter implements ProblemGeneration
 
 Exact public methods are `ProblemCandidateDraft ProblemSemanticGenerationPipeline.generate(ProblemGenerationCommand command)`, `ProblemCandidateDraft LegacyProblemGenerationPipeline.generate(ProblemGenerationCommand command)`, `ProblemSemanticModelV1 ProblemSemanticOutputParser.parse(String json)`, and `String ProblemSemanticGenerationPromptFactory.create(ProblemGenerationCommand command, List<String> repairFindings)`.
 
-- [ ] **Step 1: Write failing two-stage and retry tests**
+- [x] **Step 1: Write two-stage, retry, schema, and routing tests** *(사용자 지정 방식에 따라 RED 단계는 생략)*
 
 ```java
 @Test
@@ -1224,23 +1224,23 @@ void disabledFlagUsesCurrentLegacyPipeline() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED** *(사용자 지정 방식에 따라 생략)*
 
 Run: `bash gradlew test --tests '*ProblemSemanticGenerationPipelineTest' --tests '*SpringAiProblemGenerationAdapterTest' --tests '*ProblemStructuredOutputSchemasTest'`
 
 Expected: FAIL because semantic pipeline/config/schema do not exist.
 
-- [ ] **Step 3: Extract the current adapter body unchanged into the legacy pipeline and implement semantic generation**
+- [x] **Step 3: Extract the current adapter body into the legacy pipeline and implement semantic generation**
 
 Prompt order is stable: static authoring rules, schema/version rules, A's actual few-shot JSON, current generation request, then repair findings if present. The prompt prohibits direct copying, unsupported operations, free-form SVG, and out-of-curriculum content. It requests null-free lists and server-managed identifiers omitted.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN** *(semantic schema, legacy routing, worker, prompt, and Spring context tests passed)*
 
 Run: `bash gradlew test --tests '*ProblemSemanticGenerationPipelineTest' --tests '*SpringAiProblemGenerationAdapterTest' --tests '*ProblemStructuredOutputSchemasTest' --tests '*ProblemGenerationWorkerTest'`
 
 Expected: PASS for enabled semantic generation, two repair retries, retry exhaustion, disabled legacy routing, and existing worker behavior.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/java/com/cenedu/backend/ai/problem/adapter/semantic \
