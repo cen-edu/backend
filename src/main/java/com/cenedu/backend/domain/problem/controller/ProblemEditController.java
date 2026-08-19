@@ -55,9 +55,15 @@ public class ProblemEditController {
                     @ExampleObject(name = "restore", value = "{\"success\":true,\"data\":{\"action\":\"CONFIRM_EXECUTION\",\"preview\":{\"mode\":\"RESTORE\"}}}"),
                     @ExampleObject(name = "legacyFallback", value = "{\"success\":true,\"data\":{\"preview\":{\"legacyFallback\":true}}}")
             })),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "거부된 semantic 수정 또는 curriculum 범위 밖 요청"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "stale base 또는 semantic model 미지원"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "semantic/diagram 검증 실패")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "거부된 semantic 수정 또는 curriculum 범위 밖 요청", content = @Content(examples = {
+                    @ExampleObject(name = "rejectedCurriculum", value = "{\"success\":false,\"data\":null,\"error\":{\"code\":\"PROBLEM_EDIT_REJECTED\",\"message\":\"curriculum 범위를 벗어난 수정입니다.\"}}")
+            })),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "stale base 또는 semantic model 미지원", content = @Content(examples = {
+                    @ExampleObject(name = "staleBase", value = "{\"success\":false,\"data\":null,\"error\":{\"code\":\"PROBLEM_EDIT_STALE_BASE\",\"message\":\"기준 버전이 최신 상태가 아닙니다.\"}}")
+            })),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "semantic/diagram 검증 실패", content = @Content(examples = {
+                    @ExampleObject(name = "semanticValidationFailure", value = "{\"success\":false,\"data\":null,\"error\":{\"code\":\"PROBLEM_SEMANTIC_VALIDATION_FAILED\",\"message\":\"semantic 또는 diagram 검증에 실패했습니다.\"}}")
+            }))
     })
     @PostMapping("/{sessionId}/edit/turns")
     public ApiResponse<ProblemEditTurnResponse> handleTurn(
