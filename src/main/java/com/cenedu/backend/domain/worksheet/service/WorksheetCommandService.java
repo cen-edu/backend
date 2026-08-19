@@ -104,12 +104,15 @@ public class WorksheetCommandService {
         WorksheetAssignment sourceAssignment = origin == WorksheetOrigin.CUSTOM
                 ? worksheetAssignmentRepository.getReferenceById(request.sourceAssignmentId())
                 : null;
+        Worksheet parentWorksheet = resolveParentWorksheet(
+                teacherId, origin, request.parentWorksheetId(), request.sourceAssignmentId());
 
         Short totalScore = type == WorksheetType.COMPREHENSIVE_ASSESSMENT ? (short) 100 : null;
 
         Worksheet worksheet = Worksheet.create(
                 request.title(), type, origin, teacherId,
-                request.grade().shortValue(), semester, totalScore, sourceAssignment);
+                request.grade().shortValue(), semester, totalScore, sourceAssignment,
+                parentWorksheet);
         worksheetRepository.save(worksheet);
 
         List<WorksheetGenSpec> genSpecs = request.genSpec().stream()
@@ -232,6 +235,40 @@ public class WorksheetCommandService {
             throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE,
                     "origin이 custom이면 sourceAssignmentId가 필수이고, 아니면 없어야 합니다.");
         }
+    }
+
+    /**
+     * 직전 차수 학습지를 확인해 돌려준다. 맞춤이 아니면 {@code null}이다.
+     *
+     * <p>차수는 저장 컬럼이 없고 이 체인의 깊이로 파생하므로, 부모가 어긋나면 화면의 차수가 통째로
+     * 어긋난다. 그래서 프록시가 아니라 실제로 읽어 확인한다.
+     *
+     * <p>1차 맞춤은 부모가 출처 배정의 학습지 자신이어야 하고, 2차 이상은 부모가 같은 묶음
+     * (같은 {@code sourceAssignmentId})에 속해야 한다. 후자가 두 컬럼의 정합성을 지키는 지점이다.
+     */
+    private Worksheet resolveParentWorksheet(long teacherId, WorksheetOrigin origin,
+                                             Long parentWorksheetId, Long sourceAssignmentId) {
+        boolean isCustom = origin == WorksheetOrigin.CUSTOM;
+        if (isCustom != (parentWorksheetId != null)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT_VALUE,
+                    "origin이 custom이면 parentWorksheetId가 필수이고, 아니면 없어야 합니다.");
+        }
+        if (!isCustom) {
+            return null;
+        }
+
+        Worksheet parent = worksheetRepository
+                .findByIdAndOwnerTeacherIdAndDeletedAtIsNull(parentWorksheetId, teacherId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.WORKSHEET_NOT_FOUND));
+
+        boolean sameGroup = parent.getOrigin() == WorksheetOrigin.CUSTOM
+                ? sourceAssignmentId.equals(parent.getSourceAssignment().getId())
+                : worksheetAssignmentRepository.existsByIdAndWorksheetId(
+                        sourceAssignmentId, parent.getId());
+        if (!sameGroup) {
+            throw new BusinessException(ErrorCode.WORKSHEET_PARENT_MISMATCH);
+        }
+        return parent;
     }
 
     /** displayOrder 집합이 {1..N}과 정확히 일치하는지, supportMode·customStage가 매핑 표의 값인지 확인한다. */
