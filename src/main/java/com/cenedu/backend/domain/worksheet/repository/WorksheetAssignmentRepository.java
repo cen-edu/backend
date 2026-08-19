@@ -38,12 +38,19 @@ public interface WorksheetAssignmentRepository extends JpaRepository<WorksheetAs
     /**
      * 채점 목록용 배포 조회. 학습지를 함께 읽어 목록이 제목·유형·학년을 다시 조회하지 않게 한다.
      * 파생 상태(grading/graded/confirmed)는 컬럼이 아니라 서버 계산이라 여기서 거르지 않는다.
+     *
+     * <p>맞춤 배정은 최상위에서 뺀다. 원본 아래 자식으로 들어가기 때문이다. 술어가
+     * {@code findCustomLearningAssignments}의 <b>정확한 여집합</b>이어야 한다 — DB가
+     * {@code origin='CUSTOM' ⇔ source_assignment_id NOT NULL} 을 강제하지 않아서, 한쪽 조건만 걸면
+     * 어중간한 행이 최상위에서도 빠지고 자식으로도 안 잡혀 화면에서 통째로 사라진다.
      */
     @Query("""
             select wa from WorksheetAssignment wa
             join fetch wa.worksheet w
             where w.ownerTeacherId = :teacherId
               and w.deletedAt is null
+              and (w.origin <> com.cenedu.backend.domain.worksheet.entity.enums.WorksheetOrigin.CUSTOM
+                   or w.sourceAssignment is null)
               and (:grade is null or w.grade = :grade)
               and (:semester is null or w.semester = :semester)
               and (:classId is null or wa.classId = :classId)
