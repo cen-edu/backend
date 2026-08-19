@@ -1,6 +1,7 @@
 package com.cenedu.backend.domain.analysis.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -22,6 +23,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class CustomLearningQueryServiceTest {
+
+    /** 원본 학습지. 차수 계산의 깊이 0 이다. */
+    private static final long ROOT_WORKSHEET_ID = 100L;
+
+    /** 원본을 부모로 갖는 맞춤 학습지라 1차가 된다. */
+    private static final long CUSTOM_WORKSHEET_ID = 301L;
 
     private final AnalysisClassQueryService classQueryService =
             mock(AnalysisClassQueryService.class);
@@ -156,6 +163,59 @@ class CustomLearningQueryServiceTest {
     }
 
     @Test
+    @DisplayName("차수는 학습지 계보의 깊이로 매기고 오름차순으로 내보낸다")
+    void numbersSessionsByLineageDepth() {
+        allowAssignment();
+        when(repository.existsSourceAssignmentStudent(101L, 11L)).thenReturn(true);
+        OffsetDateTime firstAssignedAt = OffsetDateTime.parse("2026-08-13T09:00:00+09:00");
+        OffsetDateTime secondAssignedAt = OffsetDateTime.parse("2026-08-15T09:00:00+09:00");
+        // 2차를 먼저 넣어, 정렬이 조회 순서가 아니라 차수를 따르는지 본다.
+        when(repository.findSessions(101L, 11L)).thenReturn(List.of(
+                lineageRow(202L, 302L, CUSTOM_WORKSHEET_ID, secondAssignedAt),
+                lineageRow(201L, CUSTOM_WORKSHEET_ID, ROOT_WORKSHEET_ID, firstAssignedAt)));
+
+        CustomLearningSessionListResponse response = service.getSessions(7L, 101L, 11L);
+
+        assertThat(response.sessions()).extracting(
+                        CustomLearningSessionListResponse.CustomLearningSession::sessionNumber,
+                        CustomLearningSessionListResponse.CustomLearningSession::customAssignmentId)
+                .containsExactly(tuple(1, 201L), tuple(2, 202L));
+    }
+
+    @Test
+    @DisplayName("계보가 끊긴 회차는 1차인 척하지 않고 차수 미상으로 맨 뒤에 둔다")
+    void placesUnnumberedSessionsLast() {
+        allowAssignment();
+        when(repository.existsSourceAssignmentStudent(101L, 11L)).thenReturn(true);
+        OffsetDateTime assignedAt = OffsetDateTime.parse("2026-08-13T09:00:00+09:00");
+        when(repository.findSessions(101L, 11L)).thenReturn(List.of(
+                lineageRow(202L, 302L, null, assignedAt),
+                lineageRow(201L, CUSTOM_WORKSHEET_ID, ROOT_WORKSHEET_ID, assignedAt)));
+
+        CustomLearningSessionListResponse response = service.getSessions(7L, 101L, 11L);
+
+        assertThat(response.sessions()).extracting(
+                        CustomLearningSessionListResponse.CustomLearningSession::sessionNumber,
+                        CustomLearningSessionListResponse.CustomLearningSession::customAssignmentId)
+                .containsExactly(tuple(1, 201L), tuple(0, 202L));
+    }
+
+    /** 차수 계산에 필요한 계보만 다르게 준 행. 나머지 값은 판정에 영향이 없다. */
+    private CustomLearningSessionRow lineageRow(
+            long customAssignmentId,
+            long worksheetId,
+            Long parentWorksheetId,
+            OffsetDateTime assignedAt
+    ) {
+        return new CustomLearningSessionRow(
+                customAssignmentId, worksheetId, parentWorksheetId, ROOT_WORKSHEET_ID,
+                assignedAt, assignedAt, 1, 1, new BigDecimal("100.0"),
+                1L, "소인수분해", 2, 1, 1,
+                new BigDecimal("100.0"), new BigDecimal("100.0"), 1, 1, 1,
+                CustomStage.SIMILAR, 1, 1);
+    }
+
+    @Test
     @DisplayName("맞춤 학습 기록이 없으면 빈 목록을 반환한다")
     void returnsEmptySessions() {
         allowAssignment();
@@ -246,6 +306,9 @@ class CustomLearningQueryServiceTest {
     ) {
         return new CustomLearningSessionRow(
                 201L,
+                CUSTOM_WORKSHEET_ID,
+                ROOT_WORKSHEET_ID,
+                ROOT_WORKSHEET_ID,
                 assignedAt,
                 completedAt,
                 sessionCompletedItemCount,

@@ -39,9 +39,15 @@ public class CustomLearningQueryRepository {
             long studentId
     ) {
         return jdbcClient.sql("""
-                        WITH custom_session AS (
+                        WITH root_worksheet AS (
+                            SELECT worksheet_id
+                            FROM worksheet_assignment
+                            WHERE id = :sourceAssignmentId
+                        ),
+                        custom_session AS (
                             SELECT custom_assignment.id AS custom_assignment_id,
                                    custom_assignment.worksheet_id,
+                                   custom_worksheet.parent_worksheet_id,
                                    custom_assignment.assigned_at,
                                    custom_student.id AS assignment_student_id,
                                    custom_student.graded_at AS completed_at
@@ -165,6 +171,8 @@ public class CustomLearningQueryRepository {
                         ),
                         session_summary AS (
                             SELECT session.custom_assignment_id,
+                                   session.worksheet_id,
+                                   session.parent_worksheet_id,
                                    session.assigned_at,
                                    session.completed_at,
                                    COUNT(result.worksheet_item_id) AS total_item_count,
@@ -185,16 +193,24 @@ public class CustomLearningQueryRepository {
                             FROM custom_session session
                             LEFT JOIN custom_item_result result
                               ON result.custom_assignment_id = session.custom_assignment_id
-                            GROUP BY session.custom_assignment_id, session.assigned_at,
+                            GROUP BY session.custom_assignment_id, session.worksheet_id,
+                                     session.parent_worksheet_id, session.assigned_at,
                                      session.completed_at
                         ),
                         subcategory_summary AS (
                             SELECT result.custom_assignment_id,
                                    result.sub_unit_id,
                                    unit.name AS subcategory_name,
+                                   -- 현재 난이도를 뜻하는 것은 유사 문항뿐이다. 동일 문항은 과거
+                                   -- 난이도를 그대로 들고 오고 응용 문항은 상 고정이라, 세 단계를
+                                   -- 함께 세면 난이도가 섞여 항상 NULL 이 된다.
                                    CASE
-                                       WHEN COUNT(DISTINCT result.difficulty) = 1
-                                           THEN MAX(result.difficulty)
+                                       WHEN COUNT(DISTINCT result.difficulty) FILTER (
+                                           WHERE result.custom_stage = 'SIMILAR'
+                                       ) = 1
+                                           THEN MAX(result.difficulty) FILTER (
+                                               WHERE result.custom_stage = 'SIMILAR'
+                                           )
                                        ELSE NULL
                                    END AS current_difficulty,
                                    COUNT(*) AS total_item_count,
@@ -237,6 +253,9 @@ public class CustomLearningQueryRepository {
                             GROUP BY custom_assignment_id, sub_unit_id, custom_stage
                         )
                         SELECT session.custom_assignment_id,
+                               session.worksheet_id,
+                               session.parent_worksheet_id,
+                               root_worksheet.worksheet_id AS root_worksheet_id,
                                session.assigned_at,
                                session.completed_at,
                                session.completed_item_count AS session_completed_item_count,
@@ -258,6 +277,7 @@ public class CustomLearningQueryRepository {
                                COALESCE(stage.correct_count, 0) AS stage_correct_count,
                                COALESCE(stage.total_count, 0) AS stage_total_count
                         FROM session_summary session
+                        CROSS JOIN root_worksheet
                         JOIN subcategory_summary subcategory
                           ON subcategory.custom_assignment_id = session.custom_assignment_id
                         LEFT JOIN source_summary source
@@ -266,8 +286,8 @@ public class CustomLearningQueryRepository {
                         LEFT JOIN stage_summary stage
                           ON stage.custom_assignment_id = session.custom_assignment_id
                          AND stage.sub_unit_id = subcategory.sub_unit_id
-                        ORDER BY session.assigned_at DESC,
-                                 session.custom_assignment_id DESC,
+                        ORDER BY session.assigned_at,
+                                 session.custom_assignment_id,
                                  subcategory.sub_unit_id ASC,
                                  CASE stage.custom_stage
                                      WHEN 'REVIEW' THEN 1
@@ -280,6 +300,9 @@ public class CustomLearningQueryRepository {
                 .param("studentId", studentId)
                 .query((rs, rowNum) -> new CustomLearningSessionRow(
                         rs.getLong("custom_assignment_id"),
+                        rs.getLong("worksheet_id"),
+                        rs.getObject("parent_worksheet_id", Long.class),
+                        rs.getLong("root_worksheet_id"),
                         rs.getObject("assigned_at", OffsetDateTime.class),
                         rs.getObject("completed_at", OffsetDateTime.class),
                         rs.getInt("session_completed_item_count"),

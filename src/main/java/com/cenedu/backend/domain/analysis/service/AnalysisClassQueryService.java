@@ -98,7 +98,7 @@ public class AnalysisClassQueryService {
     }
 
     /** 배정이 존재하고 로그인 교사가 학습지와 반을 모두 소유하는지 확인한다. */
-    AnalysisAssignmentAccessRow getAuthorizedAssignment(
+    public AnalysisAssignmentAccessRow getAuthorizedAssignment(
             long teacherId,
             long assignmentId
     ) {

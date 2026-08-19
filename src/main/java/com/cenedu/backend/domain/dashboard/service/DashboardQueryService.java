@@ -85,7 +85,8 @@ public class DashboardQueryService {
                         row.assignmentId(),
                         row.worksheetTitle(),
                         row.worksheetType(),
-                        row.worksheetOrigin()))
+                        row.worksheetOrigin(),
+                        row.sourceAssignmentId()))
                 .toList();
         Map<Long, WorksheetType> worksheetTypes = columnRows.stream()
                 .collect(Collectors.toMap(
@@ -128,6 +129,7 @@ public class DashboardQueryService {
                         row.worksheetTitle(),
                         row.worksheetType(),
                         row.worksheetOrigin(),
+                        row.sourceAssignmentId(),
                         row.assignedAt(),
                         row.dueAt(),
                         row.studentCount(),
@@ -137,7 +139,11 @@ public class DashboardQueryService {
                                 row.studentCount(),
                                 row.gradedStudentCount(),
                                 row.dueAt(),
-                                now)))
+                                now),
+                        statusClassifier.classifyResult(
+                                row.submittedStudentCount(),
+                                row.gradedStudentCount(),
+                                row.releasedStudentCount())))
                 .toList();
         int totalPages = totalElements == 0
                 ? 0

@@ -1,6 +1,7 @@
 package com.cenedu.backend.domain.dashboard.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -17,6 +18,7 @@ import com.cenedu.backend.domain.dashboard.dto.response.DashboardStudentProgress
 import com.cenedu.backend.domain.dashboard.dto.response.DashboardSummaryResponse;
 import com.cenedu.backend.domain.dashboard.entity.enums.AssignmentProgressStatus;
 import com.cenedu.backend.domain.dashboard.entity.enums.DashboardAssignmentStatus;
+import com.cenedu.backend.domain.dashboard.entity.enums.DashboardResultStatus;
 import com.cenedu.backend.domain.dashboard.entity.enums.DashboardStudentStatus;
 import com.cenedu.backend.domain.dashboard.repository.DashboardQueryRepository;
 import com.cenedu.backend.domain.dashboard.repository.row.DashboardAssignmentItemRow;
@@ -80,10 +82,10 @@ class DashboardQueryServiceTest {
         when(repository.findWorksheetColumns(3L, 2)).thenReturn(List.of(
                 new DashboardWorksheetColumnRow(
                         101L, "학습평가", WorksheetType.GENERAL_LEARNING,
-                        WorksheetOrigin.STANDARD, dueAt.minusDays(1), dueAt),
+                        WorksheetOrigin.STANDARD, null, dueAt.minusDays(1), dueAt),
                 new DashboardWorksheetColumnRow(
                         102L, "종합평가", WorksheetType.COMPREHENSIVE_ASSESSMENT,
-                        WorksheetOrigin.STANDARD, dueAt, dueAt.plusDays(1))));
+                        WorksheetOrigin.CUSTOM, 101L, dueAt, dueAt.plusDays(1))));
         when(repository.findStudentProgress(3L, 2)).thenReturn(List.of(
                 progressRow(101L, AssignmentStatus.GRADED, 2, 1, null, dueAt),
                 progressRow(102L, AssignmentStatus.GRADED, 1, 1,
@@ -91,6 +93,12 @@ class DashboardQueryServiceTest {
 
         DashboardStudentProgressResponse response =
                 service.getStudentProgress(7L, classRequest());
+
+        // 맞춤 열은 원본 배정을 달고 나가야 프론트가 원본 열과 묶을 수 있다.
+        assertThat(response.worksheetColumns()).extracting(
+                        DashboardStudentProgressResponse.WorksheetColumn::assignmentId,
+                        DashboardStudentProgressResponse.WorksheetColumn::sourceAssignmentId)
+                .containsExactly(tuple(101L, null), tuple(102L, 101L));
 
         DashboardStudentProgressResponse.StudentProgress student =
                 response.students().getFirst();
@@ -118,12 +126,12 @@ class DashboardQueryServiceTest {
         when(repository.findAssignments(3L, 2, 0, 20)).thenReturn(List.of(
                 new DashboardAssignmentItemRow(
                         101L, "학습평가", WorksheetType.GENERAL_LEARNING,
-                        WorksheetOrigin.STANDARD, now.minusDays(2), now.plusDays(2),
-                        3, 2, 1),
+                        WorksheetOrigin.STANDARD, null, now.minusDays(2), now.plusDays(2),
+                        3, 2, 1, 0),
                 new DashboardAssignmentItemRow(
-                        102L, "종합평가", WorksheetType.COMPREHENSIVE_ASSESSMENT,
-                        WorksheetOrigin.STANDARD, now.minusDays(4), now.minusDays(1),
-                        3, 3, 3)));
+                        102L, "맞춤 학습", WorksheetType.COMPREHENSIVE_ASSESSMENT,
+                        WorksheetOrigin.CUSTOM, 101L, now.minusDays(4), now.minusDays(1),
+                        3, 3, 3, 3)));
 
         DashboardAssignmentListResponse response = service.getAssignments(
                 7L, new DashboardAssignmentListRequest(3L, 2, null, null));
@@ -136,6 +144,13 @@ class DashboardQueryServiceTest {
                 .containsExactly(
                         DashboardAssignmentStatus.IN_PROGRESS,
                         DashboardAssignmentStatus.COMPLETED);
+        // 진행 축과 채점 축은 따로 간다 — 아래 행은 COMPLETED 이면서 확정까지 끝난 상태다.
+        assertThat(response.assignments()).extracting(
+                        DashboardAssignmentListResponse.AssignmentItem::sourceAssignmentId,
+                        DashboardAssignmentListResponse.AssignmentItem::resultStatus)
+                .containsExactly(
+                        tuple(null, DashboardResultStatus.GRADING),
+                        tuple(101L, DashboardResultStatus.RELEASED));
     }
 
     private DashboardStudentProgressRow progressRow(

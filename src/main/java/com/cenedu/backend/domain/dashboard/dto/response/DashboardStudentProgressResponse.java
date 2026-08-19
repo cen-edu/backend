@@ -19,11 +19,16 @@ public record DashboardStudentProgressResponse(
         students = List.copyOf(students);
     }
 
+    /**
+     * @param sourceAssignmentId 맞춤 학습지가 파생된 원본 배정. 맞춤이 아니면 {@code null} 이다.
+     *                           맞춤 열을 원본 열과 묶어 보여줄 때 쓴다
+     */
     public record WorksheetColumn(
             Long assignmentId,
             String worksheetTitle,
             WorksheetType worksheetType,
-            WorksheetOrigin worksheetOrigin
+            WorksheetOrigin worksheetOrigin,
+            Long sourceAssignmentId
     ) {
     }
 

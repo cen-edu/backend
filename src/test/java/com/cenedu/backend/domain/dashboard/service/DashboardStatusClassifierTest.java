@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 
 import com.cenedu.backend.domain.dashboard.entity.enums.AssignmentProgressStatus;
 import com.cenedu.backend.domain.dashboard.entity.enums.DashboardAssignmentStatus;
+import com.cenedu.backend.domain.dashboard.entity.enums.DashboardResultStatus;
 import com.cenedu.backend.domain.dashboard.entity.enums.DashboardStudentStatus;
 import com.cenedu.backend.global.common.enums.AssignmentStatus;
 import org.junit.jupiter.api.DisplayName;
@@ -61,5 +62,34 @@ class DashboardStatusClassifierTest {
                 .isEqualTo(DashboardAssignmentStatus.OVERDUE);
         assertThat(classifier.classifyAssignment(2, 1, now.plusDays(1), now))
                 .isEqualTo(DashboardAssignmentStatus.IN_PROGRESS);
+    }
+
+    @Test
+    @DisplayName("채점 단계는 제출자 기준으로 판정하고 확정을 가장 먼저 본다")
+    void classifiesResultStage() {
+        // 제출 2 · 채점 1 → 아직 채점 중
+        assertThat(classifier.classifyResult(2, 1, 0))
+                .isEqualTo(DashboardResultStatus.GRADING);
+        // 제출자 전원 채점 완료, 확정 전
+        assertThat(classifier.classifyResult(2, 2, 0))
+                .isEqualTo(DashboardResultStatus.GRADED);
+        // 확정 후 정정으로 채점이 덜 된 상태가 되어도 공개는 되돌아가지 않는다
+        assertThat(classifier.classifyResult(2, 1, 2))
+                .isEqualTo(DashboardResultStatus.RELEASED);
+    }
+
+    @Test
+    @DisplayName("미제출자만 있는 배정은 채점 단계를 말하지 않는다")
+    void hasNoResultStageWithoutSubmission() {
+        assertThat(classifier.classifyResult(0, 0, 0)).isNull();
+    }
+
+    @Test
+    @DisplayName("전원 채점 완료라도 확정 전이면 완료가 아니라 채점 완료다")
+    void separatesProgressAxisFromResultAxis() {
+        assertThat(classifier.classifyAssignment(2, 2, now.plusDays(1), now))
+                .isEqualTo(DashboardAssignmentStatus.COMPLETED);
+        assertThat(classifier.classifyResult(2, 2, 0))
+                .isEqualTo(DashboardResultStatus.GRADED);
     }
 }

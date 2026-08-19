@@ -236,6 +236,7 @@ public class DashboardQueryRepository {
                                w.title AS worksheet_title,
                                w.type AS worksheet_type,
                                w.origin AS worksheet_origin,
+                               w.source_assignment_id,
                                wa.assigned_at,
                                wa.due_at
                         FROM worksheet_assignment wa
@@ -252,6 +253,7 @@ public class DashboardQueryRepository {
                         rs.getString("worksheet_title"),
                         WorksheetType.valueOf(rs.getString("worksheet_type")),
                         WorksheetOrigin.valueOf(rs.getString("worksheet_origin")),
+                        rs.getObject("source_assignment_id", Long.class),
                         rs.getObject("assigned_at", OffsetDateTime.class),
                         rs.getObject("due_at", OffsetDateTime.class)))
                 .list();
@@ -373,6 +375,7 @@ public class DashboardQueryRepository {
                                w.title AS worksheet_title,
                                w.type AS worksheet_type,
                                w.origin AS worksheet_origin,
+                               w.source_assignment_id,
                                wa.assigned_at,
                                wa.due_at,
                                COUNT(was.id) AS student_count,
@@ -381,7 +384,11 @@ public class DashboardQueryRepository {
                                ) AS submitted_student_count,
                                COUNT(was.id) FILTER (
                                    WHERE was.status = 'GRADED'
-                               ) AS graded_student_count
+                               ) AS graded_student_count,
+                               -- 확정은 제출자에게만 찍힌다. 미제출자는 공개할 결과가 없어 비어 있다.
+                               COUNT(was.id) FILTER (
+                                   WHERE was.released_at IS NOT NULL
+                               ) AS released_student_count
                         FROM worksheet_assignment wa
                         JOIN worksheet w ON w.id = wa.worksheet_id
                         LEFT JOIN worksheet_assignment_student was
@@ -389,7 +396,7 @@ public class DashboardQueryRepository {
                         WHERE wa.class_id = :classId
                           AND w.deleted_at IS NULL
                           AND (w.semester = :semester OR w.semester = 'COMMON')
-                        GROUP BY wa.id, w.title, w.type, w.origin,
+                        GROUP BY wa.id, w.title, w.type, w.origin, w.source_assignment_id,
                                  wa.assigned_at, wa.due_at
                         ORDER BY wa.assigned_at DESC, wa.id DESC
                         LIMIT :size OFFSET :offset
@@ -403,11 +410,13 @@ public class DashboardQueryRepository {
                         rs.getString("worksheet_title"),
                         WorksheetType.valueOf(rs.getString("worksheet_type")),
                         WorksheetOrigin.valueOf(rs.getString("worksheet_origin")),
+                        rs.getObject("source_assignment_id", Long.class),
                         rs.getObject("assigned_at", OffsetDateTime.class),
                         rs.getObject("due_at", OffsetDateTime.class),
                         rs.getInt("student_count"),
                         rs.getInt("submitted_student_count"),
-                        rs.getInt("graded_student_count")))
+                        rs.getInt("graded_student_count"),
+                        rs.getInt("released_student_count")))
                 .list();
     }
 }
