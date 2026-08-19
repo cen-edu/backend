@@ -35,6 +35,9 @@ public final class ProblemSemanticDocumentCodec {
     public ProblemSemanticModelV1 readSemanticModel(String json) { return read(json, ProblemSemanticModelV1.class); }
     public DiagramSpecV1 readRenderSpec(String json) { return read(json, DiagramSpecV1.class); }
 
+    /** 렌더링 입력처럼 canonical JSON이 필요한 계약의 안정적인 hash를 반환한다. */
+    public String canonicalHash(Object value) { return hash(write(value)); }
+
     private String write(Object value) {
         try { return mapper.writeValueAsString(value); }
         catch (JacksonException e) { throw new IllegalArgumentException("semantic document를 JSON으로 변환할 수 없습니다.", e); }

@@ -69,6 +69,13 @@ public class ProblemSemanticModificationService {
                         .map(parts -> parts[2]).collect(java.util.stream.Collectors.toSet());
                 if (!targetedAssets.containsAll(changedAssets))
                     throw new BusinessException(ErrorCode.PROBLEM_DIAGRAM_RENDER_FAILED);
+                for (int i = 0; i < baseModel.diagrams().size(); i++) {
+                    String assetKey = baseModel.diagrams().get(i).assetKey();
+                    if (!targetedAssets.contains(assetKey)
+                            && !java.util.Objects.equals(semanticCodec.canonicalHash(baseModel.diagrams().get(i)),
+                            semanticCodec.canonicalHash(changed.diagrams().get(i))))
+                        throw new BusinessException(ErrorCode.PROBLEM_DIAGRAM_RENDER_FAILED);
+                }
             }
         }
         QuestionSnapshotV1 baseSnapshot = jsonCodec.read(baseVersion.getSnapshot(), QuestionSnapshotV1.class);
