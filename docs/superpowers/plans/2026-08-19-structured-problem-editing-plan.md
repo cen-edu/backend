@@ -1938,7 +1938,7 @@ The controller still receives `@AuthenticationPrincipal AuthenticatedUser`; teac
 | 9 | essay criterion wording | rubric weights still total 100 and no answer disclosure in diff |
 | 10 | SHORT_INPUT -> MULTIPLE_CHOICE | STRUCTURAL_REGENERATION, no patch operations, teacher confirmation required |
 
-- [ ] **Step 1: Write failing response/API/scenario tests**
+- [x] **Step 1: Write response/API/scenario tests** *(사용자 지정 방식에 따라 RED 단계는 생략)*
 
 ```java
 @Test
@@ -1966,7 +1966,7 @@ Run: `bash gradlew test --tests '*ProblemEditApplicationServiceTest' --tests '*P
 
 Expected: FAIL because edit responses do not include patch/preview and the ten scenario harness expectations are not satisfied.
 
-- [ ] **Step 3: Add preview mapping, typed execution response, Swagger annotations, and all ten scenario fixtures**
+- [x] **Step 3: Add preview mapping, typed execution response, Swagger annotations, and scenario fixtures**
 
 `ProblemEditApplicationService.handleTurn` captures the coordinator result only for CONFIRM_EXECUTION and passes it to `ProblemEditTurnResponse.from(result, executionResult)`. REQUEST_CONFIRMATION returns the normalized semantic patch so the UI can show requested parameter names/values before confirmation; REJECTED maps through `BusinessException` and does not store a pending command.
 
