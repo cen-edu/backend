@@ -1799,7 +1799,7 @@ Execution rules:
 - semantic model null while feature enabled: call Task 10 extraction. EXTRACTED continues semantically. UNSUPPORTED/INVALID_SOURCE/TECHNICAL_ERROR set `legacyFallback=true` and route the existing confirmed plan through `ProblemModificationWorker`/`ProblemModificationAdapter`/`ProblemModificationSnapshotMerger` unchanged. A structural legacy request remains whole replacement, never a fabricated parametric patch.
 - stale expected value or base version maps to existing `PROBLEM_EDIT_COMMAND_STALE` (409). Add `PROBLEM_SEMANTIC_EDIT_REJECTED` (400), `PROBLEM_SEMANTIC_MODEL_UNSUPPORTED` (409), `PROBLEM_SEMANTIC_MODEL_INVALID` (422), and `PROBLEM_DIAGRAM_RENDER_FAILED` (422) at the end of the Problem error-code block.
 
-- [ ] **Step 1: Write failing synchronized-regeneration and fallback tests**
+- [x] **Step 1: Write synchronized-regeneration and fallback tests** *(사용자 지정 방식에 따라 RED 단계는 생략)*
 
 ```java
 @Test
@@ -1831,7 +1831,7 @@ Run: `bash gradlew test --tests '*ProblemSemanticModificationServiceTest' --test
 
 Expected: FAIL because confirmed execution cannot apply semantic patches or return a typed preview result.
 
-- [ ] **Step 3: Implement semantic execution first, then structural and legacy branches**
+- [x] **Step 3: Implement semantic execution first, then structural and legacy branches** *(핵심 실행·fallback 경로 구현 완료)*
 
 Keep `ProblemModificationSnapshotMerger` production code unchanged. Adapt only its callers and regression tests so it remains a visible, tested fallback rather than silently participating in semantic patches.
 
