@@ -16,5 +16,13 @@ class ProblemSemanticPatchApplierTest {
         var changed=new ProblemSemanticPatchApplier().apply(model,patch);
         assertThat(changed.parameters().getFirst().value()).isEqualTo("5"); assertThat(model.parameters().getFirst().value()).isEqualTo("3");
     }
+    @Test void unit_patch도_적용한다(){
+        var model=model(); var patch=new ProblemSemanticPatch(1,UUID.randomUUID(),1L,SemanticEditMode.PARAMETRIC_PATCH,List.of(new SemanticPatchOperation(SemanticPatchOperationType.SET_PARAMETER_UNIT,"/parameters/A/unit",null,"cm")),"x");
+        assertThat(new ProblemSemanticPatchApplier().apply(model,patch).parameters().getFirst().unit()).isEqualTo("cm");
+    }
+    @Test void template_placeholder가_바뀌면_거부한다(){
+        var model=model(); var patch=new ProblemSemanticPatch(1,UUID.randomUUID(),1L,SemanticEditMode.PRESENTATIONAL_PATCH,List.of(new SemanticPatchOperation(SemanticPatchOperationType.SET_TEMPLATE_TEXT,"/presentation/questionTemplate","${A}","${B}")),"x");
+        assertThatThrownBy(()->new ProblemSemanticPatchApplier().apply(model,patch)).isInstanceOf(IllegalArgumentException.class);
+    }
     private ProblemSemanticModelV1 model(){var p=new SemanticParameter("A",SemanticValueType.INTEGER,"3",null,true,null);var c=new SemanticComputation("C",SemanticOperation.IDENTITY,List.of("A"),null,null,"3");var i=new SemanticProblemIntent(QuestionType.SHORT_INPUT,"mid",null,"identity","C",1,false);var v=new SemanticPresentationPlan("${A}",List.of(),List.of(),"${C}",null,List.of());return new ProblemSemanticModelV1(1,new CurriculumScope("2022_REVISED","MIDDLE",1,1,null,1L,"a","b","c"),i,List.of(p),List.of(c),List.of(),v,List.of(),List.of());}
 }

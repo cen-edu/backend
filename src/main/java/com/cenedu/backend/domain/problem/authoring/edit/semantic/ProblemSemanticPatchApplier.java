@@ -39,6 +39,11 @@ public class ProblemSemanticPatchApplier {
             for (JsonNode parameter : root.path("parameters")) if (op.path().contains("/" + parameter.path("key").asText() + "/")
                     && !parameter.path("editable").asBoolean()) throw new IllegalArgumentException("editable이 아닌 parameter입니다.");
         }
+        if ((op.type()==SemanticPatchOperationType.SET_TEMPLATE_TEXT || op.type()==SemanticPatchOperationType.SET_LABEL_TEXT)
+                && !placeholderSet(actual).equals(placeholderSet(op.newValue())) )
+            throw new IllegalArgumentException("template별 placeholder가 변경되었습니다: " + op.path());
+        if (op.type()==SemanticPatchOperationType.SET_DIAGRAM_STYLE && !last(op.path()).matches("strokeColor|fillColor|accentColor|strokeWidth|fontSize"))
+            throw new IllegalArgumentException("허용되지 않은 diagram style field입니다.");
         ((com.fasterxml.jackson.databind.node.ObjectNode) parent(root, op.path())).put(last(op.path()), op.newValue());
     }
     private JsonNode find(JsonNode root,String path){JsonNode p=resolve(root,parts(path),false);return p;}
@@ -61,5 +66,9 @@ public class ProblemSemanticPatchApplier {
         java.util.Set<String> values=new java.util.TreeSet<>();
         java.util.regex.Matcher m=java.util.regex.Pattern.compile("\\$\\{[A-Z][A-Z0-9_]*}").matcher(node.toString());
         while(m.find()) values.add(m.group()); return String.join("|", values);
+    }
+    private java.util.Set<String> placeholderSet(String value){
+        java.util.Set<String> result=new java.util.TreeSet<>(); if(value==null)return result;
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("\\$\\{[A-Z][A-Z0-9_]*}").matcher(value); while(m.find())result.add(m.group()); return result;
     }
 }
