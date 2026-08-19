@@ -1688,7 +1688,7 @@ Prompt classification examples are explicit:
 
 The output guard blocks missing patch for a semantic payload, non-empty structural/restore/rejected operations, unknown path/type, request/base mismatch after normalization, answer-bearing assistant messages, and response text containing system prompt markers. It does not execute or persist the patch.
 
-- [ ] **Step 1: Write failing Dispatcher-agent tests**
+- [x] **Step 1: Write failing Dispatcher-agent tests** *(사용자 지정 방식에 따라 RED 단계는 생략)*
 
 ```java
 @Test
@@ -1709,17 +1709,17 @@ void rebindsProviderPatchToServerRequestAndBaseVersion() {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED** *(사용자 지정 방식에 따라 RED 단계는 생략)*
 
 Run: `bash gradlew test --tests '*ProblemEditAgentTest' --tests '*ProblemEditOutputGuardTest' --tests '*ProblemEditAgentGatewayTest'`
 
 Expected: FAIL because the current agent result has no semantic patch.
 
-- [ ] **Step 3: Extend schema/payload/result, normalize server fields, and harden the output guard**
+- [x] **Step 3: Extend schema/payload/result, normalize server fields, and harden the output guard**
 
 Do not place semantic interpretation in `AgentDispatcher`; it remains generic. Do not inject Dispatcher into any Agent. `ProblemEditAgentGateway` remains the sole domain call site for `dispatch(PROBLEM_EDIT)`.
 
-- [ ] **Step 4: Run GREEN and architecture tests**
+- [x] **Step 4: Run GREEN and architecture tests**
 
 Run: `bash gradlew test --tests '*ProblemEditAgentTest' --tests '*ProblemEditOutputGuardTest' --tests '*ProblemEditAgentGatewayTest' --tests '*AiClientAccessTest'`
 

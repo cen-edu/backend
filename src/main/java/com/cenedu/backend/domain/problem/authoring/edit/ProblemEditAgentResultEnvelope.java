@@ -8,11 +8,11 @@ public record ProblemEditAgentResultEnvelope(
         ProblemEditConversationResult problemEditResult
 ) {
 
-    public static final int CURRENT_SCHEMA_VERSION = 1;
+    public static final int CURRENT_SCHEMA_VERSION = 2;
     public static final String RESPONSE_KEY = "problemEditResult";
 
     public ProblemEditAgentResultEnvelope {
-        if (schemaVersion != CURRENT_SCHEMA_VERSION) {
+        if (schemaVersion != CURRENT_SCHEMA_VERSION && schemaVersion != 1) {
             throw new IllegalArgumentException("지원하지 않는 문제 수정 응답 버전입니다.");
         }
         Objects.requireNonNull(problemEditResult, "problemEditResult");

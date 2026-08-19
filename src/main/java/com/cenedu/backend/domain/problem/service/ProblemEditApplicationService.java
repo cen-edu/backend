@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.cenedu.backend.domain.problem.authoring.edit.*;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
+import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
 import com.cenedu.backend.domain.problem.dto.request.ProblemEditTurnRequest;
 import com.cenedu.backend.domain.problem.dto.response.ProblemEditTurnResponse;
 import com.cenedu.backend.domain.problem.entity.*;
@@ -51,9 +52,11 @@ public class ProblemEditApplicationService {
         }
         List<ProblemEditInstruction> accumulated = accumulated(session);
         QuestionSnapshotV1 baseSnapshot = jsonCodec.read(version.getSnapshot(), QuestionSnapshotV1.class);
-        ProblemEditAgentPayload payload = new ProblemEditAgentPayload(1, sessionId, baseVersionId,
+        ProblemSemanticModelV1 semanticModel = version.getSemanticModel() == null ? null
+                : jsonCodec.read(version.getSemanticModel(), ProblemSemanticModelV1.class);
+        ProblemEditAgentPayload payload = new ProblemEditAgentPayload(2, UUID.randomUUID(), sessionId, baseVersionId,
                 session.getInteractionStatus(), request.selectedTarget(),
-                baseSnapshot, accumulated);
+                baseSnapshot, semanticModel, accumulated);
         ProblemEditConversationResult result = gateway.handle(teacherId, request.userInput(),
                 request.history() == null ? List.of() : request.history(), payload);
         if (result.action() == EditConversationAction.REQUEST_CONFIRMATION) {

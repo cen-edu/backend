@@ -105,7 +105,7 @@ public final class ProblemStructuredOutputSchemas {
               "type":"object",
               "additionalProperties":false,
               "properties":{
-                "schemaVersion":{"type":"integer","enum":[1]},
+                "schemaVersion":{"type":"integer","enum":[2]},
                 "problemEditResult":{"type":"object","additionalProperties":false,
                   "properties":{
                     "action":{"type":"string","enum":["CONTINUE_COLLECTION","REQUEST_CONFIRMATION","CONFIRM_EXECUTION","CANCEL"]},
@@ -119,6 +119,21 @@ public final class ProblemStructuredOutputSchemas {
                       },
                       "required":["targetType","targetKey","changeNature","instruction"]
                     }},
+                    "semanticPatch":{"type":["object","null"],"additionalProperties":false,
+                      "properties":{
+                        "mode":{"type":"string","enum":["PRESENTATIONAL_PATCH","PARAMETRIC_PATCH","STRUCTURAL_REGENERATION","RESTORE","REJECTED"]},
+                        "operations":{"type":"array","items":{
+                          "type":"object","additionalProperties":false,
+                          "properties":{
+                            "type":{"type":"string","enum":["SET_PARAMETER_VALUE","SET_PARAMETER_UNIT","SET_TEMPLATE_TEXT","SET_DIAGRAM_STYLE","SET_LABEL_TEXT"]},
+                            "path":{"type":"string"},"expectedOldValue":{"type":["string","null"]},"newValue":{"type":"string"}
+                          },
+                          "required":["type","path","expectedOldValue","newValue"]
+                        }},
+                        "assistantMessage":{"type":"string"}
+                      },
+                      "required":["mode","operations","assistantMessage"]
+                    },
                     "assistantMessage":{"type":"string"}
                   },
                   "required":["action","instructionDeltas","assistantMessage"]
