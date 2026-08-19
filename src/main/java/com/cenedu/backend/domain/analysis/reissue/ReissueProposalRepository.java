@@ -23,13 +23,17 @@ import org.springframework.stereotype.Repository;
 /**
  * 원본 배정에서 파생된 맞춤 회차 사슬을 따라 재출제 근거를 읽는 조회 Repository.
  *
- * <p>{@code worksheet.source_assignment_id} 가 맞춤 배정을 다시 가리킬 수 있어 회차가 여러 단계로
- * 이어진다. 누적 취약 분포는 사슬 전체를 더한 값이라 재귀 CTE 로 끝까지 따라간다. 반면
- * <b>난이도 조절은 직전 회차 하나만</b> 본다({@link #findLatestSimilarResults}).
+ * <p>계보는 {@code worksheet.parent_worksheet_id} 로 잇는다. 같은 묶음의
+ * {@code source_assignment_id} 는 <b>모든 차수가 원본 배정을 가리키므로</b> 계보로 쓸 수 없다 —
+ * 그것으로 재귀하면 2차·3차가 전부 1차와 같은 깊이로 붙어 "직전 회차"를 집어낼 수 없다.
+ * 묶음 조건으로만 함께 건다.
  *
- * <p>사슬의 첫 단계만 배정 축이 다르다. 원본은 반 단위({@code class_id})고 맞춤은 학생
- * 단위({@code student_id})다. 그래서 시작 행에서는 {@code student_id} 조건 대신
- * {@code worksheet_assignment_student} 로 학생을 찾는다.
+ * <p>누적 취약 분포는 사슬 전체를 더한 값이라 끝까지 따라간다. 반면 <b>난이도 조절은 직전 회차
+ * 하나만</b> 본다({@link #findLatestSimilarResults}).
+ *
+ * <p>재귀는 학습지 계보({@code lineage})만 훑고, 학생 배정 매핑은 {@code chain} 에서 한 번만
+ * 한다. 같은 학습지가 반 단위와 학생 단위로 각각 배정돼 있을 수 있어 학습지마다 한 행으로
+ * 좁히지 않으면 문항이 두 번 집계된다.
  */
 @Repository
 @RequiredArgsConstructor
@@ -50,39 +54,37 @@ public class ReissueProposalRepository {
 
     /** 원본 배정과 그로부터 파생된 맞춤 회차 전체. 뒤따르는 모든 쿼리의 공통 기반이다. */
     private static final String CHAIN_CTE = """
-            WITH RECURSIVE chain AS (
-                SELECT root.id AS assignment_id,
-                       root_student.id AS assignment_student_id,
-                       root.worksheet_id,
-                       root.assigned_at,
-                       root_student.graded_at,
-                       0 AS depth
+            WITH RECURSIVE lineage AS (
+                SELECT root.worksheet_id, 0 AS depth
                 FROM worksheet_assignment root
-                JOIN worksheet_assignment_student root_student
-                  ON root_student.assignment_id = root.id
-                 AND root_student.student_id = :studentId
                 WHERE root.id = :assignmentId
 
                 UNION ALL
 
-                SELECT derived_assignment.id,
-                       derived_student.id,
-                       derived_assignment.worksheet_id,
-                       derived_assignment.assigned_at,
-                       derived_student.graded_at,
-                       chain.depth + 1
-                FROM chain
+                SELECT derived.id, lineage.depth + 1
+                FROM lineage
                 JOIN worksheet derived
-                  ON derived.source_assignment_id = chain.assignment_id
+                  ON derived.parent_worksheet_id = lineage.worksheet_id
                  AND derived.origin = 'CUSTOM'
                  AND derived.deleted_at IS NULL
-                JOIN worksheet_assignment derived_assignment
-                  ON derived_assignment.worksheet_id = derived.id
-                 AND derived_assignment.student_id = :studentId
-                JOIN worksheet_assignment_student derived_student
-                  ON derived_student.assignment_id = derived_assignment.id
-                 AND derived_student.student_id = :studentId
-                WHERE chain.depth < %d
+                 AND derived.source_assignment_id = :assignmentId
+                WHERE lineage.depth < %d
+            ),
+            chain AS (
+                SELECT DISTINCT ON (lineage.worksheet_id)
+                       lineage.worksheet_id,
+                       lineage.depth,
+                       assignment.id AS assignment_id,
+                       student.id AS assignment_student_id,
+                       assignment.assigned_at,
+                       student.graded_at
+                FROM lineage
+                JOIN worksheet_assignment assignment
+                  ON assignment.worksheet_id = lineage.worksheet_id
+                JOIN worksheet_assignment_student student
+                  ON student.assignment_id = assignment.id
+                 AND student.student_id = :studentId
+                ORDER BY lineage.worksheet_id, student.id
             ),
             item_result AS (
                 SELECT chain.assignment_id,
