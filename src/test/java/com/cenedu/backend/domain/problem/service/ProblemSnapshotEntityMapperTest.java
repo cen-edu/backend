@@ -74,4 +74,27 @@ class ProblemSnapshotEntityMapperTest {
                 .isEqualTo(com.cenedu.backend.domain.problem.entity.enums.SemanticModelStatus.READY);
         assertThat(bundle.question().getSemanticModelHash()).isEqualTo("a".repeat(64));
     }
+
+    @Test
+    void render_spec_document를_해당_자산에_연결한다() {
+        var base = ProblemSnapshotFixtures.shortInput();
+        var snapshot = new com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1(
+                1, base.metadata(),
+                List.of(new com.cenedu.backend.domain.problem.authoring.model.SnapshotContentBlock(
+                        "CB2", com.cenedu.backend.domain.problem.authoring.model.SnapshotBlockKind.FIGURE,
+                        1, null, "FIGURE_1", null)),
+                List.of(new com.cenedu.backend.domain.problem.authoring.model.SnapshotAssetReference(
+                        "FIGURE_1", "도형")), base.choices(), base.steps(), base.answerUnits(),
+                base.explanation(), base.learningGuide(), base.rubricItems());
+        var render = new com.cenedu.backend.domain.problem.authoring.semantic.persistence.RenderSpecDocument(
+                1, "{\"kind\":\"PLANE_GEOMETRY\"}", "b".repeat(64), "semantic-svg-v1");
+
+        var bundle = new ProblemSnapshotEntityMapper(new ObjectMapper()).map(
+                snapshot, Map.of("FIGURE_1", "final/figure.svg"), null, null,
+                Map.of("FIGURE_1", render));
+
+        assertThat(bundle.assets()).hasSize(1);
+        assertThat(bundle.assets().getFirst().getRenderSpecHash()).isEqualTo("b".repeat(64));
+        assertThat(bundle.assets().getFirst().getRendererVersion()).isEqualTo("semantic-svg-v1");
+    }
 }

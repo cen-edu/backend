@@ -2,8 +2,12 @@ package com.cenedu.backend.domain.problem.service;
 
 import static com.cenedu.backend.domain.problem.support.ProblemSnapshotFixtures.shortInput;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -20,6 +24,7 @@ import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemAssetProductionPort;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemVerificationPort;
+import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotNormalizedValidator;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator;
 import com.cenedu.backend.domain.problem.authoring.verification.GenerationVerificationContext;
@@ -133,6 +138,26 @@ class ProblemCandidateProcessingServiceTest {
         assertThat(session.getCurrentVersionId()).isNull();
         assertThat(session.getPendingVersionId()).isNull();
         assertThat(session.getOperationStatus()).isEqualTo(AuthoringOperationStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("semantic deterministic 실패는 저장과 독립 검증을 모두 건너뛴다")
+    void rejectsSemanticCandidateBeforeRegistration() {
+        var semanticCandidate = new ProblemCandidateDraft(
+                UUID.randomUUID(), shortInput(), List.of(), mock(ProblemSemanticModelV1.class),
+                new CandidateProvenance(CandidateSourceType.AI_GENERATE, null, List.of()));
+        var request = new CandidateProcessingRequest(
+                7L, 31L, null, AuthoringOperationType.AI_GENERATE,
+                VerificationOperationType.CREATE, semanticCandidate,
+                new VerificationExpectation(shortInput().metadata().questionType(), "mid",
+                        new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L,
+                                "수와 연산", "사칙연산", "덧셈"), null, List.of(), List.of()),
+                new GenerationVerificationContext(GenerationPurpose.GENERAL_LEARNING_SHORTAGE, List.of()),
+                "semantic 실패");
+
+        assertThatThrownBy(() -> service.process(request)).isInstanceOf(RuntimeException.class);
+        verify(versionRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(verificationPort);
     }
 
     private CandidateProcessingRequest request() {

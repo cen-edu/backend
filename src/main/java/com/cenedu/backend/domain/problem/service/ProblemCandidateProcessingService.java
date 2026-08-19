@@ -2,6 +2,7 @@ package com.cenedu.backend.domain.problem.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -35,6 +36,8 @@ import com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemS
 import com.cenedu.backend.domain.problem.authoring.semantic.persistence.SemanticModelDocument;
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.SemanticMaterializationReport;
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.DefaultProblemSemanticMaterializer;
+import com.cenedu.backend.ai.problem.adapter.semantic.SemanticAuthoringProperties;
+import com.cenedu.backend.domain.problem.authoring.diagram.DiagramSpecValidator;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringSession;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
@@ -64,6 +67,7 @@ public class ProblemCandidateProcessingService {
     private final ProblemSemanticMaterializer semanticMaterializer = new DefaultProblemSemanticMaterializer();
     private final ProblemSemanticDocumentCodec semanticDocumentCodec =
             new ProblemSemanticDocumentCodec(new tools.jackson.databind.ObjectMapper());
+    private final SemanticAuthoringProperties semanticProperties;
 
     public ProblemCandidateProcessingService(
             ProblemAuthoringSessionRepository sessionRepository,
@@ -76,6 +80,24 @@ public class ProblemCandidateProcessingService {
             PlatformTransactionManager transactionManager,
             ProblemAiConcurrencyLimiter concurrencyLimiter
     ) {
+        this(sessionRepository, versionRepository, structuralValidator, normalizedValidator, jsonCodec,
+                verificationPortProvider, assetPortProvider, transactionManager, concurrencyLimiter,
+                new SemanticAuthoringProperties(false));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ProblemCandidateProcessingService(
+            ProblemAuthoringSessionRepository sessionRepository,
+            ProblemAuthoringVersionRepository versionRepository,
+            SnapshotStructuralValidator structuralValidator,
+            SnapshotNormalizedValidator normalizedValidator,
+            ProblemAuthoringJsonCodec jsonCodec,
+            ObjectProvider<ProblemVerificationPort> verificationPortProvider,
+            ObjectProvider<ProblemAssetProductionPort> assetPortProvider,
+            PlatformTransactionManager transactionManager,
+            ProblemAiConcurrencyLimiter concurrencyLimiter,
+            SemanticAuthoringProperties semanticProperties
+    ) {
         this.sessionRepository = sessionRepository;
         this.versionRepository = versionRepository;
         this.structuralValidator = structuralValidator;
@@ -85,6 +107,7 @@ public class ProblemCandidateProcessingService {
         this.assetPortProvider = assetPortProvider;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.concurrencyLimiter = concurrencyLimiter;
+        this.semanticProperties = semanticProperties;
     }
 
     /** 외부 AI 호출을 트랜잭션 밖에서 수행하고 최종 PASSED 후보만 current로 승격한다. */
@@ -303,9 +326,9 @@ public class ProblemCandidateProcessingService {
                 || request.verificationContext() == null) {
             throw new IllegalArgumentException("후보 처리 필수값이 누락되었습니다.");
         }
+        validateSemanticCandidate(request.candidate());
         structuralValidator.validate(request.candidate().snapshot());
         normalizedValidator.validate(request.candidate().snapshot());
-        validateSemanticCandidate(request.candidate());
         validateSourceType(request.operationType(),
                 request.candidate().provenance().sourceType());
         validateAssetPlans(request.candidate());
@@ -313,12 +336,24 @@ public class ProblemCandidateProcessingService {
 
     /** 의미 후보를 다시 계산해 Snapshot·자산 계획이 서버 결과와 일치하는지 확인한다. */
     private void validateSemanticCandidate(ProblemCandidateDraft candidate) {
-        if (candidate.semanticModel() == null) return;
+        if (candidate.semanticModel() == null) {
+            if (semanticProperties.enabled()
+                    && (candidate.provenance().sourceType() == CandidateSourceType.AI_GENERATE
+                    || candidate.provenance().sourceType() == CandidateSourceType.AI_MODIFY)) {
+                throw new IllegalArgumentException("semantic authoring 활성화 상태에서는 semantic model이 필요합니다.");
+            }
+            return;
+        }
         MaterializedProblem materialized = semanticMaterializer.materialize(candidate.semanticModel());
         if (!Objects.equals(materialized.snapshot(), candidate.snapshot())
                 || !Objects.equals(materialized.assetPlans(), candidate.assetPlans())) {
             throw new IllegalArgumentException("의미 모델과 materialized 후보가 일치하지 않습니다.");
         }
+        List<com.cenedu.backend.domain.problem.authoring.diagram.DiagramSpecV1> specs = candidate.assetPlans().stream()
+                .filter(plan -> plan.specification() != null && plan.specification().diagramSpec() != null)
+                .map(plan -> plan.specification().diagramSpec())
+                .toList();
+        new DiagramSpecValidator().validateAll(specs, Map.of());
     }
 
     private SemanticMaterializationReport semanticReport(ProblemCandidateDraft candidate) {
