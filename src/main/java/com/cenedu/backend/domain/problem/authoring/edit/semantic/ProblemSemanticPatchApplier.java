@@ -41,15 +41,19 @@ public class ProblemSemanticPatchApplier {
         }
         ((com.fasterxml.jackson.databind.node.ObjectNode) parent(root, op.path())).put(last(op.path()), op.newValue());
     }
-    private JsonNode find(JsonNode root,String path){
-        String[] a=parts(path);
-        if(a.length==3 && "parameters".equals(a[0])) { JsonNode list=root.path("parameters"); for(JsonNode item:list) if(a[1].equals(item.path("key").asText())) return item.path(a[2]); return null; }
-        JsonNode p=root;for(String s:a){p=p.path(s);if(p.isMissingNode())return null;}return p;
-    }
-    private JsonNode parent(JsonNode root,String path){
-        String[] a=parts(path);
-        if(a.length==3 && "parameters".equals(a[0])) { for(JsonNode item:root.path("parameters")) if(a[1].equals(item.path("key").asText())) return item; }
-        JsonNode p=root;for(int i=0;i<a.length-1;i++){JsonNode n=p.path(a[i]);if(n.isArray()){int idx=Integer.parseInt(a[++i]);n=n.get(idx);}p=n;}return p;
+    private JsonNode find(JsonNode root,String path){JsonNode p=resolve(root,parts(path),false);return p;}
+    private JsonNode parent(JsonNode root,String path){String[] a=parts(path);return resolve(root,java.util.Arrays.copyOf(a,a.length-1),true);}
+    private JsonNode resolve(JsonNode current,String[] tokens,boolean parentMode){
+        JsonNode p=current;
+        for(int i=0;i<tokens.length;i++){
+            String token=tokens[i];
+            if(p.isArray()){
+                if(token.matches("[0-9]+")){p=p.get(Integer.parseInt(token));}
+                else { JsonNode found=null; for(JsonNode item:p){ for(String key:new String[]{"key","choiceKey","stepKey","rubricKey","assetKey","labelKey"}) if(token.equals(item.path(key).asText())) {found=item;break;} if(found!=null)break;} p=found; }
+            } else p=p==null?null:p.path(token);
+            if(p==null||p.isMissingNode()) return null;
+        }
+        return p;
     }
     private String last(String p){String[] a=parts(p);return a[a.length-1];}
     private String[] parts(String p){return p.substring(1).split("/");}

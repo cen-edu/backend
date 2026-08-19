@@ -13,6 +13,13 @@ public class ProblemSemanticDiffFactory {
         if(!Objects.equals(base.presentation().learningGuide(),changed.presentation().learningGuide())) areas.add(SemanticImpactArea.LEARNING_GUIDE);
         if(!Objects.equals(base.presentation().rubrics(),changed.presentation().rubrics())) areas.add(SemanticImpactArea.RUBRICS);
         if(!Objects.equals(base.diagrams(),changed.diagrams())) areas.add(SemanticImpactArea.ASSETS);
-        return new ProblemSemanticDiff(changes,areas,mode==SemanticEditMode.STRUCTURAL_REGENERATION,false);
+        boolean structural = mode==SemanticEditMode.STRUCTURAL_REGENERATION
+                || !Objects.equals(base.intent(), changed.intent())
+                || !Objects.equals(base.curriculum(), changed.curriculum())
+                || !Objects.equals(base.computations(), changed.computations())
+                || !Objects.equals(base.parameters().stream().map(x->x.key()).toList(), changed.parameters().stream().map(x->x.key()).toList())
+                || !Objects.equals(base.diagrams().stream().map(x->x.kind()).toList(), changed.diagrams().stream().map(x->x.kind()).toList());
+        boolean revalidation = structural || mode==SemanticEditMode.PARAMETRIC_PATCH || areas.contains(SemanticImpactArea.ASSETS) || areas.contains(SemanticImpactArea.ANSWERS);
+        return new ProblemSemanticDiff(changes,areas,structural,revalidation);
     }
 }
