@@ -54,8 +54,7 @@ public class ProblemSemanticModificationService {
                 throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID);
             boolean styleOrLabelOnly = patch.operations().stream().allMatch(operation ->
                     operation.type() == SemanticPatchOperationType.SET_DIAGRAM_STYLE
-                            || operation.type() == SemanticPatchOperationType.SET_LABEL_TEXT
-                            || operation.type() == SemanticPatchOperationType.SET_TEMPLATE_TEXT);
+                            || operation.type() == SemanticPatchOperationType.SET_LABEL_TEXT);
             if (!styleOrLabelOnly && !java.util.Objects.equals(baseModel.diagrams(), changed.diagrams()))
                 throw new BusinessException(ErrorCode.PROBLEM_DIAGRAM_RENDER_FAILED);
         }
