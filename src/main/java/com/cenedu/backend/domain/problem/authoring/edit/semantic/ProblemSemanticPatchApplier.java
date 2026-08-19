@@ -5,7 +5,7 @@ import com.cenedu.backend.domain.problem.authoring.port.ProblemSemanticMateriali
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.DefaultProblemSemanticMaterializer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Iterator;
+import java.util.Objects;
 
 /** 허용된 semantic path만 copy-on-write로 적용하고 기존 materializer로 재검증한다. */
 public class ProblemSemanticPatchApplier {
@@ -21,13 +21,18 @@ public class ProblemSemanticPatchApplier {
         try {
             JsonNode root=mapper.valueToTree(model);
             String beforePlaceholders = placeholders(root);
+            var beforeMaterialized = materializer.materialize(model);
             for (var op: patch.operations()) applyOne(root, op, model);
             ProblemSemanticModelV1 result=mapper.treeToValue(root, ProblemSemanticModelV1.class);
             if (patch.mode()==SemanticEditMode.PRESENTATIONAL_PATCH && !beforePlaceholders.equals(placeholders(root)))
                 throw new IllegalArgumentException("presentational patch가 placeholder를 변경했습니다.");
-            materializer.materialize(result);
+            var afterMaterialized = materializer.materialize(result);
+            if (patch.mode()==SemanticEditMode.PRESENTATIONAL_PATCH
+                    && !Objects.equals(beforeMaterialized.report().resolvedValues(), afterMaterialized.report().resolvedValues()))
+                throw new IllegalArgumentException("presentational patch가 normalized semantic value를 변경했습니다.");
             return result;
         } catch (SemanticPatchConflictException e) { throw e; }
+        catch (IllegalArgumentException e) { throw e; }
         catch (Exception e) { throw new IllegalArgumentException("semantic patch를 적용할 수 없습니다.", e); }
     }
     private void applyOne(JsonNode root, SemanticPatchOperation op, ProblemSemanticModelV1 model) {
@@ -35,7 +40,7 @@ public class ProblemSemanticPatchApplier {
         JsonNode target=find(root, op.path()); String actual=target==null||target.isNull()?null:target.asText();
         if (op.expectedOldValue()!=null && !java.util.Objects.equals(op.expectedOldValue(), actual)) throw new SemanticPatchConflictException(op.path(), op.expectedOldValue(), actual);
         if (target==null || !target.isValueNode()) throw new IllegalArgumentException("scalar path가 아닙니다: "+op.path());
-        if (ProblemSemanticPatchPath.isParameter(op.path()) && "value".equals(last(op.path()))) {
+        if (ProblemSemanticPatchPath.isParameter(op.path())) {
             for (JsonNode parameter : root.path("parameters")) if (op.path().contains("/" + parameter.path("key").asText() + "/")
                     && !parameter.path("editable").asBoolean()) throw new IllegalArgumentException("editable이 아닌 parameter입니다.");
         }

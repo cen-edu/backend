@@ -14,7 +14,7 @@ class ProblemSemanticPatchClassifierTest {
         assertThat(classifier.classify(p)).isEqualTo(SemanticEditMode.REJECTED);
     }
     @Test void 모든_presentation_path는_표현용으로_분류한다(){
-        for (String path : List.of("/presentation/questionTemplate","/presentation/choices/C1/contentTemplate","/presentation/steps/S1/labelTemplate","/presentation/steps/S1/segments/0/textTemplate","/presentation/explanationTemplate","/presentation/learningGuide/summaryTemplate","/presentation/rubrics/R1/criterionTemplate"))
+        for (String path : List.of("/presentation/questionTemplate","/presentation/choices/C1/contentTemplate","/presentation/steps/S1/labelTemplate","/presentation/steps/S1/segments/0/textTemplate","/presentation/explanationTemplate","/presentation/learningGuide/conceptTitleTemplate","/presentation/learningGuide/summaryTemplate","/presentation/learningGuide/keyPointTemplates/0","/presentation/rubrics/R1/criterionTemplate","/diagrams/SOLID_1/labels/L1"))
             assertThat(classifier.classifyRequestedPath(path)).isEqualTo(SemanticEditMode.PRESENTATIONAL_PATCH);
         assertThat(classifier.classifyRequestedPath("/diagrams/FIGURE_1/style/strokeColor")).isEqualTo(SemanticEditMode.PRESENTATIONAL_PATCH);
     }
