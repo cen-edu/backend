@@ -12,15 +12,15 @@ import org.junit.jupiter.api.Test;
 class PlacementScorerTest {
 
     @Test
-    @DisplayName("난이도를 배점으로 환산해 가중 성취도를 낸다")
+    @DisplayName("난이도를 배점(하 2·중 3·상 4)으로 환산해 가중 성취도를 낸다")
     void weightsByDifficultyScore() {
         // 하 2문항 중 2개, 중 2문항 중 1개, 상 2문항 중 0개
-        // 획득 (1×2)+(2×1)+(3×0) = 4, 최대 (1×2)+(2×2)+(3×2) = 12
+        // 획득 (2×2)+(3×1)+(4×0) = 7, 최대 (2×2)+(3×2)+(4×2) = 18
         PlacementResult result = PlacementScorer.score(new PlacementTally(2, 2, 2, 1, 2, 0));
 
-        assertThat(result.earnedScore()).isEqualTo(4);
-        assertThat(result.maxScore()).isEqualTo(12);
-        assertThat(result.rate()).isEqualByComparingTo("33.33");
+        assertThat(result.earnedScore()).isEqualTo(7);
+        assertThat(result.maxScore()).isEqualTo(18);
+        assertThat(result.rate()).isEqualByComparingTo("38.89");
         assertThat(result.difficulty()).isEqualTo(DifficultyLadder.LOW);
         assertThat(result.mixed()).isTrue();
     }
@@ -28,48 +28,66 @@ class PlacementScorerTest {
     @Test
     @DisplayName("문항 수가 같아도 고배점 문항을 맞힌 쪽이 위로 간다")
     void rewardsHighDifficultyCorrectness() {
+        // 하 3 + 상 3 출제, 최대 (2×3)+(4×3) = 18
         PlacementResult lowSolver = PlacementScorer.score(new PlacementTally(3, 3, 0, 0, 3, 0));
         PlacementResult highSolver = PlacementScorer.score(new PlacementTally(3, 0, 0, 0, 3, 3));
 
-        assertThat(lowSolver.rate()).isEqualByComparingTo("25.00");
-        assertThat(highSolver.rate()).isEqualByComparingTo("75.00");
+        assertThat(lowSolver.rate()).isEqualByComparingTo("33.33");
+        assertThat(highSolver.rate()).isEqualByComparingTo("66.67");
         assertThat(lowSolver.difficulty()).isEqualTo(DifficultyLadder.LOW);
-        assertThat(highSolver.difficulty()).isEqualTo(DifficultyLadder.HIGH);
+        assertThat(highSolver.difficulty()).isEqualTo(DifficultyLadder.MID);
     }
 
     @Test
-    @DisplayName("혼합 진단지는 70% / 40% 절대 컷오프를 쓴다")
+    @DisplayName("혼합 진단지는 80% / 40% 절대 컷오프를 쓴다")
     void appliesAbsoluteCutoffWhenMixed() {
-        // 상 7문항 정답 + 하 3문항 오답 → 21/24 = 87.5%
+        // 상 7문항 정답 + 하 3문항 오답 → 28/34 = 82.35%
         assertThat(PlacementScorer.score(new PlacementTally(3, 0, 0, 0, 7, 7)).difficulty())
                 .isEqualTo(DifficultyLadder.HIGH);
-        // 하 5문항 중 2개 + 상 5문항 중 2개 → (2+6)/(5+15) = 40%
+        // 하 5문항 중 2개 + 상 5문항 중 2개 → (4+8)/(10+20) = 40%
         assertThat(PlacementScorer.score(new PlacementTally(5, 2, 0, 0, 5, 2)).difficulty())
                 .isEqualTo(DifficultyLadder.MID);
     }
 
     @Test
-    @DisplayName("한 난이도로만 출제된 진단지는 그 난이도 기준으로 한 칸씩만 움직인다")
-    void adjustsRelativelyWhenSingleBand() {
-        // 중 5문항 중 4개(80%) → 중의 한 칸 위인 상까지만
+    @DisplayName("진단 상위 컷오프는 메인 평가의 승급 컷오프와 같은 값이다")
+    void sharesClearCutoffWithMainLoop() {
+        assertThat(PlacementScorer.HIGH_CUTOFF)
+                .isEqualByComparingTo(MasteryStatusJudge.CLEAR_CUTOFF);
+        assertThat(PlacementScorer.MID_CUTOFF)
+                .isEqualByComparingTo(MasteryStatusJudge.SUPPORT_CUTOFF);
+    }
+
+    @Test
+    @DisplayName("중 난이도만 출제된 진단지는 설계서 2.3 예시대로 배정한다")
+    void followsSingleBandExample() {
+        // 80% 이상 → 상
         PlacementResult cleared = PlacementScorer.score(new PlacementTally(0, 0, 5, 4, 0, 0));
         assertThat(cleared.mixed()).isFalse();
         assertThat(cleared.difficulty()).isEqualTo(DifficultyLadder.HIGH);
 
-        // 중 4문항 중 3개(75%) → 절대 컷오프였다면 상이지만, 관찰은 중까지다
-        PlacementResult watched = PlacementScorer.score(new PlacementTally(0, 0, 4, 3, 0, 0));
-        assertThat(watched.rate()).isEqualByComparingTo("75.00");
-        assertThat(watched.difficulty()).isEqualTo(DifficultyLadder.MID);
+        // 40~79% → 중
+        assertThat(PlacementScorer.score(new PlacementTally(0, 0, 4, 3, 0, 0)).difficulty())
+                .isEqualTo(DifficultyLadder.MID);
 
-        // 중 5문항 중 1개(20%) → 한 칸 아래인 하
+        // 40% 미만 → 하
         assertThat(PlacementScorer.score(new PlacementTally(0, 0, 5, 1, 0, 0)).difficulty())
                 .isEqualTo(DifficultyLadder.LOW);
     }
 
     @Test
-    @DisplayName("하 난이도만으로 다 맞혀도 상까지 뛰지 않는다")
+    @DisplayName("하 난이도만 다 맞혀도 상까지 뛰지 않는다 — 풀지 않은 난이도를 실력으로 보지 않는다")
     void neverSkipsALadderStep() {
-        assertThat(PlacementScorer.score(new PlacementTally(5, 5, 0, 0, 0, 0)).difficulty())
+        PlacementResult result = PlacementScorer.score(new PlacementTally(5, 5, 0, 0, 0, 0));
+
+        assertThat(result.rate()).isEqualByComparingTo("100.00");
+        assertThat(result.difficulty()).isEqualTo(DifficultyLadder.MID);
+    }
+
+    @Test
+    @DisplayName("상 난이도만 출제된 진단지에서 부진하면 한 칸 아래인 중에서 시작한다")
+    void demotesOneStepFromHighBand() {
+        assertThat(PlacementScorer.score(new PlacementTally(0, 0, 0, 0, 5, 1)).difficulty())
                 .isEqualTo(DifficultyLadder.MID);
     }
 
