@@ -1,0 +1,1 @@
+package com.cenedu.backend.ai.problem.render; import java.math.*; public final class DeterministicCoordinateFormatter { private DeterministicCoordinateFormatter(){} public static String format(double value){if(value==0)return "0";return BigDecimal.valueOf(value).setScale(3,RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();} }
