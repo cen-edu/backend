@@ -1,1 +1,4 @@
-package com.cenedu.backend.domain.problem.authoring.diagram; public record TableCellAddress(int row,int column) {}
+package com.cenedu.backend.domain.problem.authoring.diagram;
+
+public record TableCellAddress(int row, int column) {
+}

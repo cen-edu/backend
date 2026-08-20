@@ -1,3 +1,26 @@
 package com.cenedu.backend.domain.problem.authoring.semantic.materialization;
-import com.cenedu.backend.domain.problem.authoring.semantic.evaluation.SemanticResolvedValue; import java.util.*; import java.util.regex.*;
-public final class SemanticTemplateEngine { private static final Pattern TOKEN=Pattern.compile("\\$\\{([A-Z][A-Z0-9_]*?)(_UNIT)?}"); public String render(String template,Map<String,SemanticResolvedValue> values){if(template==null)return null;var m=TOKEN.matcher(template);var b=new StringBuffer();while(m.find()){var token=m.group(1);var unit=m.group(2)!=null;var v=values.get(token);if(v==null)throw new SemanticMaterializationException("unknown placeholder: "+token);m.appendReplacement(b,Matcher.quoteReplacement(unit?Objects.requireNonNullElse(v.unit(),""):v.canonicalValue()));}m.appendTail(b);if(b.indexOf("${")>=0)throw new SemanticMaterializationException("unresolved placeholder");return b.toString();} }
+
+import com.cenedu.backend.domain.problem.authoring.semantic.evaluation.SemanticResolvedValue;
+
+import java.util.*;
+import java.util.regex.*;
+
+public final class SemanticTemplateEngine {
+    private static final Pattern TOKEN = Pattern.compile("\\$\\{([A-Z][A-Z0-9_]*?)(_UNIT)?}");
+
+    public String render(String template, Map<String, SemanticResolvedValue> values) {
+        if (template == null) return null;
+        var m = TOKEN.matcher(template);
+        var b = new StringBuffer();
+        while (m.find()) {
+            var token = m.group(1);
+            var unit = m.group(2) != null;
+            var v = values.get(token);
+            if (v == null) throw new SemanticMaterializationException("unknown placeholder: " + token);
+            m.appendReplacement(b, Matcher.quoteReplacement(unit ? Objects.requireNonNullElse(v.unit(), "") : v.canonicalValue()));
+        }
+        m.appendTail(b);
+        if (b.indexOf("${") >= 0) throw new SemanticMaterializationException("unresolved placeholder");
+        return b.toString();
+    }
+}
