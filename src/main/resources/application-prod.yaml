@@ -1,0 +1,49 @@
+# EC2 배포 프로파일. SPRING_PROFILES_ACTIVE=prod 로 켠다(compose 가 지정한다).
+# 여기에는 값이 아니라 "운영에서만 달라지는 정책"만 둔다. 비밀값은 전부 환경 변수다.
+
+# 배포 이미지 안에는 .env 가 없다(.dockerignore 로 제외한다). 값은 compose 의 env_file 로
+# 환경 변수가 되어 들어오고, 기본 프로파일의 .env import 는 optional 이라 없어도 기동한다.
+spring:
+  jpa:
+    show-sql: false
+  flyway:
+    # 기동할 때마다 미적용 마이그레이션을 올린다. 배포 순서가 곧 스키마 순서다.
+    enabled: true
+    # 이미 적용된 파일이 수정됐으면 기동을 세운다. 조용히 어긋난 스키마로 도는 것보다 낫다.
+    validate-on-migrate: true
+
+server:
+  # nginx 뒤에 선다. 이 설정이 없으면 앱이 보는 요청 주소가 전부 http://backend:8080 이라
+  # 리다이렉트와 로그의 클라이언트 IP 가 전부 프록시 것으로 찍힌다.
+  forward-headers-strategy: framework
+
+app:
+  cors:
+    # 프론트 오리진. 프론트를 같은 nginx 뒤에 올리면 오리진이 하나가 되어 비워도 된다.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # health 만 연다. env / configprops 가 열리면 DB 접속 정보와 키 존재 여부가 새어 나간다.
+        include: health
+  endpoint:
+    health:
+      # 상세 항목(DB 주소, 디스크 경로)을 익명에게 보여주지 않는다. 살아 있는지만 알려 준다.
+      show-details: never
+
+springdoc:
+  # 운영에서는 닫는다. 열려 있으면 인증 없이 전체 API 목록과 요청 스키마가 공개된다.
+  # 시연 등으로 잠깐 열어야 하면 SWAGGER_ENABLED=true 로 띄우고, nginx 쪽 deny 도 함께 푼다.
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+
+logging:
+  level:
+    root: INFO
+    com.cenedu.backend: INFO
+    # 바인딩 파라미터에 학생 이름·답안이 실린다. 운영 로그에 남기지 않는다.
+    org.hibernate.orm.jdbc.bind: 'OFF'
