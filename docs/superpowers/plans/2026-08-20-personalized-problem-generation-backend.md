@@ -656,17 +656,17 @@ git commit -m "feat : 맞춤 문제 비동기 생성 API 연결"
 - Modify: `src/test/java/com/cenedu/backend/domain/problem/dto/response/ProblemGenerationSlotResponseTest.java`
 - Modify: `src/test/java/com/cenedu/backend/domain/problem/service/ProblemAsyncGenerationServiceTest.java`
 
-- [ ] **Step 1: polling 응답 메타데이터와 formatter를 구현하고 맞춤/일반 검증 테스트를 추가한다**
+- [x] **Step 1: polling 응답 메타데이터와 formatter를 구현하고 맞춤/일반 검증 테스트를 추가한다**
 
 맞춤 SIMILAR BANK 슬롯은 `customStage="similar"`, `sourceQuestionId` 존재, `originQuestionId=null`; 맞춤 ADVANCED AI 슬롯은 `customStage="advanced"`, `sourceQuestionId=null`, `originQuestionId` 존재; 일반 슬롯은 세 필드가 모두 null이어야 한다.
 
-- [ ] **Step 2: polling 응답 테스트를 실행한다**
+- [x] **Step 2: polling 응답 테스트를 실행한다**
 
 Run: `./gradlew test --tests '*ProblemGenerationSlotResponseTest' --tests '*ProblemAsyncGenerationServiceTest'`
 
 Expected: PASS.
 
-- [ ] **Step 3: 응답 record를 확장하고 기존 생성자를 호환한다**
+- [x] **Step 3: 응답 record를 확장하고 기존 생성자를 호환한다**
 
 ```java
 public record ProblemGenerationSlotResponse(
@@ -685,17 +685,17 @@ public record ProblemGenerationSlotResponse(
 
 기존 7인자 생성자는 세 메타데이터를 null로 위임한다. `CustomProblemStageFormatter`는 `REVIEW→review`, `SIMILAR→similar`, `ADVANCED→advanced`만 담당하며 worksheet의 별도 UI 문자열 변환을 재사용하지 않는다.
 
-- [ ] **Step 4: `getStatus`가 ItemResult 메타데이터를 응답에 매핑하게 한다**
+- [x] **Step 4: `getStatus`가 ItemResult 메타데이터를 응답에 매핑하게 한다**
 
 미리보기는 기존처럼 `SUCCEEDED` 슬롯에만 조회한다. 생성/검증 실패의 retryable 계산도 변경하지 않는다.
 
-- [ ] **Step 5: polling 응답과 기존 DTO 테스트를 통과시킨다**
+- [x] **Step 5: polling 응답과 기존 DTO 테스트를 통과시킨다**
 
 Run: `./gradlew test --tests '*ProblemGenerationSlotResponseTest' --tests '*ProblemAsyncGenerationServiceTest' --tests '*ProblemRagGenerationApiIntegrationTest'`
 
 Expected: PASS.
 
-- [ ] **Step 6: 커밋한다**
+- [x] **Step 6: 커밋한다**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/dto/response/ProblemGenerationSlotResponse.java src/main/java/com/cenedu/backend/domain/problem/dto/response/CustomProblemStageFormatter.java src/test/java/com/cenedu/backend/domain/problem/dto/response/ProblemGenerationSlotResponseTest.java src/test/java/com/cenedu/backend/domain/problem/service/ProblemAsyncGenerationServiceTest.java

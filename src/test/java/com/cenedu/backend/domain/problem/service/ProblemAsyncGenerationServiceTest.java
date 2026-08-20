@@ -12,7 +12,9 @@ import com.cenedu.backend.domain.problem.authoring.generation.*;
 import com.cenedu.backend.domain.problem.dto.request.*;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationItemStatus;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationJobType;
+import com.cenedu.backend.domain.problem.entity.enums.GenerationJobStatus;
 import com.cenedu.backend.global.common.enums.QuestionType;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import org.junit.jupiter.api.Test;
 
 class ProblemAsyncGenerationServiceTest {
@@ -59,6 +61,34 @@ class ProblemAsyncGenerationServiceTest {
                 new AsyncAssessmentGenerationRequest(UUID.randomUUID(), List.of(
                         new AssessmentGenerationItemRequest(20L, QuestionType.MULTIPLE_CHOICE, (short) 2, 1))));
         verify(runner).execute(43L);
+    }
+
+    @Test
+    void pollingMapsCustomStageAndSourceMetadata() {
+        var jobs = mock(ProblemGenerationJobService.class);
+        var item = mock(ProblemGenerationItemResult.class);
+        when(item.itemOrder()).thenReturn(1);
+        when(item.itemId()).thenReturn(42L);
+        when(item.sessionId()).thenReturn(11L);
+        when(item.status()).thenReturn(GenerationItemStatus.QUEUED);
+        when(item.customStage()).thenReturn(CustomStage.ADVANCED);
+        when(item.sourceQuestionId()).thenReturn(null);
+        when(item.originQuestionId()).thenReturn(901L);
+        var job = mock(ProblemGenerationJobResult.class);
+        when(job.jobId()).thenReturn(99L);
+        when(job.status()).thenReturn(GenerationJobStatus.RUNNING);
+        when(job.items()).thenReturn(List.of(item));
+        when(jobs.get(7L, 99L)).thenReturn(job);
+        var service = service(mock(ProblemGenerationPlanningService.class), jobs,
+                mock(ProblemGenerationAsyncRunner.class),
+                mock(com.cenedu.backend.domain.curriculum.service.CurriculumUnitQueryService.class));
+
+        var response = service.getStatus(7L, 99L);
+
+        var slot = response.slots().getFirst();
+        org.assertj.core.api.Assertions.assertThat(slot.customStage()).isEqualTo("advanced");
+        org.assertj.core.api.Assertions.assertThat(slot.sourceQuestionId()).isNull();
+        org.assertj.core.api.Assertions.assertThat(slot.originQuestionId()).isEqualTo(901L);
     }
 
     private static ProblemAsyncGenerationService service(ProblemGenerationPlanningService planning,

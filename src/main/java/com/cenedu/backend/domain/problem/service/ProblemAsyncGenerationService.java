@@ -99,6 +99,8 @@ public class ProblemAsyncGenerationService {
                 case FAILED -> AuthoringSlotDisplayStatus.FAILED;
             };
             return new ProblemGenerationSlotResponse(item.itemOrder(), item.itemId(), item.sessionId(),
+                    com.cenedu.backend.domain.problem.dto.response.CustomProblemStageFormatter.format(item.customStage()),
+                    item.sourceQuestionId(), item.originQuestionId(),
                     display, preview, item.errorCode(),
                     item.status() == GenerationItemStatus.FAILED && item.retryCount() < 2);
         }).toList();
