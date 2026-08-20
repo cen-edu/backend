@@ -1,0 +1,355 @@
+# AWS 배포 아키텍처
+
+강의 교안(`AWS기반의프로젝트배포강의교안`)의 EC2 + Docker + Docker Hub + VPC 구성을 이
+저장소(Spring Boot 4 / Java 21 / PostgreSQL 17 + pgvector / Flyway / S3 / OpenAI)에 맞춘
+배포 설계다. 실행에 필요한 파일은 모두 저장소에 들어 있다.
+
+**백엔드 저장소** (이 저장소)
+
+| 파일 | 역할 |
+|---|---|
+| [Dockerfile](../../Dockerfile) | 배포 이미지 빌드(멀티스테이지, JRE 21, 비 root) |
+| [deploy/docker-compose.prod.yml](../../deploy/docker-compose.prod.yml) | EC2 에서 띄우는 3개 컨테이너 |
+| [deploy/nginx/default.conf](../../deploy/nginx/default.conf) | 리버스 프록시 (유일한 외부 입구) |
+| [deploy/.env.prod.example](../../deploy/.env.prod.example) | EC2 `~/app/.env` 의 원본 |
+| [deploy/deploy.sh](../../deploy/deploy.sh) | EC2 에서 태그 교체 배포 + 롤백 안내 |
+| [application-prod.yaml](../../src/main/resources/application-prod.yaml) | 운영에서만 달라지는 정책 |
+
+**프론트 저장소** ([cen-edu/frontend](https://github.com/cen-edu/frontend))
+
+| 파일 | 역할 |
+|---|---|
+| `Dockerfile` | Vite 빌드 → nginx 정적 서빙 (2단계) |
+| `deploy/nginx.conf` | SPA 새로고침 대응(`try_files`), 정적 캐시 헤더 |
+| `.dockerignore` | `node_modules` / `dist` 제외 |
+
+---
+
+## 1. 구성 결정
+
+- **EC2 1대 + docker compose.** 교안은 EC2 4대(react / spring / fastapi / postgres)를
+  퍼블릭·프라이빗 서브넷에 나눠 두지만, 그 구성은 NAT Gateway 가 필수고 NAT 는 프리티어가
+  아니다(시간당 + 데이터 처리량 과금). 이 프로젝트는 백엔드 한 덩어리라 한 대에 묶는 편이
+  배포·롤백이 단순하고 프리티어 안에서 끝난다.
+- **DB 는 컨테이너.** RDS 는 프리티어를 넘기면 바로 과금되고, pgvector 확장을 파라미터
+  그룹에서 따로 열어야 한다. 여기서는 `pgvector/pgvector:pg17` 이미지를 그대로 쓴다 —
+  로컬 [compose.yaml](../../compose.yaml) 과 같은 이미지라 재현이 쉽다.
+- **이미지는 Docker Hub 경유.** t3.micro 는 메모리 1GB 라 EC2 에서 Gradle 빌드를 돌리면
+  OOM 으로 죽는다. 빌드는 로컬(또는 CI), EC2 는 `pull` 만 한다.
+- **프론트도 같은 EC2 의 nginx 뒤에 둔다.** 프론트의 `VITE_API_BASE_URL` 기본값이 `/api`
+  라 브라우저가 보는 오리진이 하나로 합쳐지고, **CORS 설정이 아예 필요 없어진다**
+  (`CORS_ALLOWED_ORIGINS` 를 비워 둔다). 프론트 저장소에 `vercel.json` 이 있어 Vercel 배포도
+  가능하지만, 그 경우 오리진이 갈라져 CORS 허용 목록과 HTTPS↔HTTP 혼합 콘텐츠 문제를
+  따로 처리해야 한다.
+
+이 세 가지가 이 문서의 전제다. 웹/DB 분리가 필요해지면 7절을 본다.
+
+---
+
+## 2. 구성도
+
+```
+                          인터넷
+                             |
+                        [  IGW  ]
+                             |
++============================|====================== VPC 10.0.0.0/16 =+
+|  public subnet 10.0.1.0/24 (ap-northeast-2a)                        |
+|  +--------------------------|-------------------------------------+ |
+|  |  EC2 t3.small (Amazon Linux 2023) + Elastic IP                  | |
+|  |                      :80 |                                      | |
+|  |                    +-----v-----+   /      +----------------+    | |
+|  |                    |   nginx   |--------->|    frontend    |    | |
+|  |                    |  (public) |          |  React static  |    | |
+|  |                    +-----+-----+          +----------------+    | |
+|  |                          | /api                                 | |
+|  |                    +-----v-----+  :8080   +----------------+    | |
+|  |                    |  backend  |--------->|    postgres    |    | |
+|  |                    | (private) |          |   + pgvector   |    | |
+|  |                    +-----+-----+          +-------+--------+    | |
+|  |                          |   docker network: cen-edu-net |      | |
+|  |                          |                       volume: pg-data| |
+|  +--------------------------|-------------------------------------+ |
++============================ | =====================================+
+                              |
+             +----------------+----------------+
+             v                v                v
+      S3 (문항/답안)      OpenAI API      Docker Hub (pull)
+```
+
+- 외부로 열리는 포트는 **80 하나**다. 프론트·백엔드·DB 어느 것도 호스트 포트를 쓰지 않아
+  보안 그룹이 잘못 열려도 그 컨테이너까지 닿지 않는다.
+- 앞단 nginx 가 `/api` 는 백엔드로, 나머지는 프론트로 보낸다. 프론트 컨테이너의 nginx 는
+  정적 파일 서빙과 SPA 새로고침(`try_files`)만 맡는다 — 라우팅 규칙(입구)과 서빙 방식을
+  각 저장소가 나눠 갖는다.
+- 컨테이너끼리는 서비스 이름(`postgres`, `backend`)으로 통신한다. 교안의 다중 EC2 구성처럼
+  사설 IP 를 박지 않으므로 인스턴스를 새로 만들어도 설정이 그대로다.
+
+---
+
+## 3. AWS 리소스
+
+### 3.1 네트워크
+
+VPC 콘솔의 **"VPC 등" 마법사**로 한 번에 만든다(교안 마지막 절과 같다). NAT 게이트웨이는
+**없음**을 고른다.
+
+| 항목 | 값 |
+|---|---|
+| VPC | `cen-edu-vpc`, CIDR `10.0.0.0/16` |
+| 가용 영역 | 1개 (ap-northeast-2a) |
+| 퍼블릭 서브넷 | 1개 `10.0.1.0/24` |
+| 프라이빗 서브넷 | 0개 (NAT 비용 때문. 7절 참고) |
+| 인터넷 게이트웨이 | 1개, VPC 에 연결 |
+| 라우팅 테이블 | `10.0.0.0/16 → local`, `0.0.0.0/0 → IGW` |
+
+### 3.2 보안 그룹
+
+| 이름 | 인바운드 | 설명 |
+|---|---|---|
+| `cen-edu-web-sg` | TCP 80 ← `0.0.0.0/0` | nginx. 서비스 입구 |
+| | TCP 22 ← `<내 IP>/32` | SSH. **`0.0.0.0/0` 으로 두지 않는다** — 열어 두면 곧바로 자동 스캔이 붙는다 |
+
+아웃바운드는 기본값(전체 허용)을 그대로 둔다. Docker Hub `pull`, OpenAI 호출, S3 접근이
+모두 아웃바운드다. DB·앱용 보안 그룹은 필요 없다 — 두 컨테이너가 호스트 포트를 쓰지 않아
+보안 그룹의 대상이 아니다.
+
+### 3.3 EC2
+
+| 항목 | 값 |
+|---|---|
+| AMI | Amazon Linux 2023 |
+| 인스턴스 | **t3.small (2GB)** 권장. 프리티어만 쓸 거면 t3.micro + 스왑 2GB(4.2절 필수) |
+| 스토리지 | gp3 20GB (기본 8GB 는 이미지 몇 개만 쌓여도 찬다) |
+| 키 페어 | `cen-edu.pem` (PuTTY 를 쓰면 `.ppk`) |
+| 네트워크 | 위 VPC / 퍼블릭 서브넷, 퍼블릭 IP 자동 할당 |
+| 탄력적 IP | 할당 후 연결. **없으면 인스턴스를 껐다 켤 때마다 IP 가 바뀌어** 프론트 설정과 CORS 를 매번 고쳐야 한다 |
+| IAM 역할 | 3.4 참고 |
+
+### 3.4 S3 와 IAM
+
+문항·답안 이미지가 S3 에 올라간다(`app.storage.s3`). 버킷 2개를 만든다.
+
+| 버킷 | 용도 |
+|---|---|
+| `cen-edu-problem-<식별자>` | 문항 이미지 |
+| `cen-edu-answer-<식별자>` | 학생 답안 이미지 |
+
+두 버킷 모두 **퍼블릭 액세스 차단을 켠 채로 둔다.** 앱은 presigned URL 로 읽기를 내주므로
+버킷을 공개할 이유가 없다. 학생 필기가 담긴 답안 버킷이 공개되면 그대로 유출이다.
+
+권한은 **전용 IAM 사용자**를 만들어 액세스 키를 발급하고 `.env` 에 넣는다. 현재 코드
+(`S3Config`)가 `app.storage.s3.access-key-id` / `secret-access-key` 를 정적 자격증명으로
+바로 쓰고, 두 값이 `@NotBlank` 라 비우면 S3 를 켠 채로는 기동하지 않는다.
+
+> EC2 IAM 역할(인스턴스 메타데이터의 임시 자격증명)을 쓰려면 `S3Config` 가 키가 비었을 때
+> `DefaultCredentialsProvider` 로 넘어가도록 고쳐야 한다. 장기 키가 파일로 남지 않고 회수도
+> 역할만 떼면 끝나므로, 실제 학생 데이터를 넣기 전에 바꿔 두는 편이 좋다. 이 문서의 구성은
+> 코드를 건드리지 않는 쪽(액세스 키)으로 맞춰 뒀다.
+
+사용자(또는 역할)에 붙일 정책(두 버킷에만, 필요한 동작만):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+    "Resource": [
+      "arn:aws:s3:::cen-edu-problem-<식별자>/*",
+      "arn:aws:s3:::cen-edu-answer-<식별자>/*"
+    ]
+  }]
+}
+```
+
+### 3.5 청구 알람
+
+교안 4절대로 **결제 알람을 먼저 건다.** 리전을 `us-east-1` 로 바꾼 뒤 CloudWatch 청구
+지표에서 `EstimatedCharges > 5 USD` 알람을 만들고 이메일을 구독한다. 연결되지 않은 EIP,
+지우지 않은 볼륨처럼 조용히 새는 항목이 여기서 먼저 잡힌다.
+
+---
+
+## 4. 구축 절차
+
+### 4.1 EC2 준비
+
+```bash
+sudo timedatectl set-timezone Asia/Seoul
+sudo dnf upgrade -y
+sudo dnf install -y docker
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+exec newgrp docker
+docker --version
+mkdir -p ~/app
+```
+
+`docker compose` 플러그인이 없으면 설치한다:
+
+```bash
+docker compose version || {
+  mkdir -p ~/.docker/cli-plugins
+  curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
+  chmod +x ~/.docker/cli-plugins/docker-compose
+}
+```
+
+### 4.2 스왑 (t3.micro 를 쓸 때는 필수)
+
+메모리 1GB 에서 JVM + PostgreSQL + nginx 를 함께 띄우면 커널이 OOM killer 로 자바를 죽인다.
+증상이 "며칠 뒤 앱만 조용히 사라짐"이라 원인을 찾기 어렵다. 스왑 2GB 를 먼저 잡는다.
+
+```bash
+sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h
+```
+
+### 4.3 이미지 빌드와 push (로컬 PowerShell)
+
+백엔드 저장소에서:
+
+```powershell
+docker login
+docker build -t $env:DOCKERHUB_USER/cen-edu-backend:1.0.0 .
+docker push $env:DOCKERHUB_USER/cen-edu-backend:1.0.0
+```
+
+프론트 저장소에서:
+
+```powershell
+docker build -t $env:DOCKERHUB_USER/cen-edu-frontend:1.0.0 `
+  --build-arg VITE_MYSCRIPT_APPLICATION_KEY=$env:MYSCRIPT_APP_KEY `
+  --build-arg VITE_MYSCRIPT_HMAC_KEY=$env:MYSCRIPT_HMAC_KEY .
+docker push $env:DOCKERHUB_USER/cen-edu-frontend:1.0.0
+```
+
+**Vite 의 `VITE_` 값은 빌드 시점에 번들에 박힌다.** EC2 의 `.env` 를 고쳐도 바뀌지 않으니,
+값이 달라지면 이미지를 다시 빌드해서 새 태그로 올린다. `VITE_API_BASE_URL` 은 기본값
+`/api` 를 그대로 쓰면 되고, `VITE_API_TIMEOUT_MS` 는 배포 이미지에서 60초로 올려 뒀다 —
+개발 기본값 10초는 서술형 채점·문항 생성이 끝나기 전에 브라우저가 먼저 끊는다.
+
+`latest` 를 쓰지 않는다. EC2 에서 무엇이 돌고 있는지 구분되지 않고, 되돌릴 이전 태그도
+남지 않는다. 태그는 배포할 때마다 올린다(`1.0.0` → `1.0.1`).
+
+### 4.4 설정 파일 전송 (로컬)
+
+```powershell
+scp -i cen-edu.pem deploy/docker-compose.prod.yml ec2-user@<EIP>:/home/ec2-user/app/
+scp -i cen-edu.pem deploy/deploy.sh               ec2-user@<EIP>:/home/ec2-user/app/
+scp -i cen-edu.pem -r deploy/nginx                ec2-user@<EIP>:/home/ec2-user/app/
+scp -i cen-edu.pem deploy/.env.prod.example       ec2-user@<EIP>:/home/ec2-user/app/.env
+```
+
+EC2 에서 `.env` 를 채우고 권한을 좁힌다. 이 파일 하나에 DB 비밀번호, JWT 서명 키,
+OpenAI 키가 모두 들어 있다.
+
+```bash
+vi ~/app/.env
+chmod 600 ~/app/.env
+chmod +x ~/app/deploy.sh
+```
+
+### 4.5 기동
+
+```bash
+cd ~/app
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs -f backend
+```
+
+Flyway 가 기동할 때 스키마를 올린다(`vector` 확장 생성 포함 —
+`B20260814_1500__current_database_baseline.sql`). 로그에 마이그레이션 목록이 찍히고
+`Started BackendApplication` 이 나오면 끝이다.
+
+브라우저에서 `http://<EIP>/actuator/health` 가 `{"status":"UP"}` 이면 배포가 끝났다.
+
+---
+
+## 5. 배포와 롤백
+
+새 버전을 올릴 때:
+
+```powershell
+docker build -t $env:DOCKERHUB_USER/cen-edu-backend:1.0.1 .
+docker push $env:DOCKERHUB_USER/cen-edu-backend:1.0.1
+```
+
+```bash
+cd ~/app
+./deploy.sh 1.0.1            # 백엔드만
+./deploy.sh 1.0.1 2.3.0      # 백엔드 + 프론트
+./deploy.sh - 2.3.0          # 프론트만
+```
+
+`deploy.sh` 는 `.env` 의 `APP_TAG` / `FRONTEND_TAG` 를 바꾸고 `pull` → `up -d` 한 뒤 컨테이너 헬스체크가
+`healthy` 가 될 때까지 기다린다. 실패하면 로그를 찍고 되돌리는 명령을 알려 준다.
+
+```bash
+cp .env.bak .env && docker compose -f docker-compose.prod.yml up -d
+```
+
+**단, 스키마를 바꾼 배포는 이미지 롤백만으로 되돌아가지 않는다.** Flyway 마이그레이션은
+이미 적용된 상태이고, 이전 이미지의 `ddl-auto: validate` 가 스키마 불일치로 기동을 세울 수
+있다. 컬럼 삭제·타입 변경이 포함된 배포는 반드시 아래 백업을 먼저 뜬다.
+
+### 5.1 DB 백업
+
+배포 전과 매일 한 번:
+
+```bash
+mkdir -p ~/backup
+docker exec cen-edu-postgres pg_dump -U cen cen_edu | gzip > ~/backup/cen_edu_$(date +%F).sql.gz
+```
+
+`~/backup` 은 같은 EBS 볼륨이라 인스턴스가 통째로 날아가면 함께 없어진다. 실제 운영으로
+가면 S3 로 올리거나 EBS 스냅샷 일정을 잡는다.
+
+복원:
+
+```bash
+gunzip -c ~/backup/cen_edu_2026-08-20.sql.gz | docker exec -i cen-edu-postgres psql -U cen -d cen_edu
+```
+
+---
+
+## 6. 운영 메모
+
+- **로그**: `docker compose -f docker-compose.prod.yml logs -f backend`. 컨테이너 로그가
+  디스크를 채우기 시작하면 compose 에 `logging.options.max-size` 를 건다.
+- **DB 접속**: 5432 는 어디에도 열려 있지 않다. 확인은 컨테이너 안에서 한다.
+  ```bash
+  docker exec -it cen-edu-postgres psql -U cen -d cen_edu
+  ```
+- **HTTPS**: 도메인을 붙인 다음 단계다. Route 53 에 도메인을 올리고 A 레코드를 EIP 로
+  향한 뒤, nginx 컨테이너에 certbot 을 붙이거나 앞단에 ALB + ACM 인증서를 둔다.
+  JWT 를 쓰는 서비스라 **실제 학생 데이터를 넣기 전에는 HTTPS 를 먼저 붙인다** — 지금
+  구성은 토큰이 평문으로 오간다.
+- **MyScript 키**: `VITE_MYSCRIPT_HMAC_KEY` 는 브라우저 번들에 그대로 실린다(Vite 의
+  `VITE_` 값은 전부 공개된다). 개발자 도구를 열면 누구나 꺼내 쓸 수 있으므로, 그 키의
+  사용량과 과금을 감수할 수 있는 범위에서만 쓴다. 가리려면 서명을 백엔드에서 만들어
+  주는 방식으로 바꿔야 하고, 그건 프론트·백엔드 양쪽 코드 변경이다.
+- **Swagger**: 운영에서 닫혀 있다(nginx `deny` + `springdoc.*.enabled=false`). 시연 등으로
+  열어야 하면 `SWAGGER_ENABLED=true` 와 nginx 의 deny 블록을 함께 푼다.
+- **디스크**: `deploy.sh` 가 배포마다 `docker image prune -f` 를 돌린다. `df -h` 로 가끔 확인한다.
+
+---
+
+## 7. 다음 단계 — 교안의 VPC 분리 구성으로 확장
+
+부하가 늘거나 보안 요구가 생기면 교안의 퍼블릭/프라이빗 분리 구성으로 옮긴다. 이 저장소의
+파일은 그대로 쓸 수 있다.
+
+1. 프라이빗 서브넷(`10.0.128.0/24`)과 NAT 게이트웨이를 추가한다(과금 시작).
+2. DB 를 프라이빗 서브넷의 EC2(또는 RDS)로 옮기고, `postgres-sg` 는 앱 보안 그룹에서
+   오는 5432 만 허용한다.
+3. `docker-compose.prod.yml` 에서 `postgres` 서비스와 `DB_URL` 지정을 지우고, `.env` 에
+   `DB_URL` 을 사설 IP(또는 RDS 엔드포인트)로 적는다.
+4. 앞단에 ALB + ACM 을 두면 HTTPS 종료와 다중 인스턴스 확장이 함께 해결된다.
