@@ -73,7 +73,7 @@ app:
       # 키가 없어도 기동되도록 빈 문자열을 기본값으로 둔다. 챗봇을 쓰지 않는 팀원이
       # 키 없이 개발할 수 있어야 한다. 키가 비면 호출 시점에 실패한다.
       api-key: ${OPENAI_API_KEY:}
-      model: ${OPENAI_MODEL:gpt-5.6-luna}
+      model: ${OPENAI_MODEL:gpt-4o}
       # GPT-5 계열은 추론 토큰이 max-completion-tokens 에서 차감된다. 한도가 낮으면
       # content 가 빈 문자열로 잘려 돌아온다. minimal + 3000 은 실측으로 정한 값이다.
       reasoning-effort: ${OPENAI_REASONING_EFFORT:medium}
