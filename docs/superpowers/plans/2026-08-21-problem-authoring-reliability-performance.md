@@ -386,7 +386,7 @@ Repair 대상을 고르기 위한 LLM은 호출하지 않고 Java 규칙으로 F
     `SOLVER_UNCERTAIN`, `QUESTION_AMBIGUOUS`, `EXPLANATION_INCONSISTENT`로 제한한다.
   - 별도 판정 LLM 호출은 추가하지 않는다.
   - Solver와 원본 검사가 저작 오류에 동의하지 않으면 `UNVERIFIABLE`로 종료한다.
-- [ ] **Step 3-B: 검증 Finding에 수정 대상과 수정 이유를 Java 규칙으로 구조화한다**
+- [x] **Step 3-B: 검증 Finding에 수정 대상과 수정 이유를 Java 규칙으로 구조화한다**
   - `CONTENT`, `CHOICES`, `ANSWERS`, `STEPS`, `EXPLANATION`, `RUBRIC` 대상과 의존 필드를 정의한다.
   - 각 Finding에 왜 틀렸는지와 어떤 값을 재생성해야 하는지 기록한다.
 - [ ] **Step 3-C: 모든 오류 항목을 한 번에 수정하는 묶음 Repair Delta를 추가한다**
