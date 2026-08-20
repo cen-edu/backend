@@ -18,19 +18,25 @@ import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProvenance
 import com.cenedu.backend.domain.problem.authoring.candidate.CandidateSourceType;
 import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
 import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationDiagnosticEvidence;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationEvaluationAreaEvidence;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification;
+import com.cenedu.backend.domain.problem.authoring.generation.PersonalizedGenerationEvidence;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationWorkItem;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemGenerationPort;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationOverallStatus;
 import com.cenedu.backend.global.common.enums.QuestionType;
+import com.cenedu.backend.global.common.enums.EvaluationArea;
+import com.cenedu.backend.domain.problem.entity.enums.DiagnosticType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.mockito.ArgumentCaptor;
 import java.nio.charset.StandardCharsets;
+import java.math.BigDecimal;
 
 class ProblemGenerationWorkerTest {
 
@@ -50,6 +56,12 @@ class ProblemGenerationWorkerTest {
         when(provider.getIfAvailable()).thenReturn(generationPort);
         worker = new ProblemGenerationWorker(jobService, candidateService, provider,
                 new ProblemAiConcurrencyLimiter(4, 30));
+        PersonalizedGenerationEvidence evidence = new PersonalizedGenerationEvidence(
+                8, 3,
+                List.of(new GenerationEvaluationAreaEvidence(
+                        EvaluationArea.CALCULATION, 6, 4, BigDecimal.valueOf(66.67))),
+                List.of(new GenerationDiagnosticEvidence(
+                        DiagnosticType.EXECUTE, 8, 5, BigDecimal.valueOf(62.5))));
         ProblemGenerationCommand command = new ProblemGenerationCommand(
                 UUID.randomUUID(),
                 null,
@@ -59,7 +71,7 @@ class ProblemGenerationWorkerTest {
                 new CurriculumScope(
                         "2022_REVISED", "MIDDLE", 1, 1, null, 1L,
                         "수와 연산", "사칙연산", "덧셈"),
-                List.of(), List.of());
+                List.of(), List.of(), evidence);
         workItem = new ProblemGenerationWorkItem(1L, 2L, 7L, 3L, command);
         when(jobService.tryClaim(1L)).thenReturn(Optional.of(workItem));
     }
@@ -86,6 +98,9 @@ class ProblemGenerationWorkerTest {
                 (workItem.command().requestId() + ":attempt:1").getBytes(StandardCharsets.UTF_8)));
         assertThat(commands.getAllValues().get(2).requestId()).isEqualTo(UUID.nameUUIDFromBytes(
                 (workItem.command().requestId() + ":attempt:2").getBytes(StandardCharsets.UTF_8)));
+        assertThat(commands.getAllValues())
+                .extracting(ProblemGenerationCommand::personalizedEvidence)
+                .containsOnly(workItem.command().personalizedEvidence());
     }
 
     @Test

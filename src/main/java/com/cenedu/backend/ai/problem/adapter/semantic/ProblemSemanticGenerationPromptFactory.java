@@ -14,7 +14,16 @@ public final class ProblemSemanticGenerationPromptFactory {
 
     public String create(ProblemGenerationCommand command, List<String> repairFindings) {
         String request;
-        try { request = mapper.writeValueAsString(Map.of("purpose", command.purpose(), "specification", command.specification(), "curriculum", command.curriculum())); }
+        try {
+            Map<String, Object> requestData = new LinkedHashMap<>();
+            requestData.put("purpose", command.purpose());
+            requestData.put("specification", command.specification());
+            requestData.put("curriculum", command.curriculum());
+            if (command.personalizedEvidence() != null) {
+                requestData.put("personalizedEvidence", command.personalizedEvidence());
+            }
+            request = mapper.writeValueAsString(requestData);
+        }
         catch (Exception e) { throw new IllegalStateException("semantic generation request를 만들 수 없습니다.", e); }
         String repair = repairFindings == null || repairFindings.isEmpty() ? "" : "\nREPAIR_FINDINGS\n" + repairFindings.stream().limit(10).map(x -> x.length() > 200 ? x.substring(0, 200) : x).toList();
         return """

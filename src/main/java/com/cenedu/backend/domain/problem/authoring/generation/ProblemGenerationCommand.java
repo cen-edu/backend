@@ -11,8 +11,17 @@ public record ProblemGenerationCommand(
         GenerationSpecification specification,
         CurriculumScope curriculum,
         List<GenerationReference> references,
-        List<GenerationConceptEvidence> conceptEvidence
+        List<GenerationConceptEvidence> conceptEvidence,
+        PersonalizedGenerationEvidence personalizedEvidence
 ) {
+    public ProblemGenerationCommand(UUID requestId, UUID retrievalRequestId,
+                                    GenerationPurpose purpose, GenerationSpecification specification,
+                                    CurriculumScope curriculum, List<GenerationReference> references,
+                                    List<GenerationConceptEvidence> conceptEvidence) {
+        this(requestId, retrievalRequestId, purpose, specification, curriculum,
+                references, conceptEvidence, null);
+    }
+
     public ProblemGenerationCommand {
         references = references == null ? List.of() : List.copyOf(references);
         conceptEvidence = conceptEvidence == null ? List.of() : List.copyOf(conceptEvidence);
