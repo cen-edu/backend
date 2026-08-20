@@ -324,21 +324,63 @@ Flyway 가 기동할 때 스키마를 올린다(`vector` 확장 생성 포함 �
 
 ---
 
-## 5. 배포와 롤백
+## 5. 개발 중 재배포
 
-새 버전을 올릴 때:
+**EC2 는 GitHub 를 보지 않는다.** Docker Hub 의 이미지 태그 하나만 바라본다. `main` 에
+커밋해도, 심지어 EC2 에서 `git pull` 을 해도 서버는 바뀌지 않는다. 바뀌는 경로는 오직
+**빌드 → push → 태그 교체** 뿐이다.
+
+### 5.1 한 사이클 (코드 수정 → 서버 반영)
+
+**(1) 로컬에서 빌드·푸시.** 백엔드 저장소에서:
 
 ```powershell
 docker build -t $env:DOCKERHUB_USER/cen-edu-backend:1.0.1 .
 docker push $env:DOCKERHUB_USER/cen-edu-backend:1.0.1
 ```
 
+프론트가 바뀌었으면 프론트 저장소에서:
+
+```powershell
+docker build -t $env:DOCKERHUB_USER/cen-edu-frontend:1.0.1 `
+  --build-arg VITE_MYSCRIPT_APPLICATION_KEY=$env:MYSCRIPT_APP_KEY `
+  --build-arg VITE_MYSCRIPT_HMAC_KEY=$env:MYSCRIPT_HMAC_KEY .
+docker push $env:DOCKERHUB_USER/cen-edu-frontend:1.0.1
+```
+
+**(2) EC2 에서 태그 교체.**
+
 ```bash
 cd ~/app
 ./deploy.sh 1.0.1            # 백엔드만
-./deploy.sh 1.0.1 2.3.0      # 백엔드 + 프론트
-./deploy.sh - 2.3.0          # 프론트만
+./deploy.sh 1.0.1 1.0.1      # 백엔드 + 프론트
+./deploy.sh - 1.0.1          # 프론트만
 ```
+
+**(3) 확인.**
+
+```bash
+docker compose -f docker-compose.prod.yml ps
+curl -s http://localhost/actuator/health; echo
+```
+
+기동에 40~60초가 걸린다. 그 사이 브라우저에 502 가 뜨는 것은 정상이다 — nginx 가 아직
+안 뜬 백엔드를 찾는 것이다.
+
+### 5.2 지키면 덜 헤매는 것
+
+- **태그를 매번 올린다**(`1.0.1` → `1.0.2`). 같은 태그를 덮어쓰면 EC2 가 이미 받아 둔
+  이미지를 그대로 써서 "분명 고쳤는데 안 바뀐다" 가 된다. `latest` 를 쓰지 않는 이유도 같다.
+- **프론트의 `VITE_` 값은 이미지에 박힌다.** API 주소·타임아웃·MyScript 키를 바꾸려면
+  `.env` 가 아니라 이미지를 다시 빌드해야 한다.
+- **라우팅(`/api` 프록시, 업로드 상한, Swagger 차단)도 프론트 이미지 안에 있다.** 그쪽을
+  고쳤으면 프론트를 다시 빌드한다.
+- **DB 스키마는 자동이다.** 새 백엔드가 뜰 때 Flyway 가 미적용 마이그레이션을 올린다.
+  볼륨이 유지되므로 데이터는 남는다.
+- **`.env` 만 고쳤을 때는** 이미지 태그가 그대로라 `deploy.sh` 를 쓸 수 없다. 이렇게 한다:
+  `docker compose -f docker-compose.prod.yml up -d --force-recreate backend`
+
+### 5.3 롤백
 
 `deploy.sh` 는 `.env` 의 `APP_TAG` / `FRONTEND_TAG` 를 바꾸고 `pull` → `up -d` 한 뒤 컨테이너 헬스체크가
 `healthy` 가 될 때까지 기다린다. 실패하면 로그를 찍고 되돌리는 명령을 알려 준다.
@@ -351,7 +393,7 @@ cp .env.bak .env && docker compose -f docker-compose.prod.yml up -d
 이미 적용된 상태이고, 이전 이미지의 `ddl-auto: validate` 가 스키마 불일치로 기동을 세울 수
 있다. 컬럼 삭제·타입 변경이 포함된 배포는 반드시 아래 백업을 먼저 뜬다.
 
-### 5.1 DB 백업
+### 5.4 DB 백업
 
 배포 전과 매일 한 번:
 
@@ -431,3 +473,26 @@ docker exec cen-edu-postgres pg_dump -U cen cen_edu | gzip > ~/backup/demo_$(dat
 3. `docker-compose.prod.yml` 에서 `postgres` 서비스와 `DB_URL` 지정을 지우고, `.env` 에
    `DB_URL` 을 사설 IP(또는 RDS 엔드포인트)로 적는다.
 4. 앞단에 ALB + ACM 을 두면 HTTPS 종료와 다중 인스턴스 확장이 함께 해결된다.
+
+---
+
+## 8. 시연이 끝나면 — 철거
+
+이 배포는 학습·시연용이다. 끝나고 방치하면 프리티어를 넘기는 순간부터 요금이 나간다.
+**순서대로 지운다.**
+
+| 순서 | 대상 | 방법 | 주의 |
+|---|---|---|---|
+| 1 | 데이터 | `pg_dump` 로 덤프 받아 로컬에 보관 | 지우고 나면 되돌릴 수 없다 |
+| 2 | EC2 인스턴스 | EC2 → 인스턴스 선택 → 인스턴스 상태 → **종료(terminate)** | **중지(stop)로는 부족하다** — EBS 볼륨 요금이 계속 나간다 |
+| 3 | EBS 볼륨·스냅샷 | EC2 → 볼륨 / 스냅샷에서 잔여분 확인 후 삭제 | 루트 볼륨은 보통 종료 시 함께 삭제된다 |
+| 4 | S3 버킷 2개 | 버킷 **비우기** → 삭제 | 객체가 남아 있으면 삭제되지 않는다 |
+| 5 | IAM 사용자 `cen-edu-app` | 액세스 키 삭제 → 사용자 삭제 → 정책 삭제 | 키를 먼저 못 쓰게 만드는 것이 핵심 |
+| 6 | 키 페어 | EC2 → 키 페어에서 삭제, 로컬 `.ppk` 파일도 삭제 | |
+| 7 | SNS 주제·CloudWatch 경보 | 삭제 | 요금은 없지만 알림이 계속 온다 |
+| 8 | Docker Hub 저장소 2개 | Docker Hub 에서 삭제 | 두지 않으면 공개 상태로 남는다 |
+
+지운 뒤 **결제 대시보드에서 다음 날 요금이 0 으로 떨어지는지** 한 번 확인한다. 남아 있는
+리소스가 있으면 거기서 드러난다.
+
+> 결제 기본 설정의 "CloudWatch 결제 알림 수신" 은 한 번 켜면 끌 수 없다. 요금은 없다.
