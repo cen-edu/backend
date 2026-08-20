@@ -246,14 +246,17 @@ AI 생성 후보의 주요 실패 Finding은 다음과 같다.
 
 **Files:**
 - Modify: `src/main/java/com/cenedu/backend/domain/grading/service/AnswerNormalizer.java`
+- Modify: `src/main/java/com/cenedu/backend/ai/problem/adapter/ProblemGenerationPromptFactory.java`
+- Modify: `src/main/java/com/cenedu/backend/ai/problem/adapter/semantic/ProblemSemanticGenerationPromptFactory.java`
 - Test: `src/test/java/com/cenedu/backend/domain/grading/service/RuleGraderTest.java`
+- Test: `src/test/java/com/cenedu/backend/domain/grading/service/AnswerNormalizerTest.java`
 - Test: `src/test/java/com/cenedu/backend/ai/verification/adapter/ProblemVerificationAdapterTest.java`
 
 **Interfaces:**
 - Consumes: `AnswerNormalizer.normalize(String raw, String displayUnit)`
 - Produces: 유니코드 수학 표기를 기존 ASCII/LaTeX 정규형으로 변환한 문자열
 
-- [ ] **Step 1: 실제 오탐 사례를 회귀 테스트로 추가한다**
+- [x] **Step 1: 실제 오탐 사례를 회귀 테스트로 추가한다**
 
   최소 케이스는 다음과 같다.
 
@@ -266,23 +269,23 @@ AI 생성 후보의 주요 실패 Finding은 다음과 같다.
 
   `⁰`~`⁹`, `⁻`, `×`, `·`, `÷`, `∠`의 대표값과 정규화 멱등성도 포함한다.
 
-- [ ] **Step 2: 테스트가 현재 정규화기에서 실패하는지 확인한다**
+- [x] **Step 2: RED 단계는 사용자 지시에 따라 생략하고 구현 후 회귀 테스트로 검증한다**
 
   Run: `bash gradlew test --tests '*RuleGraderTest'`
 
   Expected: 유니코드 곱셈·위첨자·각 기호 케이스 FAIL.
 
-- [ ] **Step 3: 유니코드 수학 표기를 LaTeX 처리 전에 변환한다**
+- [x] **Step 3: 유니코드 수학 표기를 LaTeX 처리 전에 변환한다**
 
   위첨자는 연속 문자를 하나의 지수로 합치고 `⁻`는 음수 지수로 변환한다. `×`, `·`은 `*`, `÷`는 `/`, `∠`은 제거한다. 한글 답과 일반 Unicode 문자는 변경하지 않는다.
 
-- [ ] **Step 4: RuleGrader와 검증 Adapter 회귀 테스트를 통과시킨다**
+- [x] **Step 4: RuleGrader와 검증 Adapter 회귀 테스트를 통과시킨다**
 
   Run: `bash gradlew test --tests '*RuleGraderTest' --tests '*ProblemVerificationAdapterTest'`
 
-- [ ] **Step 5: 커밋한다**
+- [x] **Step 5: 표시용 KaTeX 계약과 비교용 정답 계약을 프롬프트에 명시하고 커밋한다**
 
-  Commit: `fix : 유니코드 수학 표기 검증 오탐 제거`
+  Commit: `feat : 수식 표시 및 수학 답안 정규화 보강`
 
 ### Task 3: 검증 구조화 출력과 검증 전용 재시도 도입
 
