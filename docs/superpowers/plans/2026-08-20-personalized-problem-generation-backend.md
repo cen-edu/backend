@@ -567,7 +567,7 @@ git commit -m "feat : 취약 근거 기반 응용 문제 생성 계획"
 - Create: `src/test/java/com/cenedu/backend/domain/problem/service/ProblemAsyncGenerationServiceTest.java`
 - Create: `src/test/java/com/cenedu/backend/domain/problem/controller/CustomProblemGenerationControllerTest.java`
 
-- [ ] **Step 1: 맞춤 오케스트레이션 서비스와 기존 비동기 진입점을 구현하고 서비스 테스트를 추가한다**
+- [x] **Step 1: 맞춤 오케스트레이션 서비스와 기존 비동기 진입점을 구현하고 서비스 테스트를 추가한다**
 
 서비스 공개 계약은 다음으로 고정한다.
 
@@ -585,13 +585,13 @@ Mock 순서 검증:
 4. `planningService.plan(clientRequestId, proposal, items, paths)`
 5. `asyncGenerationService.startPersonalized(teacherId, plan)`
 
-- [ ] **Step 2: 오케스트레이션 및 기존 생성 회귀 테스트를 실행한다**
+- [x] **Step 2: 오케스트레이션 및 기존 생성 회귀 테스트를 실행한다**
 
 Run: `./gradlew test --tests '*CustomProblemGenerationServiceTest'`
 
 Expected: PASS.
 
-- [ ] **Step 3: 기존 비동기 실행 서비스에 맞춤 계획 진입점만 공개한다**
+- [x] **Step 3: 기존 비동기 실행 서비스에 맞춤 계획 진입점만 공개한다**
 
 ```java
 /** 검증된 맞춤 계획을 멱등 Job으로 저장하고 AI 슬롯만 비동기 실행한다. */
@@ -606,7 +606,7 @@ public ProblemGenerationStartResponse startPersonalized(
 
 기존 private `createAndRun`의 공통 본문은 `ProblemGenerationPlan`을 직접 받는 overload로 추출한다. 일반·종합 API 동작은 유지한다.
 
-- [ ] **Step 4: 오케스트레이션 서비스를 구현하고 테스트를 통과시킨다**
+- [x] **Step 4: 오케스트레이션 서비스를 구현하고 테스트를 통과시킨다**
 
 서비스 로그는 `teacherId`, `sourceAssignmentId`, `studentId`, `subUnitId`, 단계별 요청 수량과 최종 재사용/AI 슬롯 수만 기록한다. 학생 답안, 문항 본문, 정답, Snapshot JSON은 기록하지 않는다.
 
@@ -614,7 +614,7 @@ Run: `./gradlew test --tests '*CustomProblemGenerationServiceTest' --tests '*Pro
 
 Expected: PASS. `ProblemAsyncGenerationServiceTest`가 아직 없으면 새로 만들고 일반·종합 시작 회귀도 함께 검증한다.
 
-- [ ] **Step 5: 맞춤 Controller와 MockMvc 보안 테스트를 구현한다**
+- [x] **Step 5: 맞춤 Controller와 MockMvc 보안 테스트를 구현한다**
 
 ```java
 @RestController
@@ -631,13 +631,13 @@ public class CustomProblemGenerationController {
 
 교사 JWT와 유효 payload는 200 및 `data.jobId/status/totalCount`, JWT 없음은 401, 학생 JWT는 403을 기대한다. 서비스는 `@MockitoBean`으로 대체하고 `user.memberId()`가 전달됐는지 검증한다.
 
-- [ ] **Step 6: Controller 테스트를 통과시킨다**
+- [x] **Step 6: Controller 테스트를 통과시킨다**
 
 Run: `./gradlew test --tests '*CustomProblemGenerationControllerTest'`
 
 Expected: PASS.
 
-- [ ] **Step 7: 커밋한다**
+- [x] **Step 7: 커밋한다**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/service/CustomProblemGenerationService.java src/main/java/com/cenedu/backend/domain/problem/controller/CustomProblemGenerationController.java src/test/java/com/cenedu/backend/domain/problem/service/CustomProblemGenerationServiceTest.java src/test/java/com/cenedu/backend/domain/problem/controller/CustomProblemGenerationControllerTest.java
