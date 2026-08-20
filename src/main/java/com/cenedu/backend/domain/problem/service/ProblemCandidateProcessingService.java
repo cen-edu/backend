@@ -35,6 +35,7 @@ import com.cenedu.backend.domain.problem.authoring.verification.VerificationIssu
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationOverallStatus;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationScope;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationSeverity;
+import com.cenedu.backend.domain.problem.authoring.verification.VerificationProfile;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemSemanticMaterializer;
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.MaterializedProblem;
 import com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemSemanticDocumentCodec;
@@ -145,10 +146,11 @@ public class ProblemCandidateProcessingService {
 
     /** 외부 AI 호출을 트랜잭션 밖에서 수행하고 최종 PASSED 후보만 current로 승격한다. */
     public CandidateProcessingResult process(CandidateProcessingRequest request) {
-        return processInternal(request, true);
+        return processInternal(request, true, VerificationProfile.FULL_CONTENT);
     }
 
-    private CandidateProcessingResult processInternal(CandidateProcessingRequest request, boolean allowRepair) {
+    private CandidateProcessingResult processInternal(CandidateProcessingRequest request, boolean allowRepair,
+                                                      VerificationProfile profile) {
         validateRequest(request);
         long startedAt = System.nanoTime();
         log.info("event=problem_authoring_stage operation={} stage=REGISTRATION outcome=STARTED "
@@ -172,7 +174,7 @@ public class ProblemCandidateProcessingService {
                 registered, manifest, verificationRequestId));
 
         long verificationStartedAt = System.nanoTime();
-        ProblemVerificationBundle bundle = verify(request, manifest, verificationRequestId);
+        ProblemVerificationBundle bundle = verify(request, manifest, verificationRequestId, profile);
         log.info("event=problem_authoring_stage operation={} stage=VERIFICATION outcome={} elapsedMs={} verificationRequestId={} "
                         + "jobId={} itemId={} sessionId={} operationId={}",
                 request.operationType(), bundle.overallStatus(), elapsedMs(verificationStartedAt), verificationRequestId,
@@ -224,7 +226,20 @@ public class ProblemCandidateProcessingService {
                 request.ownerTeacherId(), request.sessionId(), registered.versionId(),
                 AuthoringOperationType.AI_MODIFY, request.verificationOperationType(), repairedCandidate,
                 request.expectation(), request.verificationContext(), "검증 오류 항목 부분 수정");
-        return processInternal(repairedRequest, false);
+        return processInternal(repairedRequest, false, repairProfile(plan));
+    }
+
+    private VerificationProfile repairProfile(ProblemRepairPlan plan) {
+        Set<com.cenedu.backend.domain.problem.authoring.repair.RepairTarget> targets = plan.targets();
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.ANSWERS)
+                || targets.contains(com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.CHOICES)
+                || targets.contains(com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.STEPS)) {
+            return VerificationProfile.ANSWER_RELATED;
+        }
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.RUBRIC)) {
+            return VerificationProfile.RUBRIC_ONLY;
+        }
+        return VerificationProfile.ORIGINAL_ONLY;
     }
 
     /** 자산 계획의 처리 결과를 본문 없이 요약해 로그에 남긴다. */
@@ -326,7 +341,8 @@ public class ProblemCandidateProcessingService {
 
     private ProblemVerificationBundle verify(CandidateProcessingRequest request,
                                              DraftAssetManifest manifest,
-                                             UUID verificationRequestId) {
+                                             UUID verificationRequestId,
+                                             VerificationProfile profile) {
         ProblemVerificationPort verificationPort = verificationPortProvider.getIfAvailable();
         if (verificationPort == null) {
             return ProblemVerificationBundle.contentOnly(
@@ -338,7 +354,7 @@ public class ProblemCandidateProcessingService {
         ProblemVerificationReport content = callVerification(
                 verificationPort,
                 verificationRequest(request, manifest, verificationRequestId,
-                        VerificationScope.CONTENT));
+                        VerificationScope.CONTENT, profile));
         if (manifest.plans().isEmpty()) {
             return ProblemVerificationBundle.contentOnly(verificationRequestId, content);
         }
@@ -350,7 +366,7 @@ public class ProblemCandidateProcessingService {
                 : callVerification(
                         verificationPort,
                         verificationRequest(request, manifest, verificationRequestId,
-                                VerificationScope.ASSET));
+                                VerificationScope.ASSET, profile));
         return ProblemVerificationBundle.merge(verificationRequestId, content, asset);
     }
 
@@ -358,7 +374,8 @@ public class ProblemCandidateProcessingService {
             CandidateProcessingRequest request,
             DraftAssetManifest manifest,
             UUID verificationRequestId,
-            VerificationScope scope
+            VerificationScope scope,
+            VerificationProfile profile
     ) {
         return new ProblemVerificationRequest(
                 verificationRequestId,
@@ -367,7 +384,7 @@ public class ProblemCandidateProcessingService {
                 request.candidate(),
                 manifest,
                 request.expectation(),
-                request.verificationContext(), semanticReport(request.candidate()));
+                request.verificationContext(), semanticReport(request.candidate()), profile);
     }
 
     private ProblemVerificationReport callVerification(

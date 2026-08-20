@@ -16,6 +16,7 @@ import com.cenedu.backend.domain.problem.authoring.verification.VerificationFind
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationOverallStatus;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationScope;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationSeverity;
+import com.cenedu.backend.domain.problem.authoring.verification.VerificationProfile;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -122,8 +123,12 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
         EditVerificationContext editContext = editContext(request);
         List<VerificationFinding> findings = new ArrayList<>();
 
-        VerificationFinding correctnessFinding = isolate(
-                VerificationCheckType.CORRECTNESS, () -> correctness(snapshot));
+        boolean solverEnabled = request.profile() == VerificationProfile.FULL_CONTENT
+                || request.profile() == VerificationProfile.ANSWER_RELATED;
+        VerificationFinding correctnessFinding = solverEnabled
+                ? isolate(VerificationCheckType.CORRECTNESS, () -> correctness(snapshot))
+                : Findings.notApplicable(VerificationCheckType.CORRECTNESS,
+                        "부분 수정 재검증 프로필에서 Solver 검사를 생략했습니다.");
         findings.add(correctnessFinding);
         findings.add(isolate(VerificationCheckType.ANSWER_CONSISTENCY,
                 () -> structuralConsistencyCheck.check(snapshot)));

@@ -44,6 +44,12 @@ class ProblemRepairPlannerTest {
         assertThat(planner.plan(bundle(error)).repairable()).isFalse();
     }
 
+    @Test
+    void Solver_불일치_하나만으로_정답을_자동수정하지_않는다() {
+        assertThat(planner.plan(bundle(finding(VerificationIssueCode.ANSWER_INCORRECT)))
+                .repairable()).isFalse();
+    }
+
     private ProblemVerificationBundle bundle(VerificationFinding... findings) {
         UUID id = UUID.randomUUID();
         return ProblemVerificationBundle.contentOnly(id,

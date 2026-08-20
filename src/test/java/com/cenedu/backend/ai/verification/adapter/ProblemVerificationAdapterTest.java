@@ -682,6 +682,24 @@ class ProblemVerificationAdapterTest {
     }
 
     @Test
+    @DisplayName("해설 부분 수정 재검증은 Solver를 생략하고 원본 검사만 한 번 호출한다")
+    void originalOnlyProfileSkipsSolver() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(VerificationFixtures.CONTENT_CHECK_CLEAN);
+        ProblemVerificationRequest full = contentRequest(snapshot);
+        ProblemVerificationRequest request = new ProblemVerificationRequest(
+                full.verificationRequestId(), full.scope(), full.operationType(), full.candidate(),
+                full.assetManifest(), full.expectation(), full.context(), full.semanticReport(),
+                com.cenedu.backend.domain.problem.authoring.verification.VerificationProfile.ORIGINAL_ONLY);
+
+        ProblemVerificationReport report = adapter.verify(request);
+
+        assertThat(fake.userPrompts).hasSize(1);
+        assertThat(statusOf(report, VerificationCheckType.CORRECTNESS))
+                .isEqualTo(VerificationFindingStatus.NOT_APPLICABLE);
+    }
+
+    @Test
     @DisplayName("토글이 꺼져도 서술형 루브릭은 돈다 — 호출 0회가 되지 않는다")
     void disabledToggleStillRunsRubricForEssay() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.essaySnapshot();

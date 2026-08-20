@@ -32,9 +32,10 @@ public class ProblemRepairPlanner {
         for (VerificationFinding finding : findings) {
             if (finding.status() != VerificationFindingStatus.FAIL) continue;
             switch (finding.code()) {
+                // Solver 불일치만으로 어느 쪽이 틀렸는지 단정할 수 없다. 원본 검사 합의 신호가
+                // 추가되기 전에는 정답을 자동 수정하지 않는다.
                 case ANSWER_INCORRECT -> {
-                    targets.add(RepairTarget.ANSWERS);
-                    targets.add(RepairTarget.EXPLANATION);
+                    return ProblemRepairPlan.notRepairable("독립 검증 신호가 합의되지 않아 정답을 자동 수정하지 않습니다.");
                 }
                 case ANSWER_INCONSISTENT -> {
                     targets.add(RepairTarget.EXPLANATION);
