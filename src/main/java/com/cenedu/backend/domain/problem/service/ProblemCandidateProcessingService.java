@@ -51,6 +51,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 /** 생성·수정 후보를 S1 검증, Version 보관, 의미·자산 검증, current 승격 순서로 조율한다. */
 @Service
@@ -115,31 +116,40 @@ public class ProblemCandidateProcessingService {
     public CandidateProcessingResult process(CandidateProcessingRequest request) {
         validateRequest(request);
         long startedAt = System.nanoTime();
-        log.info("event=problem_authoring_stage operation={} stage=REGISTRATION outcome=STARTED",
-                request.operationType());
+        log.info("event=problem_authoring_stage operation={} stage=REGISTRATION outcome=STARTED "
+                        + "jobId={} itemId={} sessionId={} operationId={}",
+                request.operationType(), context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
         RegisteredCandidate registered = Objects.requireNonNull(
                 transactionTemplate.execute(status -> registerCandidate(request)));
-        log.info("event=problem_authoring_stage operation={} stage=REGISTRATION outcome=SUCCESS elapsedMs={} versionId={}",
-                request.operationType(), elapsedMs(startedAt), registered.versionId());
+        log.info("event=problem_authoring_stage operation={} stage=REGISTRATION outcome=SUCCESS elapsedMs={} versionId={} "
+                        + "jobId={} itemId={} sessionId={} operationId={}",
+                request.operationType(), elapsedMs(startedAt), registered.versionId(),
+                context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
 
         long assetStartedAt = System.nanoTime();
         DraftAssetManifest manifest = produceAssets(request, registered);
-        log.info("event=problem_authoring_stage operation={} stage=ASSET outcome={} elapsedMs={} assetCount={}",
-                request.operationType(), assetOutcome(manifest), elapsedMs(assetStartedAt), manifest.plans().size());
+        log.info("event=problem_authoring_stage operation={} stage=ASSET outcome={} elapsedMs={} assetCount={} "
+                        + "jobId={} itemId={} sessionId={} operationId={}",
+                request.operationType(), assetOutcome(manifest), elapsedMs(assetStartedAt), manifest.plans().size(),
+                context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
         UUID verificationRequestId = UUID.randomUUID();
         transactionTemplate.executeWithoutResult(status -> beginVerification(
                 registered, manifest, verificationRequestId));
 
         long verificationStartedAt = System.nanoTime();
         ProblemVerificationBundle bundle = verify(request, manifest, verificationRequestId);
-        log.info("event=problem_authoring_stage operation={} stage=VERIFICATION outcome={} elapsedMs={} verificationRequestId={}",
-                request.operationType(), bundle.overallStatus(), elapsedMs(verificationStartedAt), verificationRequestId);
+        log.info("event=problem_authoring_stage operation={} stage=VERIFICATION outcome={} elapsedMs={} verificationRequestId={} "
+                        + "jobId={} itemId={} sessionId={} operationId={}",
+                request.operationType(), bundle.overallStatus(), elapsedMs(verificationStartedAt), verificationRequestId,
+                context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
         ProblemVerificationBundle completedBundle = bundle;
         long promotionStartedAt = System.nanoTime();
         transactionTemplate.executeWithoutResult(status -> completeVerification(
                 request, registered, completedBundle));
-        log.info("event=problem_authoring_stage operation={} stage=PROMOTION outcome={} elapsedMs={} versionId={}",
-                request.operationType(), bundle.overallStatus(), elapsedMs(promotionStartedAt), registered.versionId());
+        log.info("event=problem_authoring_stage operation={} stage=PROMOTION outcome={} elapsedMs={} versionId={} "
+                        + "jobId={} itemId={} sessionId={} operationId={}",
+                request.operationType(), bundle.overallStatus(), elapsedMs(promotionStartedAt), registered.versionId(),
+                context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
 
         return new CandidateProcessingResult(
                 registered.versionId(),
@@ -160,6 +170,12 @@ public class ProblemCandidateProcessingService {
 
     private long elapsedMs(long startedAt) {
         return (System.nanoTime() - startedAt) / 1_000_000;
+    }
+
+    /** MDC 추적값이 없는 직접 호출 테스트에서도 공통 로그 형식을 유지한다. */
+    private String context(String key) {
+        String value = MDC.get(key);
+        return value == null ? "" : value;
     }
 
     private RegisteredCandidate registerCandidate(CandidateProcessingRequest request) {

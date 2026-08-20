@@ -13,6 +13,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+
 import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProcessingResult;
 import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProvenance;
 import com.cenedu.backend.domain.problem.authoring.candidate.CandidateSourceType;
@@ -31,10 +35,12 @@ import com.cenedu.backend.global.common.enums.QuestionType;
 import com.cenedu.backend.global.common.enums.EvaluationArea;
 import com.cenedu.backend.domain.problem.entity.enums.DiagnosticType;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.math.BigDecimal;
 
@@ -45,6 +51,7 @@ class ProblemGenerationWorkerTest {
     private ProblemGenerationPort generationPort;
     private ProblemGenerationWorker worker;
     private ProblemGenerationWorkItem workItem;
+    private ListAppender<ILoggingEvent> logAppender;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -56,6 +63,10 @@ class ProblemGenerationWorkerTest {
         when(provider.getIfAvailable()).thenReturn(generationPort);
         worker = new ProblemGenerationWorker(jobService, candidateService, provider,
                 new ProblemAiConcurrencyLimiter(4, 30));
+        Logger workerLogger = (Logger) LoggerFactory.getLogger(ProblemGenerationWorker.class);
+        logAppender = new ListAppender<>();
+        logAppender.start();
+        workerLogger.addAppender(logAppender);
         PersonalizedGenerationEvidence evidence = new PersonalizedGenerationEvidence(
                 8, 3,
                 List.of(new GenerationEvaluationAreaEvidence(
@@ -74,6 +85,13 @@ class ProblemGenerationWorkerTest {
                 List.of(), List.of(), evidence);
         workItem = new ProblemGenerationWorkItem(1L, 2L, 7L, 3L, command);
         when(jobService.tryClaim(1L)).thenReturn(Optional.of(workItem));
+    }
+
+    @AfterEach
+    void detachLogAppender() {
+        Logger workerLogger = (Logger) LoggerFactory.getLogger(ProblemGenerationWorker.class);
+        workerLogger.detachAppender(logAppender);
+        logAppender.stop();
     }
 
     @Test
@@ -101,6 +119,17 @@ class ProblemGenerationWorkerTest {
         assertThat(commands.getAllValues())
                 .extracting(ProblemGenerationCommand::personalizedEvidence)
                 .containsOnly(workItem.command().personalizedEvidence());
+        assertThat(logMessages()).anyMatch(message -> message.contains("stage=GENERATION")
+                && message.contains("outcome=SUCCESS")
+                && message.contains("jobId=2")
+                && message.contains("itemId=1")
+                && message.contains("sessionId=3")
+                && message.contains("operationId=" + workItem.command().requestId())
+                && message.contains("purpose=GENERAL_LEARNING_SHORTAGE")
+                && message.contains("candidateAttempt=1")
+                && message.contains("elapsedMs="));
+        assertThat(logMessages()).anyMatch(message -> message.contains("stage=PROMOTION")
+                && message.contains("outcome=SUCCESS"));
     }
 
     @Test
@@ -115,6 +144,10 @@ class ProblemGenerationWorkerTest {
 
         verify(generationPort, times(3)).generate(any());
         verify(jobService).fail(workItem, "GENERATION_FAILED");
+        assertThat(logMessages()).anyMatch(message -> message.contains("stage=GENERATION")
+                && message.contains("outcome=ERROR")
+                && message.contains("candidateAttempt=3")
+                && message.contains("errorType=IllegalStateException"));
     }
 
     @Test
@@ -129,6 +162,10 @@ class ProblemGenerationWorkerTest {
 
         verify(generationPort, times(1)).generate(any());
         verify(jobService).fail(workItem, "VERIFICATION_ERROR");
+        assertThat(logMessages()).anyMatch(message -> message.contains("event=problem_authoring_item")
+                && message.contains("stage=END")
+                && message.contains("outcome=FAILED")
+                && message.contains("reason=VERIFICATION_ERROR"));
     }
 
     @Test
@@ -154,5 +191,9 @@ class ProblemGenerationWorkerTest {
     ) {
         return new CandidateProcessingResult(
                 10L, 1, UUID.randomUUID(), status, null, promoted);
+    }
+
+    private List<String> logMessages() {
+        return logAppender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
     }
 }

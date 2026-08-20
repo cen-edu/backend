@@ -207,21 +207,19 @@ AI 생성 후보의 주요 실패 Finding은 다음과 같다.
 - Consumes: `ProblemGenerationWorkItem.itemId()`, `jobId()`, `sessionId()`, `command().requestId()`, `command().purpose()`
 - Produces: MDC 키 `traceId`, `jobId`, `itemId`, `sessionId`, `operationId`, `operation`, `stage`, `candidateAttempt`
 
-- [ ] **Step 1: 비동기 실행 시 MDC 복사·복원 테스트를 작성한다**
+- [x] **Step 1: 비동기 실행 시 MDC 복사·복원 테스트를 작성한다**
 
   `ProblemGenerationAsyncConfig`가 제출 스레드의 MDC를 작업 스레드로 복사하고 작업 후 이전 값을 복원하는지 검증한다. 작업 간 MDC가 누출되지 않는 두 번째 케이스도 포함한다.
 
-- [ ] **Step 2: 테스트가 현재 설정에서 실패하는지 확인한다**
+- [x] **Step 2: RED 확인은 사용자 지시에 따라 생략한다**
 
-  Run: `bash gradlew test --tests '*ProblemGenerationAsyncConfigTest'`
+  RED→GREEN 중간 실행은 생략하고 구현 완료 후 관련 테스트를 실행한다.
 
-  Expected: 작업 스레드의 `traceId`가 `null`이어서 FAIL.
-
-- [ ] **Step 3: `ThreadPoolTaskExecutor`에 MDC TaskDecorator를 설정한다**
+- [x] **Step 3: `ThreadPoolTaskExecutor`에 MDC TaskDecorator를 설정한다**
 
   `MDC.getCopyOfContextMap()`, `MDC.setContextMap()`, `MDC.clear()`를 `try/finally`로 사용한다. 원문 데이터는 MDC에 넣지 않는다.
 
-- [ ] **Step 4: Worker 단계 로그 테스트를 작성한다**
+- [x] **Step 4: Worker 단계 로그 테스트를 작성한다**
 
   생성 성공, 검증 실패 후 재시도, 검증 ERROR 종료 케이스에서 다음 필드가 존재하는지 확인한다.
 
@@ -230,15 +228,15 @@ AI 생성 후보의 주요 실패 Finding은 다음과 같다.
   jobId itemId sessionId operationId purpose stage candidateAttempt outcome elapsedMs
   ```
 
-- [ ] **Step 5: Worker와 후보 처리 서비스에 단계별 시간 로그를 구현한다**
+- [x] **Step 5: Worker와 후보 처리 서비스에 단계별 시간 로그를 구현한다**
 
   단계 값은 `PLANNING`, `ENRICHMENT`, `GENERATION`, `REGISTRATION`, `ASSET`, `VERIFICATION`, `PROMOTION`으로 고정한다. 실패 로그에는 예외 메시지 원문 대신 오류 코드와 예외 타입만 남긴다.
 
-- [ ] **Step 6: LLM 로그에 문항 컨텍스트를 추가한다**
+- [x] **Step 6: LLM 로그에 문항 컨텍스트를 추가한다**
 
   기존 모델·토큰·시간 로그에 MDC 식별자와 `apiAttempt`, `outcome`을 추가한다. prompt/response는 길이만 기록한다.
 
-- [ ] **Step 7: 관련 테스트를 통과시키고 커밋한다**
+- [x] **Step 7: 관련 테스트를 통과시키고 커밋한다**
 
   Run: `bash gradlew test --tests '*ProblemGenerationAsyncConfigTest' --tests '*ProblemGenerationWorkerTest' --tests '*ProblemCandidateProcessingServiceTest' --tests '*OpenAiLlmClientTest'`
 

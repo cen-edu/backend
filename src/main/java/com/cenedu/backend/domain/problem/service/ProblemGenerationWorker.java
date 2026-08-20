@@ -176,14 +176,24 @@ public class ProblemGenerationWorker {
         long startedAt = System.nanoTime();
         try {
             T result = call.call();
-            log.info("event=problem_authoring_stage operation=GENERATION stage={} outcome=SUCCESS elapsedMs={}",
-                    stage, elapsedMs(startedAt));
+            log.info("event=problem_authoring_stage operation=GENERATION stage={} outcome=SUCCESS elapsedMs={} "
+                            + "jobId={} itemId={} sessionId={} operationId={} purpose={} candidateAttempt={}",
+                    stage, elapsedMs(startedAt), context("jobId"), context("itemId"), context("sessionId"),
+                    context("operationId"), context("purpose"), context("candidateAttempt"));
             return result;
         } catch (RuntimeException exception) {
-            log.warn("event=problem_authoring_stage operation=GENERATION stage={} outcome=ERROR elapsedMs={} errorType={}",
-                    stage, elapsedMs(startedAt), exception.getClass().getSimpleName());
+            log.warn("event=problem_authoring_stage operation=GENERATION stage={} outcome=ERROR elapsedMs={} "
+                            + "jobId={} itemId={} sessionId={} operationId={} purpose={} candidateAttempt={} errorType={}",
+                    stage, elapsedMs(startedAt), context("jobId"), context("itemId"), context("sessionId"),
+                    context("operationId"), context("purpose"), context("candidateAttempt"),
+                    exception.getClass().getSimpleName());
             throw exception;
         }
+    }
+
+    private String context(String key) {
+        String value = MDC.get(key);
+        return value == null ? "" : value;
     }
 
     private long elapsedMs(long startedAt) {
