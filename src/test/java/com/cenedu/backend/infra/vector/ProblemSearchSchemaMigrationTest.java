@@ -37,4 +37,18 @@ class ProblemSearchSchemaMigrationTest {
         assertThat(jdbc.queryForObject("SELECT to_regclass('problem_teacher_decision_event')", String.class))
                 .isEqualTo("problem_teacher_decision_event");
     }
+
+    @Test
+    void createsCustomGenerationMetadataColumnsAndConstraints() {
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_name = 'problem_generation_item'
+                  AND column_name IN ('custom_stage', 'origin_question_id')
+                """, Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM pg_constraint
+                WHERE conname IN ('ck_problem_generation_item_custom_stage',
+                                  'fk_problem_generation_item_origin_question')
+                """, Integer.class)).isEqualTo(2);
+    }
 }
