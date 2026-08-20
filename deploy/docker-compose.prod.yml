@@ -1,0 +1,96 @@
+# AWS EC2 배포용 compose. 이 저장소에서 빌드하지 않는다 — Docker Hub 에 올려 둔
+# 이미지를 받아서 띄운다(t3.micro 1GB 에서 Gradle 빌드는 OOM 으로 죽는다).
+#
+# EC2 에 올리는 파일은 이 파일과 .env 두 개뿐이다.
+#   scp -i cen-edu.pem deploy/docker-compose.prod.yml ec2-user@<EIP>:/home/ec2-user/app/
+#   scp -i cen-edu.pem deploy/.env.prod.example       ec2-user@<EIP>:/home/ec2-user/app/.env
+#
+# 실행:
+# 이 파일은 EC2 에서만 띄운다. 로컬에서 같이 올리면 개발용 compose.yaml 과
+# cen-edu-postgres 컨테이너 이름이 부딪힌다. 로컬 개발은 compose.yaml 을 쓴다.
+#
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+
+# 프로젝트 이름을 고정한다. 디렉터리 이름에서 따오면 컨테이너·볼륨 접두사가 바뀌어
+# 이전 배포의 볼륨을 못 찾는다.
+name: cen-edu
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: cen-edu-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Seoul
+    # 포트를 열지 않는다. 열면 EC2 퍼블릭 IP 로 5432 가 노출되고, 보안 그룹 하나만
+    # 잘못 열려도 DB 가 그대로 인터넷에 선다. 같은 네트워크의 backend 만 붙으면 된다.
+    # 로컬에서 붙어야 하면 SSH 터널을 쓴다(README 아래 절 참고).
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - cen-edu-net
+
+  backend:
+    image: ${DOCKERHUB_USER}/cen-edu-backend:${APP_TAG}
+    container_name: cen-edu-backend
+    restart: always
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # 컨테이너 이름이 곧 호스트명이다. EC2 사설 IP 를 박으면 인스턴스를 새로 만들 때마다 바뀐다.
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
+      TZ: Asia/Seoul
+    depends_on:
+      postgres:
+        # Flyway 가 기동 시 마이그레이션을 돌린다. DB 가 덜 뜬 상태로 붙으면 앱이 죽는다.
+        condition: service_healthy
+    # 8080 도 공개하지 않는다. 외부에서 들어오는 길은 nginx 하나로 좁힌다.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      # Flyway 마이그레이션 + 컨텍스트 기동에 시간이 걸린다. 이 구간의 실패는 세지 않는다.
+      start_period: 90s
+    networks:
+      - cen-edu-net
+
+  frontend:
+    image: ${DOCKERHUB_USER}/cen-edu-frontend:${FRONTEND_TAG}
+    container_name: cen-edu-frontend
+    restart: always
+    # 정적 파일만 서빙한다. 바깥으로는 nginx 만 열고 이쪽은 열지 않는다.
+    networks:
+      - cen-edu-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: cen-edu-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - cen-edu-net
+
+networks:
+  cen-edu-net:
+    driver: bridge
+
+volumes:
+  # 컨테이너를 지워도 데이터는 남는다. 이미지를 새 태그로 갈아끼워도 이 볼륨은 건드리지 않는다.
+  postgres-data:

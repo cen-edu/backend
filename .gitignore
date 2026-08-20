@@ -45,6 +45,8 @@ out/
 .env
 .env.*
 !.env.example
+# 배포용 예시 파일. 실제 값은 EC2 의 ~/app/.env 에만 둔다.
+!.env.prod.example
 
 # Claude Code
 CLAUDE.md
