@@ -10,7 +10,6 @@
 |---|---|
 | [Dockerfile](../../Dockerfile) | 배포 이미지 빌드(멀티스테이지, JRE 21, 비 root) |
 | [deploy/docker-compose.prod.yml](../../deploy/docker-compose.prod.yml) | EC2 에서 띄우는 3개 컨테이너 |
-| [deploy/nginx/default.conf](../../deploy/nginx/default.conf) | 리버스 프록시 (유일한 외부 입구) |
 | [deploy/.env.prod.example](../../deploy/.env.prod.example) | EC2 `~/app/.env` 의 원본 |
 | [deploy/deploy.sh](../../deploy/deploy.sh) | EC2 에서 태그 교체 배포 + 롤백 안내 |
 | [application-prod.yaml](../../src/main/resources/application-prod.yaml) | 운영에서만 달라지는 정책 |
@@ -19,8 +18,8 @@
 
 | 파일 | 역할 |
 |---|---|
-| `Dockerfile` | Vite 빌드 → nginx 정적 서빙 (2단계) |
-| `deploy/nginx.conf` | SPA 새로고침 대응(`try_files`), 정적 캐시 헤더 |
+| `Dockerfile` | Vite 빌드 → nginx 서빙 (2단계) |
+| `deploy/nginx.conf` | **서비스의 유일한 입구.** 정적 서빙 + `/api` 프록시 + SPA 폴백 |
 | `.dockerignore` | `node_modules` / `dist` 제외 |
 
 ---
@@ -36,7 +35,8 @@
   로컬 [compose.yaml](../../compose.yaml) 과 같은 이미지라 재현이 쉽다.
 - **이미지는 Docker Hub 경유.** t3.micro 는 메모리 1GB 라 EC2 에서 Gradle 빌드를 돌리면
   OOM 으로 죽는다. 빌드는 로컬(또는 CI), EC2 는 `pull` 만 한다.
-- **프론트도 같은 EC2 의 nginx 뒤에 둔다.** 프론트의 `VITE_API_BASE_URL` 기본값이 `/api`
+- **프론트 컨테이너의 nginx 가 입구를 겸한다**(교안의 `reactedu` 와 같은 형태). 정적 파일을
+  서빙하면서 `/api` 를 백엔드로 넘긴다. 프론트의 `VITE_API_BASE_URL` 기본값이 `/api`
   라 브라우저가 보는 오리진이 하나로 합쳐지고, **CORS 설정이 아예 필요 없어진다**
   (`CORS_ALLOWED_ORIGINS` 를 비워 둔다). 프론트 저장소에 `vercel.json` 이 있어 Vercel 배포도
   가능하지만, 그 경우 오리진이 갈라져 CORS 허용 목록과 HTTPS↔HTTP 혼합 콘텐츠 문제를
@@ -71,16 +71,16 @@
 +============================|====================== VPC 10.0.0.0/16 =+
 |  public subnet 10.0.1.0/24 (ap-northeast-2a)                        |
 |  +--------------------------|-------------------------------------+ |
-|  |  EC2 t3.small (Amazon Linux 2023) + Elastic IP                  | |
+|  |  EC2 t3.micro (Amazon Linux 2023) + Elastic IP                  | |
 |  |                      :80 |                                      | |
-|  |                    +-----v-----+   /      +----------------+    | |
-|  |                    |   nginx   |--------->|    frontend    |    | |
-|  |                    |  (public) |          |  React static  |    | |
-|  |                    +-----+-----+          +----------------+    | |
+|  |                +---------v----------+                           | |
+|  |                |     frontend       |  /      React 정적 파일    | |
+|  |                |  (nginx = 입구)    |                           | |
+|  |                +---------+----------+                           | |
 |  |                          | /api                                 | |
 |  |                    +-----v-----+  :8080   +----------------+    | |
 |  |                    |  backend  |--------->|    postgres    |    | |
-|  |                    | (private) |          |   + pgvector   |    | |
+|  |                    | (비공개)   |          |   + pgvector   |    | |
 |  |                    +-----+-----+          +-------+--------+    | |
 |  |                          |   docker network: cen-edu-net |      | |
 |  |                          |                       volume: pg-data| |
@@ -92,11 +92,10 @@
       S3 (문항/답안)      OpenAI API      Docker Hub (pull)
 ```
 
-- 외부로 열리는 포트는 **80 하나**다. 프론트·백엔드·DB 어느 것도 호스트 포트를 쓰지 않아
+- 외부로 열리는 포트는 **80 하나**다. 백엔드(8080)와 DB(5432)는 호스트 포트를 쓰지 않아
   보안 그룹이 잘못 열려도 그 컨테이너까지 닿지 않는다.
-- 앞단 nginx 가 `/api` 는 백엔드로, 나머지는 프론트로 보낸다. 프론트 컨테이너의 nginx 는
-  정적 파일 서빙과 SPA 새로고침(`try_files`)만 맡는다 — 라우팅 규칙(입구)과 서빙 방식을
-  각 저장소가 나눠 갖는다.
+- 라우팅 규칙은 프론트 이미지 안의 `deploy/nginx.conf` 에 있다. **라우팅을 바꾸려면 프론트
+  이미지를 다시 빌드해야 한다** — 대신 컨테이너가 하나 줄고 구조가 교안과 같아진다.
 - 컨테이너끼리는 서비스 이름(`postgres`, `backend`)으로 통신한다. 교안의 다중 EC2 구성처럼
   사설 IP 를 박지 않으므로 인스턴스를 새로 만들어도 설정이 그대로다.
 
@@ -122,7 +121,7 @@ VPC 콘솔의 **"VPC 등" 마법사**로 한 번에 만든다(교안 마지막 �
 
 | 이름 | 인바운드 | 설명 |
 |---|---|---|
-| `cen-edu-web-sg` | TCP 80 ← `0.0.0.0/0` | nginx. 서비스 입구 |
+| `cen-edu-web-sg` | TCP 80 ← `0.0.0.0/0` | 프론트 컨테이너의 nginx. 서비스 입구 |
 | | TCP 22 ← `<내 IP>/32` | SSH. **`0.0.0.0/0` 으로 두지 않는다** — 열어 두면 곧바로 자동 스캔이 붙는다 |
 
 아웃바운드는 기본값(전체 허용)을 그대로 둔다. Docker Hub `pull`, OpenAI 호출, S3 접근이
@@ -225,9 +224,8 @@ docker compose version || {
 |---|---|---|
 | backend | 512m | 481MB (힙 384MB) |
 | postgres | 256m | 45MB |
-| nginx | 64m | 26MB |
-| frontend | 64m | 25MB |
-| 합계 | | **약 577MB** |
+| frontend (nginx) | 64m | 26MB |
+| 합계 | | **약 552MB** |
 
 OS·도커 데몬이 150~200MB 를 쓰므로 1GB 에서 200MB 이상 남는다. 그래도 스왑 2GB 를
 같이 잡는다 — PDF 렌더링처럼 순간적으로 튀는 경로가 있고, 스왑이 있으면 그 순간에
@@ -275,7 +273,6 @@ docker push $env:DOCKERHUB_USER/cen-edu-frontend:1.0.0
 ```powershell
 scp -i cen-edu.pem deploy/docker-compose.prod.yml ec2-user@<EIP>:/home/ec2-user/app/
 scp -i cen-edu.pem deploy/deploy.sh               ec2-user@<EIP>:/home/ec2-user/app/
-scp -i cen-edu.pem -r deploy/nginx                ec2-user@<EIP>:/home/ec2-user/app/
 scp -i cen-edu.pem deploy/.env.prod.example       ec2-user@<EIP>:/home/ec2-user/app/.env
 ```
 
@@ -362,15 +359,16 @@ gunzip -c ~/backup/cen_edu_2026-08-20.sql.gz | docker exec -i cen-edu-postgres p
   docker exec -it cen-edu-postgres psql -U cen -d cen_edu
   ```
 - **HTTPS**: 도메인을 붙인 다음 단계다. Route 53 에 도메인을 올리고 A 레코드를 EIP 로
-  향한 뒤, nginx 컨테이너에 certbot 을 붙이거나 앞단에 ALB + ACM 인증서를 둔다.
+  향한 뒤, 프론트 컨테이너의 nginx 에 certbot 을 붙이거나 앞단에 ALB + ACM 인증서를 둔다.
   JWT 를 쓰는 서비스라 **실제 학생 데이터를 넣기 전에는 HTTPS 를 먼저 붙인다** — 지금
   구성은 토큰이 평문으로 오간다.
 - **MyScript 키**: `VITE_MYSCRIPT_HMAC_KEY` 는 브라우저 번들에 그대로 실린다(Vite 의
   `VITE_` 값은 전부 공개된다). 개발자 도구를 열면 누구나 꺼내 쓸 수 있으므로, 그 키의
   사용량과 과금을 감수할 수 있는 범위에서만 쓴다. 가리려면 서명을 백엔드에서 만들어
   주는 방식으로 바꿔야 하고, 그건 프론트·백엔드 양쪽 코드 변경이다.
-- **Swagger**: 운영에서 닫혀 있다(nginx `deny` + `springdoc.*.enabled=false`). 시연 등으로
-  열어야 하면 `SWAGGER_ENABLED=true` 와 nginx 의 deny 블록을 함께 푼다.
+- **Swagger**: 운영에서 닫혀 있다(프론트 nginx 의 `deny` + 백엔드
+  `springdoc.*.enabled=false`). 시연 등으로 열어야 하면 `SWAGGER_ENABLED=true` 로 띄우고
+  프론트 nginx 의 deny 블록도 함께 푼다(= 프론트 이미지 재빌드).
 - **디스크**: `deploy.sh` 가 배포마다 `docker image prune -f` 를 돌린다. `df -h` 로 가끔 확인한다.
 - **안 쓸 때는 인스턴스를 중지한다.** 프리티어 750시간은 한 대를 한 달 내내 켜 두면 거의
   다 쓴다. 중지해도 EIP 와 EBS 는 유지되므로 IP 가 바뀌지 않는다(중지 중인 인스턴스에
