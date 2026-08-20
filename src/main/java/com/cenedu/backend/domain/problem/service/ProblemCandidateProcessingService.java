@@ -18,6 +18,11 @@ import com.cenedu.backend.domain.problem.authoring.candidate.CandidateSourceType
 import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemAssetProductionPort;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemVerificationPort;
+import com.cenedu.backend.domain.problem.authoring.port.ProblemRepairPort;
+import com.cenedu.backend.domain.problem.authoring.repair.ProblemRepairCommand;
+import com.cenedu.backend.domain.problem.authoring.repair.ProblemRepairDelta;
+import com.cenedu.backend.domain.problem.authoring.repair.ProblemRepairPlan;
+import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProvenance;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotNormalizedValidator;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator;
 import com.cenedu.backend.domain.problem.authoring.verification.ProblemVerificationBundle;
@@ -64,6 +69,9 @@ public class ProblemCandidateProcessingService {
     private final ProblemAuthoringJsonCodec jsonCodec;
     private final ObjectProvider<ProblemVerificationPort> verificationPortProvider;
     private final ObjectProvider<ProblemAssetProductionPort> assetPortProvider;
+    private final ObjectProvider<ProblemRepairPort> repairPortProvider;
+    private final ProblemRepairPlanner repairPlanner;
+    private final ProblemRepairDeltaMerger repairDeltaMerger;
     private final TransactionTemplate transactionTemplate;
     private final ProblemAiConcurrencyLimiter concurrencyLimiter;
     private final ProblemSemanticMaterializer semanticMaterializer = new DefaultProblemSemanticMaterializer();
@@ -84,7 +92,24 @@ public class ProblemCandidateProcessingService {
     ) {
         this(sessionRepository, versionRepository, structuralValidator, normalizedValidator, jsonCodec,
                 verificationPortProvider, assetPortProvider, transactionManager, concurrencyLimiter,
-                new SemanticAuthoringProperties(false));
+                new SemanticAuthoringProperties(false), null, new ProblemRepairPlanner(), new ProblemRepairDeltaMerger(new tools.jackson.databind.ObjectMapper()));
+    }
+
+    public ProblemCandidateProcessingService(
+            ProblemAuthoringSessionRepository sessionRepository,
+            ProblemAuthoringVersionRepository versionRepository,
+            SnapshotStructuralValidator structuralValidator,
+            SnapshotNormalizedValidator normalizedValidator,
+            ProblemAuthoringJsonCodec jsonCodec,
+            ObjectProvider<ProblemVerificationPort> verificationPortProvider,
+            ObjectProvider<ProblemAssetProductionPort> assetPortProvider,
+            PlatformTransactionManager transactionManager,
+            ProblemAiConcurrencyLimiter concurrencyLimiter,
+            SemanticAuthoringProperties semanticProperties
+    ) {
+        this(sessionRepository, versionRepository, structuralValidator, normalizedValidator, jsonCodec,
+                verificationPortProvider, assetPortProvider, transactionManager, concurrencyLimiter,
+                semanticProperties, null, new ProblemRepairPlanner(), new ProblemRepairDeltaMerger(new tools.jackson.databind.ObjectMapper()));
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -98,7 +123,10 @@ public class ProblemCandidateProcessingService {
             ObjectProvider<ProblemAssetProductionPort> assetPortProvider,
             PlatformTransactionManager transactionManager,
             ProblemAiConcurrencyLimiter concurrencyLimiter,
-            SemanticAuthoringProperties semanticProperties
+            SemanticAuthoringProperties semanticProperties,
+            ObjectProvider<ProblemRepairPort> repairPortProvider,
+            ProblemRepairPlanner repairPlanner,
+            ProblemRepairDeltaMerger repairDeltaMerger
     ) {
         this.sessionRepository = sessionRepository;
         this.versionRepository = versionRepository;
@@ -107,6 +135,9 @@ public class ProblemCandidateProcessingService {
         this.jsonCodec = jsonCodec;
         this.verificationPortProvider = verificationPortProvider;
         this.assetPortProvider = assetPortProvider;
+        this.repairPortProvider = repairPortProvider;
+        this.repairPlanner = repairPlanner;
+        this.repairDeltaMerger = repairDeltaMerger;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.concurrencyLimiter = concurrencyLimiter;
         this.semanticProperties = semanticProperties;
@@ -114,6 +145,10 @@ public class ProblemCandidateProcessingService {
 
     /** 외부 AI 호출을 트랜잭션 밖에서 수행하고 최종 PASSED 후보만 current로 승격한다. */
     public CandidateProcessingResult process(CandidateProcessingRequest request) {
+        return processInternal(request, true);
+    }
+
+    private CandidateProcessingResult processInternal(CandidateProcessingRequest request, boolean allowRepair) {
         validateRequest(request);
         long startedAt = System.nanoTime();
         log.info("event=problem_authoring_stage operation={} stage=REGISTRATION outcome=STARTED "
@@ -151,13 +186,45 @@ public class ProblemCandidateProcessingService {
                 request.operationType(), bundle.overallStatus(), elapsedMs(promotionStartedAt), registered.versionId(),
                 context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
 
-        return new CandidateProcessingResult(
+        CandidateProcessingResult result = new CandidateProcessingResult(
                 registered.versionId(),
                 registered.versionNo(),
                 verificationRequestId,
                 bundle.overallStatus(),
                 bundle,
                 bundle.overallStatus() == VerificationOverallStatus.PASSED);
+        if (allowRepair && result.status() == VerificationOverallStatus.FAILED) {
+            CandidateProcessingResult repaired = repairFailedCandidate(request, registered, bundle);
+            if (repaired != null) return repaired;
+        }
+        return result;
+    }
+
+    /** 실패 원인이 부분 수정 가능할 때만 새 Version을 만들고 생성 Port 없이 재검증한다. */
+    private CandidateProcessingResult repairFailedCandidate(
+            CandidateProcessingRequest request,
+            RegisteredCandidate registered,
+            ProblemVerificationBundle bundle
+    ) {
+        if (request.candidate().semanticModel() != null || repairPortProvider == null) return null;
+        ProblemRepairPlan plan = repairPlanner.plan(bundle);
+        if (!plan.repairable()) return null;
+        ProblemRepairPort repairPort = repairPortProvider.getIfAvailable();
+        if (repairPort == null) return null;
+        ProblemRepairDelta delta = repairPort.repair(new ProblemRepairCommand(
+                UUID.randomUUID(), request.candidate().snapshot(), plan));
+        var repairedSnapshot = repairDeltaMerger.merge(request.candidate().snapshot(), plan, delta);
+        structuralValidator.validate(repairedSnapshot);
+        normalizedValidator.validate(repairedSnapshot);
+        ProblemCandidateDraft repairedCandidate = ProblemCandidateDraft.legacy(
+                UUID.randomUUID(), repairedSnapshot, request.candidate().assetPlans(),
+                new CandidateProvenance(CandidateSourceType.AI_MODIFY,
+                        registered.versionId(), List.of(registered.versionId())));
+        CandidateProcessingRequest repairedRequest = new CandidateProcessingRequest(
+                request.ownerTeacherId(), request.sessionId(), registered.versionId(),
+                AuthoringOperationType.AI_MODIFY, request.verificationOperationType(), repairedCandidate,
+                request.expectation(), request.verificationContext(), "검증 오류 항목 부분 수정");
+        return processInternal(repairedRequest, false);
     }
 
     /** 자산 계획의 처리 결과를 본문 없이 요약해 로그에 남긴다. */
