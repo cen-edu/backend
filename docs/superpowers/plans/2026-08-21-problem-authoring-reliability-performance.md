@@ -373,7 +373,7 @@ Repair 대상을 고르기 위한 LLM은 호출하지 않고 Java 규칙으로 F
 
   `CORRECTNESS=ERROR`이면 Java 검사는 계속 수행하되 원본·해설 LLM 검사는 호출하지 않고 관련 Finding을 `ERROR`로 남기는 기존 동작을 회귀 테스트로 고정한다.
 
-- [ ] **Step 7: 테스트를 통과시키고 커밋한다**
+- [x] **Step 7: 테스트를 통과시키고 커밋한다**
 
   Run: `bash gradlew test --tests '*ProblemVerificationAdapterTest' --tests '*ProblemCandidateProcessingServiceTest'`
 
@@ -381,7 +381,7 @@ Repair 대상을 고르기 위한 LLM은 호출하지 않고 Java 규칙으로 F
 
 #### Task 3 하위 범위: 오류 항목 부분 수정
 
-- [ ] **Step 3-A: Solver 불일치의 원인을 기존 원본 검사에서 함께 판정한다**
+- [x] **Step 3-A: Solver 불일치의 원인을 기존 원본 검사에서 함께 판정한다**
   - 원본 검사 Schema에 `answerMismatchCause`를 추가하고 값은 `NONE`, `AUTHORING_ANSWER_WRONG`,
     `SOLVER_UNCERTAIN`, `QUESTION_AMBIGUOUS`, `EXPLANATION_INCONSISTENT`로 제한한다.
   - 별도 판정 LLM 호출은 추가하지 않는다.
@@ -396,13 +396,13 @@ Repair 대상을 고르기 위한 LLM은 호출하지 않고 Java 규칙으로 F
 - [x] **Step 3-D: Snapshot Delta Merger와 수정 후 구조 검증을 연결한다**
   - 기존 Snapshot의 문제 유형·난이도·교육과정·수정 대상 외 필드는 보존한다.
   - `CHOICES→ANSWERS`, `STEPS→ANSWERS/EXPLANATION`, `CONTENT→연관 전체` 의존성을 반영한다.
-- [ ] **Step 3-E: 수정 범위별 선택적 재검증과 호출 예산을 적용한다**
+- [x] **Step 3-E: 수정 범위별 선택적 재검증과 호출 예산을 적용한다**
   - `EXPLANATION`·`RUBRIC`은 관련 원본 검사 1회, `CHOICES`·`ANSWERS`·`STEPS`는 Solver와 원본 검사 최대 2회만 수행한다.
   - 부분 수정은 문항당 최대 1회, 비자산 논리적 LLM 호출은 생성부터 최대 6회로 제한한다.
   - 수정 후 관련 검사와 비용 없는 Java 구조·정규화 검사를 수행한다.
   - 본문 정보 부족·교육과정 이탈·신호 충돌은 부분 수정하지 않고 종료한다.
   - `VerificationProfile`은 구현 완료했으며, `ANSWER_INCORRECT`는 Step 3-A 합의 신호가 완료될 때까지 자동 Repair를 차단한다.
-- [ ] **Step 3-F: 해설·정답·보기·풀이·루브릭 부분 수정 회귀 테스트를 통과시키고 커밋한다**
+- [x] **Step 3-F: 해설·정답·보기·풀이·루브릭 부분 수정 회귀 테스트를 통과시키고 커밋한다**
   - 검증 오류와 내용 오류를 구분하고, 후보 생성 Port가 재호출되지 않는지 검증한다.
   - 여러 오류가 있어도 Repair Port가 정확히 1회만 호출되는지 검증한다.
   - Solver와 원본 검사 신호가 충돌하면 Repair Port가 0회인지 검증한다.

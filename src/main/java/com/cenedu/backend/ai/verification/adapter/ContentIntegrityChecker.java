@@ -56,7 +56,8 @@ public class ContentIntegrityChecker {
      */
     public List<VerificationFinding> check(
             QuestionSnapshotV1 snapshot,
-            CurriculumScope expectedCurriculum
+            CurriculumScope expectedCurriculum,
+            AnswerMismatchContext mismatchContext
     ) {
         boolean essay = isEssay(snapshot);
 
@@ -65,8 +66,9 @@ public class ContentIntegrityChecker {
             return List.of(essay ? rubricOnly(snapshot) : rubricNotApplicable());
         }
 
-        List<OriginalDefect> defects = llmClient.inspectOriginal(
-                snapshot, essay, expectedCurriculum);
+        OriginalInspectionResult inspection = llmClient.inspectOriginal(
+                snapshot, essay, expectedCurriculum, mismatchContext);
+        List<OriginalDefect> defects = inspection.defects();
 
         List<VerificationFinding> findings = new ArrayList<>();
         for (OriginalDefect defect : defects) {
@@ -87,6 +89,13 @@ public class ContentIntegrityChecker {
             }
         }
         findings.add(rubricFinding(essay, defects));
+        if (mismatchContext != null && mismatchContext.mismatch()
+                && inspection.answerMismatchCause() == AnswerMismatchCause.AUTHORING_ANSWER_WRONG) {
+            findings.add(Findings.fail(
+                    VerificationCheckType.ANSWER_CONSISTENCY,
+                    VerificationIssueCode.AUTHORING_ANSWER_WRONG_CONFIRMED,
+                    "원본 검사도 저작측 정답 오류를 확인했습니다.", null));
+        }
         return List.copyOf(findings);
     }
 

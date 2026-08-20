@@ -125,10 +125,13 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
 
         boolean solverEnabled = request.profile() == VerificationProfile.FULL_CONTENT
                 || request.profile() == VerificationProfile.ANSWER_RELATED;
-        VerificationFinding correctnessFinding = solverEnabled
-                ? isolate(VerificationCheckType.CORRECTNESS, () -> correctness(snapshot))
-                : Findings.notApplicable(VerificationCheckType.CORRECTNESS,
-                        "부분 수정 재검증 프로필에서 Solver 검사를 생략했습니다.");
+        CorrectnessEvaluation correctness = solverEnabled
+                ? correctnessEvaluation(snapshot)
+                : new CorrectnessEvaluation(
+                        Findings.notApplicable(VerificationCheckType.CORRECTNESS,
+                                "부분 수정 재검증 프로필에서 Solver 검사를 생략했습니다."),
+                        AnswerMismatchContext.none());
+        VerificationFinding correctnessFinding = correctness.finding();
         findings.add(correctnessFinding);
         findings.add(isolate(VerificationCheckType.ANSWER_CONSISTENCY,
                 () -> structuralConsistencyCheck.check(snapshot)));
@@ -157,7 +160,8 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
                             VerificationCheckType.RUBRIC_QUALITY),
                     () -> contentIntegrityChecker.check(snapshot,
                             request.expectation() == null
-                                    ? null : request.expectation().expectedCurriculum())));
+                                    ? null : request.expectation().expectedCurriculum(),
+                            correctness.mismatchContext())));
         }
         findings.add(Findings.notApplicable(VerificationCheckType.ASSET_CONSISTENCY,
                 "CONTENT 범위에서는 자산을 판정하지 않습니다."));
@@ -184,13 +188,36 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
      *
      * <p>서술형은 Solver 를 부르지 않는다. 대조할 종점 값이 없어 답을 받아도 쓸 데가 없다.
      */
-    private VerificationFinding correctness(QuestionSnapshotV1 snapshot) {
-        if (!correctnessChecker.requiresSolver(snapshot)) {
-            return correctnessChecker.check(snapshot, SolverAnswer.notCalled());
+    private CorrectnessEvaluation correctnessEvaluation(QuestionSnapshotV1 snapshot) {
+        try {
+            if (!correctnessChecker.requiresSolver(snapshot)) {
+                return new CorrectnessEvaluation(
+                        correctnessChecker.check(snapshot, SolverAnswer.notCalled()),
+                        AnswerMismatchContext.none());
+            }
+            BlindQuestion blind = blindQuestionFactory.from(snapshot);
+            SolverAnswer solverAnswer = llmClient.solve(blind);
+            VerificationFinding finding = correctnessChecker.check(snapshot, solverAnswer);
+            boolean mismatch = finding.code() == com.cenedu.backend.domain.problem.authoring.verification.VerificationIssueCode.ANSWER_INCORRECT;
+            return new CorrectnessEvaluation(finding,
+                    mismatch ? new AnswerMismatchContext(true, solverAnswer.answers()) : AnswerMismatchContext.none());
+        } catch (SolverResponseParseException e) {
+            return new CorrectnessEvaluation(
+                    Findings.error(VerificationCheckType.CORRECTNESS,
+                            "검증 응답이 요구한 형식이 아닙니다.", e.getMessage()),
+                    AnswerMismatchContext.none());
+        } catch (RuntimeException e) {
+            return new CorrectnessEvaluation(
+                    Findings.error(VerificationCheckType.CORRECTNESS,
+                            "검증 항목을 처리하지 못했습니다.", e.getMessage()),
+                    AnswerMismatchContext.none());
         }
-        BlindQuestion blind = blindQuestionFactory.from(snapshot);
-        return correctnessChecker.check(snapshot, llmClient.solve(blind));
     }
+
+    private record CorrectnessEvaluation(
+            VerificationFinding finding,
+            AnswerMismatchContext mismatchContext
+    ) {}
 
     /**
      * 자산 검증. 내용 항목은 전부 {@code NOT_APPLICABLE} 로 낸다.

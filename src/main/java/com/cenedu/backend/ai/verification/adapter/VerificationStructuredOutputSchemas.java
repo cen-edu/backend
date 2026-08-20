@@ -12,7 +12,8 @@ public final class VerificationStructuredOutputSchemas {
             """;
 
     public static final String ORIGINAL = """
-            {"type":"object","additionalProperties":false,"required":["findings"],"properties":{
+            {"type":"object","additionalProperties":false,"required":["findings","answerMismatchCause"],"properties":{
+              "answerMismatchCause":{"type":"string","enum":["NONE","AUTHORING_ANSWER_WRONG","SOLVER_UNCERTAIN","QUESTION_AMBIGUOUS","EXPLANATION_INCONSISTENT"]},
               "findings":{"type":"array","items":{"type":"object","additionalProperties":false,
                 "required":["type","kind","location","detail"],"properties":{
                   "type":{"type":"string"},"kind":{"type":"string"},"location":{"type":"string"},"detail":{"type":"string"}}}}}}

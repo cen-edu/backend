@@ -50,6 +50,17 @@ class ProblemRepairPlannerTest {
                 .repairable()).isFalse();
     }
 
+    @Test
+    void 두_검증신호가_저작정답_오류에_합의하면_정답과_해설을_수정한다() {
+        var plan = planner.plan(bundle(
+                finding(VerificationIssueCode.ANSWER_INCORRECT),
+                finding(VerificationIssueCode.AUTHORING_ANSWER_WRONG_CONFIRMED)));
+
+        assertThat(plan.repairable()).isTrue();
+        assertThat(plan.targets()).containsExactlyInAnyOrder(
+                RepairTarget.ANSWERS, RepairTarget.EXPLANATION);
+    }
+
     private ProblemVerificationBundle bundle(VerificationFinding... findings) {
         UUID id = UUID.randomUUID();
         return ProblemVerificationBundle.contentOnly(id,

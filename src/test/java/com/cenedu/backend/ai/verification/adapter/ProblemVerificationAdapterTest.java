@@ -191,6 +191,22 @@ class ProblemVerificationAdapterTest {
     }
 
     @Test
+    @DisplayName("Solver 불일치와 원본 검사가 저작 정답 오류에 합의하면 확인 Finding을 남긴다")
+    void confirmsAuthoringAnswerErrorWithTwoSignals() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", "999"),
+                "{\"answerMismatchCause\":\"AUTHORING_ANSWER_WRONG\",\"findings\":[]}");
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(report.findings()).extracting(VerificationFinding::code)
+                .contains(VerificationIssueCode.ANSWER_INCORRECT,
+                        VerificationIssueCode.AUTHORING_ANSWER_WRONG_CONFIRMED);
+        assertThat(fake.userPrompts).hasSize(2);
+    }
+
+    @Test
     @DisplayName("STEP_FILL 은 한 칸만 틀려도 FAILED 이고 어느 칸인지 남는다")
     void oneWrongBlankFailsStepFill() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.stepFillSnapshot();

@@ -99,7 +99,7 @@ final class VerificationPrompts {
                    찾을 것이 없는 문항이 정상이다.
 
                 오직 아래 JSON 만 출력한다. 설명이나 코드 펜스를 덧붙이지 않는다.
-                {"findings": [{"type": "LEAKAGE", "kind": "ANSWER_VALUE", \
+                {"answerMismatchCause":"NONE","findings": [{"type": "LEAKAGE", "kind": "ANSWER_VALUE", \
                 "location": "learningGuide.keyPoints[2]", "detail": "한 줄 설명"}]}
                 """.formatted(rubricSection);
     }
@@ -107,9 +107,15 @@ final class VerificationPrompts {
     /** 원본 검사에 넣는 입력. 정답·해설·개념 안내·채점 기준을 모두 담는다. */
     static String contentIntegrityUserPrompt(
             QuestionSnapshotV1 snapshot,
-            CurriculumScope expectedCurriculum
+            CurriculumScope expectedCurriculum,
+            AnswerMismatchContext mismatchContext
     ) {
         StringBuilder builder = new StringBuilder();
+        if (mismatchContext != null && mismatchContext.mismatch()) {
+            builder.append("[독립 Solver 불일치]\n");
+            builder.append("저작 정답과 독립 Solver 답이 다릅니다. 원인을 answerMismatchCause로 판정하세요.\n");
+            builder.append("Solver 답: ").append(mismatchContext.solverAnswers()).append("\n\n");
+        }
         builder.append("[유형] ").append(snapshot.metadata() == null
                 ? "알 수 없음" : snapshot.metadata().questionType()).append('\n');
 
