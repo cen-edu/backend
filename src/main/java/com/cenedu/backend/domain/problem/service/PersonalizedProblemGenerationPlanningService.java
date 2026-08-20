@@ -17,6 +17,9 @@ import com.cenedu.backend.domain.problem.authoring.generation.GenerationSlotSour
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationPlan;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationSlotPlan;
+import com.cenedu.backend.domain.problem.authoring.generation.PersonalizedGenerationEvidence;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationEvaluationAreaEvidence;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationDiagnosticEvidence;
 import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceQuery;
 import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceRetrievalPort;
 import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemRetrievalTracePort;
@@ -26,6 +29,7 @@ import com.cenedu.backend.domain.problem.config.ProblemRagProperties;
 import com.cenedu.backend.domain.problem.authoring.snapshot.BankSnapshotResult;
 import com.cenedu.backend.domain.problem.dto.request.CustomProblemGenerationItemRequest;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationJobType;
+import com.cenedu.backend.domain.problem.entity.enums.DiagnosticType;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.CustomStage;
@@ -236,10 +240,89 @@ public class PersonalizedProblemGenerationPlanningService {
             CustomProblemGenerationItemRequest request = requests.get(subUnit.subUnitId());
             if (request == null) continue;
             for (int i = 0; i < request.advancedCount(); i++) {
-                slots.add(aiSlot(subUnit, paths.get(subUnit.subUnitId()), CustomStage.ADVANCED,
-                        GenerationPurpose.PERSONALIZED_APPLICATION));
+                slots.add(advancedAiSlot(subUnit, paths.get(subUnit.subUnitId())));
             }
         }
+    }
+
+    /** 취약 분포와 풀이 단계를 포함한 ADVANCED AI 슬롯을 만든다. */
+    private ProblemGenerationSlotPlan advancedAiSlot(
+            ReissueProposalResponse.SubUnitProposal subUnit, CurriculumPathResponse path) {
+        ReissueProposalResponse.SimilarProposal similar = subUnit.similar();
+        if (path == null || similar.referenceQuestions() == null || similar.referenceQuestions().isEmpty()) {
+            throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
+        }
+        long originId = similar.referenceQuestions().getFirst().questionId();
+        Map<Long, BankSnapshotResult> references = snapshotsById(similar.referenceQuestions().stream()
+                .map(ReissueProposalResponse.ReferenceQuestion::questionId).distinct().toList());
+        BankSnapshotResult origin = references.get(originId);
+        if (origin == null || !origin.reusable()) {
+            throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
+        }
+        CurriculumScope curriculum = curriculum(path);
+        List<GenerationReference> generationReferences = new ArrayList<>();
+        generationReferences.add(new GenerationReference(GenerationReferenceRole.ORIGIN,
+                originId, origin.snapshot()));
+        for (ReissueProposalResponse.ReferenceQuestion reference : similar.referenceQuestions()) {
+            if (reference.questionId() == originId) continue;
+            BankSnapshotResult example = references.get(reference.questionId());
+            if (example != null && example.reusable()) {
+                generationReferences.add(new GenerationReference(GenerationReferenceRole.EXAMPLE,
+                        reference.questionId(), example.snapshot()));
+            }
+        }
+        generationReferences.addAll(retrieveAdvancedExamples(curriculum, originId, origin.snapshot()));
+        PersonalizedGenerationEvidence evidence = evidence(subUnit.advanced());
+        List<DiagnosticType> diagnosticTypes = evidence.diagnosticEvidence().stream()
+                .map(GenerationDiagnosticEvidence::diagnosticType).toList();
+        GenerationSpecification specification = new GenerationSpecification(
+                QuestionType.STEP_FILL, "high", subUnit.advanced().primaryEvaluationArea(),
+                diagnosticTypes, true);
+        ProblemGenerationCommand command = new ProblemGenerationCommand(UUID.randomUUID(), null,
+                GenerationPurpose.PERSONALIZED_APPLICATION, specification, curriculum,
+                generationReferences, List.of(), evidence);
+        return new ProblemGenerationSlotPlan(1, GenerationSlotSource.AI_GENERATION, null,
+                originId, CustomStage.ADVANCED, null, Map.of(), command);
+    }
+
+    /** ADVANCED 검색 결과는 재사용하지 않고 AI 명령의 EXAMPLE로만 전달한다. */
+    private List<GenerationReference> retrieveAdvancedExamples(
+            CurriculumScope curriculum, long originId,
+            com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 originSnapshot) {
+        if (ragProperties == null || !ragProperties.enabled() || retrievalProvider == null
+                || retrievalProvider.getIfAvailable() == null) {
+            return List.of();
+        }
+        UUID requestId = UUID.randomUUID();
+        ProblemReferenceQuery query = new ProblemReferenceQuery(requestId,
+                GenerationPurpose.PERSONALIZED_APPLICATION, curriculum, QuestionType.STEP_FILL,
+                "high", originId, originSnapshot, ragProperties.candidateLimit(),
+                Math.min(4, ragProperties.candidateLimit()), java.util.Set.of());
+        try {
+            return retrievalProvider.getIfAvailable().retrieve(query).stream()
+                    .map(reference -> new GenerationReference(GenerationReferenceRole.EXAMPLE,
+                            reference.questionId(), reference.snapshot())).toList();
+        } catch (RuntimeException exception) {
+            recordFallback(query, RetrievalFallbackReason.PROVIDER_FAILURE);
+            return List.of();
+        }
+    }
+
+    /** 분석 응답의 ADVANCED 근거를 문제 생성 도메인의 독립 계약으로 복사한다. */
+    private PersonalizedGenerationEvidence evidence(ReissueProposalResponse.AdvancedProposal advanced) {
+        List<GenerationEvaluationAreaEvidence> areaEvidence = advanced.evaluationAreaEvidence() == null
+                ? List.of() : advanced.evaluationAreaEvidence().stream()
+                .map(value -> new GenerationEvaluationAreaEvidence(value.evaluationArea(),
+                        value.gradedItemCount(), value.incorrectItemCount(), value.incorrectRate()))
+                .toList();
+        List<GenerationDiagnosticEvidence> diagnosticEvidence = advanced.diagnosticStageEvidence() == null
+                ? List.of() : advanced.diagnosticStageEvidence().stream()
+                .map(value -> new GenerationDiagnosticEvidence(
+                        DiagnosticType.valueOf(value.diagnosticType().name()),
+                        value.gradedUnitCount(), value.incorrectUnitCount(), value.incorrectRate()))
+                .toList();
+        return new PersonalizedGenerationEvidence(advanced.historicalIncorrectItemCount(),
+                advanced.incorrectSessionCount(), areaEvidence, diagnosticEvidence);
     }
 
     /** 기준 문항과 교육과정 경로를 보존하는 맞춤 AI 슬롯을 만든다. */

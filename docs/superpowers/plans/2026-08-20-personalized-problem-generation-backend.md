@@ -515,7 +515,7 @@ git commit -m "feat : 맞춤 유사 문제 은행 우선 생성"
 - Modify: `src/main/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningService.java`
 - Modify: `src/test/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningServiceTest.java`
 
-- [ ] **Step 1: ADVANCED 구조화 생성 명령 코드를 구현하고 매핑 테스트를 추가한다**
+- [x] **Step 1: ADVANCED 구조화 생성 명령 코드를 구현하고 매핑 테스트를 추가한다**
 
 `advanced.triggered=true`, `primaryEvaluationArea=CALCULATION`, `primaryTargetStage=EXECUTE`와 분포 배열 fixture를 만들고 다음을 검증한다.
 
@@ -529,27 +529,27 @@ assertThat(command.specification().targetDiagnosticTypes())
 assertThat(command.personalizedEvidence()).isEqualTo(expectedEvidence);
 ```
 
-- [ ] **Step 2: ADVANCED 및 전체 단계 순서 테스트를 실행한다**
+- [x] **Step 2: ADVANCED 및 전체 단계 순서 테스트를 실행한다**
 
 Run: `./gradlew test --tests '*PersonalizedProblemGenerationPlanningServiceTest.advanced*'`
 
 Expected: PASS.
 
-- [ ] **Step 3: 분석 enum을 문제 enum으로 이름 기반 명시 변환한다**
+- [x] **Step 3: 분석 enum을 문제 enum으로 이름 기반 명시 변환한다**
 
 분석 Entity를 참조하지 않고 DTO가 제공한 `DiagnosticStage`를 private mapper에서 `DiagnosticType.valueOf(stage.name())`로 변환한다. 두 enum 값이 달라지면 조용히 무시하지 않고 테스트/실행이 실패하게 한다.
 
-- [ ] **Step 4: 모든 ADVANCED 슬롯을 AI 명령으로 만든다**
+- [x] **Step 4: 모든 ADVANCED 슬롯을 AI 명령으로 만든다**
 
 주 ORIGIN은 유사 단계와 같은 첫 reference question을 사용한다. `PERSONALIZED_APPLICATION`, `difficulty=high`, `QuestionType.STEP_FILL` query로 얻은 검색 결과는 EXAMPLE reference로만 넣고 BANK_REUSE 슬롯으로 바꾸지 않는다. RAG 비활성/실패 시 ORIGIN만으로 AI 명령을 만든다. `customStage=ADVANCED`, `originQuestionId=originId`, `sourceQuestionId=null`을 보존한다.
 
-- [ ] **Step 5: ADVANCED와 전체 단계 순서 테스트를 통과시킨다**
+- [x] **Step 5: ADVANCED와 전체 단계 순서 테스트를 통과시킨다**
 
 Run: `./gradlew test --tests '*PersonalizedProblemGenerationPlanningServiceTest' --tests '*PersonalizedProblemGenerationPromptTest'`
 
 Expected: PASS.
 
-- [ ] **Step 6: 커밋한다**
+- [x] **Step 6: 커밋한다**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningService.java src/test/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningServiceTest.java

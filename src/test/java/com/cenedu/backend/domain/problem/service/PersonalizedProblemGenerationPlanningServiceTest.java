@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.math.BigDecimal;
 
 import com.cenedu.backend.domain.analysis.reissue.ReissueProposalResponse;
 import com.cenedu.backend.domain.curriculum.dto.response.CurriculumPathResponse;
@@ -26,6 +27,9 @@ import com.cenedu.backend.domain.problem.config.ProblemRagProperties;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole;
 import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.global.common.enums.QuestionType;
+import com.cenedu.backend.global.common.enums.EvaluationArea;
+import com.cenedu.backend.domain.analysis.entity.enums.DiagnosticStage;
+import com.cenedu.backend.domain.problem.entity.enums.DiagnosticType;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -117,6 +121,32 @@ class PersonalizedProblemGenerationPlanningServiceTest {
         assertThat(query.getValue().excludedQuestionIds()).containsExactly(999L);
     }
 
+    @Test
+    void advancedCommandCarriesStructuredWeaknessEvidence() {
+        ProblemBankSnapshotQueryService snapshots = mock(ProblemBankSnapshotQueryService.class);
+        when(snapshots.getSnapshots(List.of(901L))).thenReturn(List.of(
+                new BankSnapshotResult(901L, snapshot(20L), true, List.of())));
+        var service = new PersonalizedProblemGenerationPlanningService(snapshots);
+
+        var plan = service.plan(UUID.randomUUID(), advancedProposal(),
+                List.of(new CustomProblemGenerationItemRequest(20L, 0, 0, 1)),
+                Map.of(20L, path(20L)));
+
+        var command = plan.slots().getFirst().generationCommand();
+        assertThat(command.purpose()).isEqualTo(
+                com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose.PERSONALIZED_APPLICATION);
+        assertThat(command.specification().difficulty()).isEqualTo("high");
+        assertThat(command.specification().questionType()).isEqualTo(QuestionType.STEP_FILL);
+        assertThat(command.specification().requiresSolutionStructure()).isTrue();
+        assertThat(command.specification().targetDiagnosticTypes())
+                .containsExactly(DiagnosticType.EXECUTE);
+        assertThat(command.personalizedEvidence().historicalIncorrectItemCount()).isEqualTo(4);
+        assertThat(command.personalizedEvidence().evaluationAreaEvidence().getFirst().evaluationArea())
+                .isEqualTo(EvaluationArea.CALCULATION);
+        assertThat(command.personalizedEvidence().diagnosticEvidence().getFirst().diagnosticType())
+                .isEqualTo(DiagnosticType.EXECUTE);
+    }
+
     private static ReissueProposalResponse proposal() {
         return new ReissueProposalResponse(List.of(
                 new ReissueProposalResponse.SubUnitProposal(20L, "소단원20", null, null,
@@ -140,6 +170,21 @@ class PersonalizedProblemGenerationPlanningServiceTest {
                                 List.of(999L)),
                         new ReissueProposalResponse.AdvancedProposal(false, 0, 0, 0, 0,
                                 null, null, List.of(), List.of()))));
+    }
+
+    private static ReissueProposalResponse advancedProposal() {
+        return new ReissueProposalResponse(List.of(
+                new ReissueProposalResponse.SubUnitProposal(20L, "소단원20", null, null,
+                        new ReissueProposalResponse.ReviewProposal(0, 0, List.of()),
+                        new ReissueProposalResponse.SimilarProposal(0, 0, "mid",
+                                List.of(new ReissueProposalResponse.ReferenceQuestion(901L, 2, null)),
+                                List.of()),
+                        new ReissueProposalResponse.AdvancedProposal(true, 1, 1, 4, 2,
+                                EvaluationArea.CALCULATION, DiagnosticStage.EXECUTE,
+                                List.of(new ReissueProposalResponse.EvaluationAreaEvidence(
+                                        EvaluationArea.CALCULATION, 5, 2, BigDecimal.valueOf(.4))),
+                                List.of(new ReissueProposalResponse.DiagnosticStageEvidence(
+                                        DiagnosticStage.EXECUTE, 5, 2, BigDecimal.valueOf(.4)))))));
     }
 
     private static RetrievedProblemReference retrieved(long questionId) {
