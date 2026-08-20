@@ -6,7 +6,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 import com.cenedu.backend.domain.analysis.repository.row.CustomLearningSessionRow;
-import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.support.PostgresTestcontainer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

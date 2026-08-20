@@ -3,7 +3,7 @@ package com.cenedu.backend.domain.analysis.repository.row;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
-import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.global.common.enums.CustomStage;
 
 /**
  * 맞춤 학습 한 회차의 전체 결과와 단계별 결과를 함께 담는 조회 행.
