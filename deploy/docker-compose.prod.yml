@@ -24,9 +24,15 @@ services:
     image: pgvector/pgvector:pg17
     container_name: cen-edu-postgres
     restart: always
-    # 상한이 없으면 페이지 캐시를 계속 물고 있어 실측 237MB 까지 올라간다. 상한을 걸면
-    # 45MB 선에서 돈다 — t3.micro(1GB) 에서 백엔드와 나눠 쓰려면 눌러 둬야 한다.
-    mem_limit: 256m
+    # t3.micro 실측: 상한 256m 에서 119MB 를 썼다. shared_buffers 기본값 128MB 가
+    # 이 메모리에는 과해서 함께 낮춘다. 시연 규모(동시 접속 한 자릿수)에는 넉넉하다.
+    mem_limit: 192m
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=50
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USERNAME}
@@ -51,8 +57,12 @@ services:
     restart: always
     # 반드시 걸어야 한다. JAVA_OPTS 의 MaxRAMPercentage=75 는 상한이 없으면 호스트 전체를
     # 기준으로 잡아, t3.micro 에서 힙만 768MB 를 노린다. 그러면 PostgreSQL 과 부딪혀
-    # 커널이 자바를 OOM 으로 죽인다. 512m 이면 힙 384MB, 실측 사용량 481MB 다.
-    mem_limit: 512m
+    # 커널이 자바를 OOM 으로 죽인다.
+    #
+    # 384m 인 이유: t3.micro(총 913MB) 에서 512m 로 띄웠더니 컨테이너 합계 530MB +
+    # OS·도커 데몬 116MB 가 물리 메모리를 넘겨 스왑 410MB 를 썼다. 스왑에 얹힌 힙은
+    # 오래 쉬었다 열 때 첫 응답을 느리게 만든다. 384m 이면 힙 288MB 다.
+    mem_limit: 384m
     env_file:
       - .env
     environment:
@@ -80,7 +90,8 @@ services:
     image: ${DOCKERHUB_USER}/cen-edu-frontend:${FRONTEND_TAG}
     container_name: cen-edu-frontend
     restart: always
-    mem_limit: 64m
+    # 정적 서빙 + 프록시라 실측 2.5MB 다. 32m 도 과하게 잡은 값이다.
+    mem_limit: 32m
     ports:
       - "80:80"
     depends_on:
