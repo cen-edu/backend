@@ -10,10 +10,14 @@ import java.util.UUID;
 
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationWorkItem;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationSlotSource;
+import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationItemResult;
+import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationJobResult;
 import com.cenedu.backend.domain.problem.entity.ProblemGenerationItem;
 import com.cenedu.backend.domain.problem.entity.ProblemGenerationJob;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationJobStatus;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationJobType;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringSessionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemGenerationItemRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemGenerationJobRepository;
@@ -58,6 +62,37 @@ class ProblemGenerationJobServiceTest {
         service.succeed(workItem);
 
         assertThat(job.getStatus()).isEqualTo(GenerationJobStatus.PARTIALLY_FAILED);
+    }
+
+    @Test
+    @DisplayName("Job 조회 결과에 맞춤 단계와 기준 문항을 매핑한다")
+    void mapsCustomMetadataToResult() {
+        ProblemGenerationItem item = ProblemGenerationItem.create(
+                5L, 1, UUID.randomUUID(), 11L,
+                com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose
+                        .PERSONALIZED_APPLICATION,
+                1, "{}", CustomStage.ADVANCED, 30L);
+        ReflectionTestUtils.setField(item, "id", 9L);
+        ProblemGenerationJob job = ProblemGenerationJob.create(
+                7L, UUID.randomUUID(), GenerationJobType.PERSONALIZED);
+        ReflectionTestUtils.setField(job, "id", 5L);
+        ProblemGenerationItemRepository itemRepository = mock(ProblemGenerationItemRepository.class);
+        when(itemRepository.findAllByJobIdOrderByItemOrder(5L)).thenReturn(List.of(item));
+        ProblemGenerationJobService service = new ProblemGenerationJobService(
+                mock(ProblemGenerationJobRepository.class),
+                itemRepository,
+                mock(ProblemAuthoringSessionRepository.class),
+                new ProblemAuthoringJsonCodec(new ObjectMapper()),
+                mock(ProblemAuthoringVersionService.class));
+
+        ProblemGenerationJobResult jobResult = ReflectionTestUtils.invokeMethod(
+                service, "toResult", job);
+        ProblemGenerationItemResult result = jobResult.items().getFirst();
+
+        assertThat(result).isNotNull();
+        assertThat(result.source()).isEqualTo(GenerationSlotSource.AI_GENERATION);
+        assertThat(result.originQuestionId()).isEqualTo(30L);
+        assertThat(result.customStage()).isEqualTo(CustomStage.ADVANCED);
     }
 
     private ProblemGenerationItem item(Long id, int order) {

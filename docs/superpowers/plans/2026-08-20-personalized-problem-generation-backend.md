@@ -317,7 +317,7 @@ git commit -m "feat : 응용 문제 생성에 구조화된 취약 근거 전달"
 - Modify: `src/test/java/com/cenedu/backend/domain/problem/service/ProblemGenerationJobServiceTest.java`
 - Create: `src/test/java/com/cenedu/backend/domain/problem/repository/ProblemGenerationItemRepositoryTest.java`
 
-- [ ] **Step 1: 슬롯·Entity·결과 메타데이터와 migration을 구현하고 round-trip 테스트를 추가한다**
+- [x] **Step 1: 슬롯·Entity·결과 메타데이터와 migration을 구현하고 round-trip 테스트를 추가한다**
 
 검증할 조합은 다음과 같다.
 
@@ -327,13 +327,13 @@ git commit -m "feat : 응용 문제 생성에 구조화된 취약 근거 전달"
 - SIMILAR의 BANK_REUSE는 `sourceQuestionId != null`, AI는 `originQuestionId != null`
 - ADVANCED는 `AI_GENERATION`, `originQuestionId != null`
 
-- [ ] **Step 2: 생성 Job 메타데이터 테스트를 실행한다**
+- [x] **Step 2: 생성 Job 메타데이터 테스트를 실행한다**
 
 Run: `./gradlew test --tests '*ProblemGenerationPlanTest' --tests '*ProblemGenerationJobServiceTest'`
 
 Expected: PASS.
 
-- [ ] **Step 3: 슬롯·Entity·결과 계약에 메타데이터를 추가한다**
+- [x] **Step 3: 슬롯·Entity·결과 계약에 메타데이터를 추가한다**
 
 `ProblemGenerationSlotPlan` canonical 필드는 아래 순서로 고정한다.
 
@@ -350,7 +350,7 @@ ProblemGenerationCommand generationCommand
 
 기존 4/5/6인자 편의 생성자는 `originQuestionId=null`, `customStage=null`로 유지한다. `ProblemGenerationItem`에는 `@Enumerated STRING customStage`, `originQuestionId`를 추가하고 기존 factory는 null 메타데이터로 위임한다. 맞춤 계획 저장용 factory overload는 단계와 ORIGIN을 필수 인자로 받는다.
 
-- [ ] **Step 4: Job 저장과 조회 매핑을 확장한다**
+- [x] **Step 4: Job 저장과 조회 매핑을 확장한다**
 
 `ProblemGenerationJobService#createPlanned`가 BANK/AI 모두 `slot.customStage()`와 `slot.originQuestionId()`를 Entity에 전달한다. `toResult`는 다음 필드를 반환한다.
 
@@ -361,7 +361,7 @@ GenerationSlotSource source, Long sourceQuestionId,
 Long originQuestionId, CustomStage customStage
 ```
 
-- [ ] **Step 5: 새 Flyway migration을 추가한다**
+- [x] **Step 5: 새 Flyway migration을 추가한다**
 
 ```sql
 ALTER TABLE problem_generation_item ADD COLUMN custom_stage VARCHAR(20);
@@ -376,13 +376,13 @@ CREATE INDEX idx_problem_generation_item_origin_question
 
 Job 유형과 단계 조합은 item 테이블만으로 job type을 알 수 없으므로 `ProblemGenerationPlan`/`ProblemGenerationJobService`에서 검증한다. 기존 migration은 수정하지 않는다.
 
-- [ ] **Step 6: PostgreSQL 저장 round-trip과 단위 테스트를 통과시킨다**
+- [x] **Step 6: PostgreSQL 저장 round-trip과 단위 테스트를 통과시킨다**
 
 Run: `./gradlew test --tests '*ProblemGenerationPlanTest' --tests '*ProblemGenerationJobServiceTest' --tests '*ProblemGenerationItemRepositoryTest'`
 
 Expected: PASS, Testcontainers PostgreSQL에서 `CUSTOM_STAGE`와 ORIGIN FK 저장/조회 확인.
 
-- [ ] **Step 7: 커밋한다**
+- [x] **Step 7: 커밋한다**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/authoring/generation/ProblemGenerationSlotPlan.java src/main/java/com/cenedu/backend/domain/problem/authoring/generation/ProblemGenerationPlan.java src/main/java/com/cenedu/backend/domain/problem/authoring/generation/ProblemGenerationItemResult.java src/main/java/com/cenedu/backend/domain/problem/service/ProblemGenerationJobService.java src/main/resources/db/migration/V20260820_1200__problem_add_custom_generation_metadata.sql src/test/java/com/cenedu/backend/domain/problem/authoring/generation/ProblemGenerationPlanTest.java src/test/java/com/cenedu/backend/domain/problem/service/ProblemGenerationJobServiceTest.java src/test/java/com/cenedu/backend/domain/problem/repository/ProblemGenerationItemRepositoryTest.java
