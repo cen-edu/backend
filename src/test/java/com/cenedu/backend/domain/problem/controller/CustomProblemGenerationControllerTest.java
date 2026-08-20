@@ -13,6 +13,8 @@ import com.cenedu.backend.domain.problem.service.CustomProblemGenerationService;
 import com.cenedu.backend.domain.problem.dto.request.CustomProblemGenerationRequest;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationJobStatus;
 import com.cenedu.backend.global.common.enums.UserRole;
+import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.security.JwtProvider;
 import com.cenedu.backend.support.PostgresTestcontainer;
 import org.junit.jupiter.api.Test;
@@ -69,5 +71,42 @@ class CustomProblemGenerationControllerTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType("application/json").content("{}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void domainLimitErrorUsesCommonBadRequestEnvelope() throws Exception {
+        when(service.start(eq(7L), any(CustomProblemGenerationRequest.class)))
+                .thenThrow(new BusinessException(ErrorCode.CUSTOM_PROBLEM_TOTAL_LIMIT_EXCEEDED));
+        String token = jwtProvider.issueAccessToken(7L, UserRole.TEACHER).value();
+
+        mockMvc.perform(post("/api/teacher/custom-problems/generate/async")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content("""
+                                {"clientRequestId":"00000000-0000-0000-0000-000000000001",
+                                 "sourceAssignmentId":120,"studentId":35,
+                                 "items":[{"subUnitId":20,"reviewCount":1,"similarCount":1,"advancedCount":1}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("CUSTOM_PROBLEM_TOTAL_LIMIT_EXCEEDED"));
+    }
+
+    @Test
+    void existingAnalysisErrorCodePassesThroughCommonEnvelope() throws Exception {
+        when(service.start(eq(7L), any(CustomProblemGenerationRequest.class)))
+                .thenThrow(new BusinessException(ErrorCode.ANALYSIS_REISSUE_NOT_GRADED));
+        String token = jwtProvider.issueAccessToken(7L, UserRole.TEACHER).value();
+
+        mockMvc.perform(post("/api/teacher/custom-problems/generate/async")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content("""
+                                {"clientRequestId":"00000000-0000-0000-0000-000000000001",
+                                 "sourceAssignmentId":120,"studentId":35,
+                                 "items":[{"subUnitId":20,"reviewCount":1,"similarCount":1,"advancedCount":1}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("ANALYSIS_REISSUE_NOT_GRADED"));
     }
 }
