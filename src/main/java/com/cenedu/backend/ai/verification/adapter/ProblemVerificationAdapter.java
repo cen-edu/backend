@@ -122,7 +122,9 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
         EditVerificationContext editContext = editContext(request);
         List<VerificationFinding> findings = new ArrayList<>();
 
-        findings.add(isolate(VerificationCheckType.CORRECTNESS, () -> correctness(snapshot)));
+        VerificationFinding correctnessFinding = isolate(
+                VerificationCheckType.CORRECTNESS, () -> correctness(snapshot));
+        findings.add(correctnessFinding);
         findings.add(isolate(VerificationCheckType.ANSWER_CONSISTENCY,
                 () -> structuralConsistencyCheck.check(snapshot)));
         // 기대 유형이 없으면 Finding 을 만들지 않는다. 여기서 NOT_APPLICABLE 을 내면 같은
@@ -137,14 +139,21 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
                 () -> expectationChecks.evaluationArea(snapshot, request.expectation())));
         findings.add(isolate(VerificationCheckType.DIAGNOSTIC_TYPE,
                 () -> expectationChecks.diagnosticType(snapshot, request.expectation())));
-        // 원본 검사는 Finding 을 여러 건 낼 수 있다. RUBRIC_QUALITY 는 항상 1건 포함된다.
-        findings.addAll(isolateMany(
-                List.of(VerificationCheckType.ANSWER_CONSISTENCY,
-                        VerificationCheckType.CURRICULUM_ALIGNMENT,
-                        VerificationCheckType.RUBRIC_QUALITY),
-                () -> contentIntegrityChecker.check(snapshot,
-                        request.expectation() == null
-                                ? null : request.expectation().expectedCurriculum())));
+        // Solver 공급자·응답 오류 뒤에 같은 공급자를 다시 호출하면 비용과 지연만 늘어난다.
+        // Java 기반 검사는 계속 수행하고, 수행하지 않은 후속 LLM 항목은 ERROR로 명시한다.
+        if (correctnessChecker.requiresSolver(snapshot)
+                && correctnessFinding.status() == VerificationFindingStatus.ERROR) {
+            findings.addAll(skippedContentIntegrityFindings());
+        } else {
+            // 원본 검사는 Finding 을 여러 건 낼 수 있다. RUBRIC_QUALITY 는 항상 1건 포함된다.
+            findings.addAll(isolateMany(
+                    List.of(VerificationCheckType.ANSWER_CONSISTENCY,
+                            VerificationCheckType.CURRICULUM_ALIGNMENT,
+                            VerificationCheckType.RUBRIC_QUALITY),
+                    () -> contentIntegrityChecker.check(snapshot,
+                            request.expectation() == null
+                                    ? null : request.expectation().expectedCurriculum())));
+        }
         findings.add(Findings.notApplicable(VerificationCheckType.ASSET_CONSISTENCY,
                 "CONTENT 범위에서는 자산을 판정하지 않습니다."));
         findings.add(isolate(VerificationCheckType.EDIT_REQUIREMENT,
@@ -152,6 +161,17 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
         findings.add(isolate(VerificationCheckType.PROTECTED_SCOPE,
                 () -> editScopeChecks.protectedScope(snapshot, editContext)));
         return List.copyOf(findings);
+    }
+
+    /** 선행 Solver 오류로 호출하지 않은 원본 LLM 검사 항목을 판정 미완료로 남긴다. */
+    private List<VerificationFinding> skippedContentIntegrityFindings() {
+        return List.of(
+                Findings.error(VerificationCheckType.ANSWER_CONSISTENCY,
+                        "선행 정확성 검증 오류로 원본 검사를 생략했습니다.", null),
+                Findings.error(VerificationCheckType.CURRICULUM_ALIGNMENT,
+                        "선행 정확성 검증 오류로 원본 검사를 생략했습니다.", null),
+                Findings.error(VerificationCheckType.RUBRIC_QUALITY,
+                        "선행 정확성 검증 오류로 원본 검사를 생략했습니다.", null));
     }
 
     /**

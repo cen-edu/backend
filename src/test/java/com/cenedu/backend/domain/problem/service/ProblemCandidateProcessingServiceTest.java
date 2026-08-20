@@ -141,6 +141,23 @@ class ProblemCandidateProcessingServiceTest {
     }
 
     @Test
+    @DisplayName("검증 처리 ERROR는 같은 후보를 다시 검증하지 않는다")
+    void doesNotRepeatVerificationAfterProcessingError() {
+        when(verificationPort.verify(any())).thenAnswer(invocation -> {
+            var request = (com.cenedu.backend.domain.problem.authoring.verification
+                    .ProblemVerificationRequest) invocation.getArgument(0);
+            return new ProblemVerificationReport(
+                    request.verificationRequestId(), request.scope(),
+                    VerificationOverallStatus.ERROR, List.of());
+        });
+
+        CandidateProcessingResult result = service.process(request());
+
+        assertThat(result.status()).isEqualTo(VerificationOverallStatus.ERROR);
+        verify(verificationPort).verify(any());
+    }
+
+    @Test
     @DisplayName("semantic deterministic 실패는 저장과 독립 검증을 모두 건너뛴다")
     void rejectsSemanticCandidateBeforeRegistration() {
         var semanticCandidate = new ProblemCandidateDraft(
