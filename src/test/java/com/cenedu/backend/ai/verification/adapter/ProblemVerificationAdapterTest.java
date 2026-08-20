@@ -159,6 +159,21 @@ class ProblemVerificationAdapterTest {
     }
 
     @Test
+    @DisplayName("검증 Solver가 Unicode 수식으로 답해도 LaTeX 정답과 같으면 PASSED다")
+    void unicodeMathAnswerMatchesLatexAnswer() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", "2²×3²×7"),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(statusOf(report, VerificationCheckType.CORRECTNESS))
+                .isEqualTo(VerificationFindingStatus.PASS);
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.PASSED);
+    }
+
+    @Test
     @DisplayName("Solver 가 다른 보기를 고르면 FAILED + ANSWER_INCORRECT 다")
     void wrongChoiceFails() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.multipleChoiceSnapshot();

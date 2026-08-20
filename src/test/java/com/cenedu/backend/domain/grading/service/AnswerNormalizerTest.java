@@ -20,4 +20,10 @@ class AnswerNormalizerTest {
         assertThat(normalizer.normalize("\\(\\frac{40}{3}\\)", null)).isEqualTo("40/3");
         assertThat(normalizer.normalize("$$\\frac{40}{3}$$", null)).isEqualTo("40/3");
     }
+
+    @Test
+    void 정규화는_멱등이다() {
+        String normalized = normalizer.normalize("$2²×3³$", null);
+        assertThat(normalizer.normalize(normalized, null)).isEqualTo(normalized);
+    }
 }
