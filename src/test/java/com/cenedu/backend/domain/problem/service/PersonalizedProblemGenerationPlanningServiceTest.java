@@ -78,6 +78,8 @@ class PersonalizedProblemGenerationPlanningServiceTest {
         ProblemBankSnapshotQueryService snapshots = mock(ProblemBankSnapshotQueryService.class);
         when(snapshots.getSnapshots(List.of(901L))).thenReturn(List.of(
                 new BankSnapshotResult(901L, snapshot(20L), true, List.of())));
+        when(snapshots.getSnapshots(List.of(777L))).thenReturn(List.of(
+                new BankSnapshotResult(777L, snapshot(20L), true, List.of())));
         when(snapshots.getSnapshots(List.of(301L, 302L, 303L))).thenReturn(List.of(
                 new BankSnapshotResult(301L, snapshot(20L), true, List.of()),
                 new BankSnapshotResult(302L, snapshot(20L), true, List.of()),
@@ -147,6 +149,40 @@ class PersonalizedProblemGenerationPlanningServiceTest {
                 .isEqualTo(DiagnosticType.EXECUTE);
     }
 
+    @Test
+    void advancedRagResultsAreExamplesAndAllStagesKeepTheirOrder() {
+        ProblemBankSnapshotQueryService snapshots = mock(ProblemBankSnapshotQueryService.class);
+        when(snapshots.getSnapshots(List.of(101L))).thenReturn(List.of(
+                new BankSnapshotResult(101L, snapshot(20L), true, List.of())));
+        when(snapshots.getSnapshots(List.of(901L))).thenReturn(List.of(
+                new BankSnapshotResult(901L, snapshot(20L), true, List.of())));
+        when(snapshots.getSnapshots(List.of(777L))).thenReturn(List.of(
+                new BankSnapshotResult(777L, snapshot(20L), true, List.of())));
+        var retrieval = mock(ProblemReferenceRetrievalPort.class);
+        var retrievalProvider = mock(ObjectProvider.class);
+        var traceProvider = mock(ObjectProvider.class);
+        var properties = mock(ProblemRagProperties.class);
+        when(retrievalProvider.getIfAvailable()).thenReturn(retrieval);
+        when(properties.enabled()).thenReturn(true);
+        when(properties.candidateLimit()).thenReturn(40);
+        when(retrieval.retrieve(any())).thenReturn(List.of(retrieved(777L)));
+        var service = new PersonalizedProblemGenerationPlanningService(
+                snapshots, retrievalProvider, traceProvider, properties);
+
+        var plan = service.plan(UUID.randomUUID(), fullStageProposal(),
+                List.of(new CustomProblemGenerationItemRequest(20L, 1, 1, 1)),
+                Map.of(20L, path(20L)));
+
+        assertThat(plan.slots()).extracting(ProblemGenerationSlotPlan::customStage)
+                .containsExactly(CustomStage.REVIEW, CustomStage.SIMILAR, CustomStage.ADVANCED);
+        var advancedCommand = plan.slots().get(2).generationCommand();
+        assertThat(advancedCommand.references()).extracting(reference -> reference.role())
+                .containsExactly(GenerationReferenceRole.ORIGIN, GenerationReferenceRole.EXAMPLE);
+        assertThat(advancedCommand.references().get(1).sourceQuestionId()).isEqualTo(777L);
+        assertThat(advancedCommand.purpose()).isEqualTo(
+                com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose.PERSONALIZED_APPLICATION);
+    }
+
     private static ReissueProposalResponse proposal() {
         return new ReissueProposalResponse(List.of(
                 new ReissueProposalResponse.SubUnitProposal(20L, "소단원20", null, null,
@@ -185,6 +221,16 @@ class PersonalizedProblemGenerationPlanningServiceTest {
                                         EvaluationArea.CALCULATION, 5, 2, BigDecimal.valueOf(.4))),
                                 List.of(new ReissueProposalResponse.DiagnosticStageEvidence(
                                         DiagnosticStage.EXECUTE, 5, 2, BigDecimal.valueOf(.4)))))));
+    }
+
+    private static ReissueProposalResponse fullStageProposal() {
+        var advanced = advancedProposal().subcategories().getFirst().advanced();
+        return new ReissueProposalResponse(List.of(
+                new ReissueProposalResponse.SubUnitProposal(20L, "소단원20", null, null,
+                        new ReissueProposalResponse.ReviewProposal(1, 1, List.of(101L)),
+                        new ReissueProposalResponse.SimilarProposal(1, 1, "mid",
+                                List.of(new ReissueProposalResponse.ReferenceQuestion(901L, 2, null)),
+                                List.of()), advanced)));
     }
 
     private static RetrievedProblemReference retrieved(long questionId) {
