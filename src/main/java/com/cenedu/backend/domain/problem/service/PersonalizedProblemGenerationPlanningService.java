@@ -36,6 +36,7 @@ import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /** 최신 재출제 제안과 교사 수량을 실행 가능한 맞춤 생성 계획으로 변환한다. */
 @Service
@@ -50,6 +51,7 @@ public class PersonalizedProblemGenerationPlanningService {
     }
 
     /** RAG 검색과 fallback 추적 Port를 선택적으로 연결해 계획기를 구성한다. */
+    @Autowired
     public PersonalizedProblemGenerationPlanningService(
             ProblemBankSnapshotQueryService snapshotQueryService,
             ObjectProvider<ProblemReferenceRetrievalPort> retrievalProvider,
