@@ -17,6 +17,12 @@ import com.cenedu.backend.domain.problem.authoring.generation.GenerationSlotSour
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationPlan;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationSlotPlan;
+import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceQuery;
+import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceRetrievalPort;
+import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemRetrievalTracePort;
+import com.cenedu.backend.domain.problem.authoring.retrieval.RetrievalFallbackReason;
+import com.cenedu.backend.domain.problem.authoring.retrieval.RetrievedProblemReference;
+import com.cenedu.backend.domain.problem.config.ProblemRagProperties;
 import com.cenedu.backend.domain.problem.authoring.snapshot.BankSnapshotResult;
 import com.cenedu.backend.domain.problem.dto.request.CustomProblemGenerationItemRequest;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationJobType;
@@ -25,14 +31,30 @@ import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.ObjectProvider;
 
 /** 최신 재출제 제안과 교사 수량을 실행 가능한 맞춤 생성 계획으로 변환한다. */
 @Service
 public class PersonalizedProblemGenerationPlanningService {
     private final ProblemBankSnapshotQueryService snapshotQueryService;
+    private final ObjectProvider<ProblemReferenceRetrievalPort> retrievalProvider;
+    private final ObjectProvider<ProblemRetrievalTracePort> traceProvider;
+    private final ProblemRagProperties ragProperties;
 
     public PersonalizedProblemGenerationPlanningService(ProblemBankSnapshotQueryService snapshotQueryService) {
+        this(snapshotQueryService, null, null, null);
+    }
+
+    /** RAG 검색과 fallback 추적 Port를 선택적으로 연결해 계획기를 구성한다. */
+    public PersonalizedProblemGenerationPlanningService(
+            ProblemBankSnapshotQueryService snapshotQueryService,
+            ObjectProvider<ProblemReferenceRetrievalPort> retrievalProvider,
+            ObjectProvider<ProblemRetrievalTracePort> traceProvider,
+            ProblemRagProperties ragProperties) {
         this.snapshotQueryService = snapshotQueryService;
+        this.retrievalProvider = retrievalProvider;
+        this.traceProvider = traceProvider;
+        this.ragProperties = ragProperties;
     }
 
     /** 교육과정 순서와 REVIEW·SIMILAR·ADVANCED 단계 순서를 보존한 계획을 만든다. */
@@ -45,7 +67,9 @@ public class PersonalizedProblemGenerationPlanningService {
         Map<Long, CustomProblemGenerationItemRequest> requests = toRequestMap(items);
         List<ProblemGenerationSlotPlan> slots = new ArrayList<>();
         appendReviewSlots(slots, proposal, requests);
-        appendSimilarSlots(slots, proposal, requests, curriculumPaths);
+        appendSimilarSlots(slots, proposal, requests, curriculumPaths,
+                slots.stream().map(ProblemGenerationSlotPlan::sourceQuestionId)
+                        .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet()));
         appendAdvancedSlots(slots, proposal, requests, curriculumPaths);
         return new ProblemGenerationPlan(clientRequestId, GenerationJobType.PERSONALIZED, reindex(slots));
     }
@@ -94,14 +118,112 @@ public class PersonalizedProblemGenerationPlanningService {
     private void appendSimilarSlots(List<ProblemGenerationSlotPlan> slots,
                                     ReissueProposalResponse proposal,
                                     Map<Long, CustomProblemGenerationItemRequest> requests,
-                                    Map<Long, CurriculumPathResponse> paths) {
+                                    Map<Long, CurriculumPathResponse> paths,
+                                    java.util.Set<Long> alreadyReusedIds) {
         for (ReissueProposalResponse.SubUnitProposal subUnit : proposal.subcategories()) {
             CustomProblemGenerationItemRequest request = requests.get(subUnit.subUnitId());
             if (request == null) continue;
-            for (int i = 0; i < request.similarCount(); i++) {
-                slots.add(aiSlot(subUnit, paths.get(subUnit.subUnitId()), CustomStage.SIMILAR,
-                        GenerationPurpose.PERSONALIZED_SIMILAR_SHORTAGE));
+            appendSimilarForSubUnit(slots, subUnit, request.similarCount(), paths.get(subUnit.subUnitId()),
+                    alreadyReusedIds);
+        }
+    }
+
+    /** 한 소단원의 ORIGIN·검색 결과를 은행 재사용과 AI 부족분으로 분할한다. */
+    private void appendSimilarForSubUnit(List<ProblemGenerationSlotPlan> slots,
+                                         ReissueProposalResponse.SubUnitProposal subUnit,
+                                         int requestedCount, CurriculumPathResponse path,
+                                         java.util.Set<Long> alreadyReusedIds) {
+        if (requestedCount == 0) return;
+        ReissueProposalResponse.SimilarProposal similar = subUnit.similar();
+        if (similar.referenceQuestions() == null || similar.referenceQuestions().isEmpty()) {
+            throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
+        }
+        long originId = similar.referenceQuestions().getFirst().questionId();
+        List<Long> referenceIds = similar.referenceQuestions().stream()
+                .map(ReissueProposalResponse.ReferenceQuestion::questionId).distinct().toList();
+        Map<Long, BankSnapshotResult> references = snapshotsById(referenceIds);
+        BankSnapshotResult origin = references.get(originId);
+        if (origin == null || !origin.reusable()) {
+            throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
+        }
+        CurriculumScope curriculum = curriculum(path);
+        UUID retrievalRequestId = UUID.randomUUID();
+        List<RetrievedProblemReference> retrieved = retrieveSimilar(subUnit, similar, requestedCount,
+                curriculum, originId, origin.snapshot(), alreadyReusedIds, retrievalRequestId);
+        List<RetrievedProblemReference> selected = retrieved.stream().limit(Math.min(4, requestedCount)).toList();
+        List<Long> selectedIds = selected.stream().map(RetrievedProblemReference::questionId).distinct().toList();
+        Map<Long, BankSnapshotResult> selectedSnapshots = snapshotsById(selectedIds);
+        List<GenerationReference> examples = new ArrayList<>();
+        examples.add(new GenerationReference(GenerationReferenceRole.ORIGIN, originId, origin.snapshot()));
+        for (Long referenceId : referenceIds) {
+            if (referenceId.equals(originId)) continue;
+            BankSnapshotResult reference = references.get(referenceId);
+            if (reference != null && reference.reusable()) {
+                examples.add(new GenerationReference(GenerationReferenceRole.EXAMPLE,
+                        referenceId, reference.snapshot()));
             }
+        }
+        for (RetrievedProblemReference reference : selected) {
+            examples.add(new GenerationReference(GenerationReferenceRole.EXAMPLE,
+                    reference.questionId(), reference.snapshot()));
+        }
+        for (Long questionId : selectedIds) {
+            BankSnapshotResult result = selectedSnapshots.get(questionId);
+            if (result == null || !result.reusable()) continue;
+            slots.add(new ProblemGenerationSlotPlan(1, GenerationSlotSource.BANK_REUSE,
+                    questionId, null, CustomStage.SIMILAR, result.snapshot(),
+                    result.assetStorageKeys(), null));
+            alreadyReusedIds.add(questionId);
+        }
+        int shortage = requestedCount - selectedIds.size();
+        for (int i = 0; i < shortage; i++) {
+            slots.add(aiSlot(subUnit, path, CustomStage.SIMILAR,
+                    GenerationPurpose.PERSONALIZED_SIMILAR_SHORTAGE, originId, curriculum, examples));
+        }
+    }
+
+    /** ORIGIN과 검색 후보 Snapshot을 ID 기준으로 보존한다. */
+    private Map<Long, BankSnapshotResult> snapshotsById(List<Long> ids) {
+        return snapshotQueryService.getSnapshots(ids).stream().collect(
+                java.util.stream.Collectors.toMap(BankSnapshotResult::questionId, value -> value,
+                        (first, second) -> first, LinkedHashMap::new));
+    }
+
+    /** RAG가 꺼졌거나 실패하면 빈 결과로 전환하고 fallback을 기록한다. */
+    private List<RetrievedProblemReference> retrieveSimilar(
+            ReissueProposalResponse.SubUnitProposal subUnit,
+            ReissueProposalResponse.SimilarProposal similar, int requestedCount,
+            CurriculumScope curriculum, long originId, com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 originSnapshot,
+            java.util.Set<Long> alreadyReusedIds, UUID retrievalRequestId) {
+        ProblemReferenceRetrievalPort port = ragProperties != null && ragProperties.enabled()
+                && retrievalProvider != null ? retrievalProvider.getIfAvailable() : null;
+        ProblemReferenceQuery query = new ProblemReferenceQuery(retrievalRequestId,
+                GenerationPurpose.PERSONALIZED_SIMILAR_SHORTAGE, curriculum, QuestionType.STEP_FILL,
+                similar.difficulty(), originId, originSnapshot,
+                ragProperties == null ? 40 : ragProperties.candidateLimit(),
+                Math.min(4, requestedCount), excludedIds(similar, alreadyReusedIds));
+        if (port == null) {
+            recordFallback(query, RetrievalFallbackReason.PORT_UNAVAILABLE);
+            return List.of();
+        }
+        try {
+            return port.retrieve(query);
+        } catch (RuntimeException exception) {
+            recordFallback(query, RetrievalFallbackReason.PROVIDER_FAILURE);
+            return List.of();
+        }
+    }
+
+    private java.util.Set<Long> excludedIds(ReissueProposalResponse.SimilarProposal similar,
+                                            java.util.Set<Long> alreadyReusedIds) {
+        java.util.Set<Long> result = new java.util.HashSet<>(alreadyReusedIds);
+        if (similar.excludedQuestionIds() != null) result.addAll(similar.excludedQuestionIds());
+        return result;
+    }
+
+    private void recordFallback(ProblemReferenceQuery query, RetrievalFallbackReason reason) {
+        if (traceProvider != null && traceProvider.getIfAvailable() != null) {
+            traceProvider.getIfAvailable().recordFallback(query, reason);
         }
     }
 
@@ -129,18 +251,32 @@ public class PersonalizedProblemGenerationPlanningService {
             throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
         }
         long originId = subUnit.similar().referenceQuestions().getFirst().questionId();
-        CurriculumScope curriculum = new CurriculumScope(path.curriculumRevision(), path.schoolLevel(),
-                path.grade(), path.semester() == null ? null : path.semester().intValue(),
-                path.achievementStandardId(), path.subUnitId(),
-                path.majorUnitName(), path.middleUnitName(), path.subUnitName());
+        CurriculumScope curriculum = curriculum(path);
+        return aiSlot(subUnit, path, stage, purpose, originId, curriculum,
+                List.of(new GenerationReference(GenerationReferenceRole.ORIGIN, originId, null)));
+    }
+
+    /** 이미 조회한 ORIGIN과 검색 예시를 사용해 AI 부족분 명령을 만든다. */
+    private ProblemGenerationSlotPlan aiSlot(ReissueProposalResponse.SubUnitProposal subUnit,
+                                             CurriculumPathResponse path, CustomStage stage,
+                                             GenerationPurpose purpose, long originId,
+                                             CurriculumScope curriculum,
+                                             List<GenerationReference> references) {
         String difficulty = stage == CustomStage.ADVANCED ? "high" : subUnit.similar().difficulty();
         GenerationSpecification specification = new GenerationSpecification(
                 QuestionType.STEP_FILL, difficulty, null, List.of());
         ProblemGenerationCommand command = new ProblemGenerationCommand(UUID.randomUUID(), null,
-                purpose, specification, curriculum,
-                List.of(new GenerationReference(GenerationReferenceRole.ORIGIN, originId, null)), List.of());
+                purpose, specification, curriculum, references, List.of());
         return new ProblemGenerationSlotPlan(1, GenerationSlotSource.AI_GENERATION, null,
                 originId, stage, null, Map.of(), command);
+    }
+
+    /** 교육과정 응답을 생성 계약에서 사용하는 범위 객체로 변환한다. */
+    private CurriculumScope curriculum(CurriculumPathResponse path) {
+        if (path == null) throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
+        return new CurriculumScope(path.curriculumRevision(), path.schoolLevel(), path.grade(),
+                path.semester() == null ? null : path.semester().intValue(), path.achievementStandardId(),
+                path.subUnitId(), path.majorUnitName(), path.middleUnitName(), path.subUnitName());
     }
 
     /** 3-pass로 만든 임시 슬롯 번호를 최종 화면 순서 번호로 다시 매긴다. */

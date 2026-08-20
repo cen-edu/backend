@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
 
 import java.util.List;
 import java.util.Map;
@@ -17,9 +19,16 @@ import com.cenedu.backend.domain.problem.dto.request.CustomProblemGenerationItem
 import com.cenedu.backend.domain.problem.entity.enums.QuestionPresentation;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSlotSource;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationSlotPlan;
+import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceQuery;
+import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceRetrievalPort;
+import com.cenedu.backend.domain.problem.authoring.retrieval.RetrievedProblemReference;
+import com.cenedu.backend.domain.problem.config.ProblemRagProperties;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole;
 import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 
 class PersonalizedProblemGenerationPlanningServiceTest {
 
@@ -60,6 +69,54 @@ class PersonalizedProblemGenerationPlanningServiceTest {
                 .isInstanceOf(com.cenedu.backend.global.common.BusinessException.class);
     }
 
+    @Test
+    void similarPrefersFourBankItemsAndCreatesOnlyShortageAiItems() {
+        ProblemBankSnapshotQueryService snapshots = mock(ProblemBankSnapshotQueryService.class);
+        when(snapshots.getSnapshots(List.of(901L))).thenReturn(List.of(
+                new BankSnapshotResult(901L, snapshot(20L), true, List.of())));
+        when(snapshots.getSnapshots(List.of(301L, 302L, 303L))).thenReturn(List.of(
+                new BankSnapshotResult(301L, snapshot(20L), true, List.of()),
+                new BankSnapshotResult(302L, snapshot(20L), true, List.of()),
+                new BankSnapshotResult(303L, snapshot(20L), true, List.of())));
+        var retrieval = mock(ProblemReferenceRetrievalPort.class);
+        var retrievalProvider = mock(ObjectProvider.class);
+        var traceProvider = mock(ObjectProvider.class);
+        var properties = mock(ProblemRagProperties.class);
+        when(retrievalProvider.getIfAvailable()).thenReturn(retrieval);
+        when(properties.enabled()).thenReturn(true);
+        when(properties.candidateLimit()).thenReturn(40);
+        when(retrieval.retrieve(any())).thenReturn(List.of(
+                retrieved(301L), retrieved(302L), retrieved(303L)));
+        var service = new PersonalizedProblemGenerationPlanningService(
+                snapshots, retrievalProvider, traceProvider, properties);
+
+        var plan = service.plan(UUID.randomUUID(), similarProposal(),
+                List.of(new CustomProblemGenerationItemRequest(20L, 0, 5, 0)),
+                Map.of(20L, path(20L)));
+
+        assertThat(plan.slots()).extracting(ProblemGenerationSlotPlan::source)
+                .containsExactly(GenerationSlotSource.BANK_REUSE, GenerationSlotSource.BANK_REUSE,
+                        GenerationSlotSource.BANK_REUSE, GenerationSlotSource.AI_GENERATION,
+                        GenerationSlotSource.AI_GENERATION);
+        assertThat(plan.slots()).filteredOn(slot -> slot.source() == GenerationSlotSource.AI_GENERATION)
+                .allSatisfy(slot -> {
+                    assertThat(slot.sourceQuestionId()).isNull();
+                    assertThat(slot.originQuestionId()).isEqualTo(901L);
+                    assertThat(slot.customStage()).isEqualTo(CustomStage.SIMILAR);
+                    assertThat(slot.generationCommand().references())
+                            .extracting(reference -> reference.role())
+                            .containsExactly(GenerationReferenceRole.ORIGIN,
+                                    GenerationReferenceRole.EXAMPLE,
+                                    GenerationReferenceRole.EXAMPLE,
+                                    GenerationReferenceRole.EXAMPLE);
+                });
+        ArgumentCaptor<ProblemReferenceQuery> query = ArgumentCaptor.forClass(ProblemReferenceQuery.class);
+        verify(retrieval).retrieve(query.capture());
+        assertThat(query.getValue().originQuestionId()).isEqualTo(901L);
+        assertThat(query.getValue().selectionLimit()).isEqualTo(4);
+        assertThat(query.getValue().excludedQuestionIds()).containsExactly(999L);
+    }
+
     private static ReissueProposalResponse proposal() {
         return new ReissueProposalResponse(List.of(
                 new ReissueProposalResponse.SubUnitProposal(20L, "소단원20", null, null,
@@ -72,6 +129,22 @@ class PersonalizedProblemGenerationPlanningServiceTest {
                         new ReissueProposalResponse.SimilarProposal(0, 0, "mid", List.of(), List.of()),
                         new ReissueProposalResponse.AdvancedProposal(false, 0, 0, 0, 0,
                                 null, null, List.of(), List.of()))));
+    }
+
+    private static ReissueProposalResponse similarProposal() {
+        return new ReissueProposalResponse(List.of(
+                new ReissueProposalResponse.SubUnitProposal(20L, "소단원20", null, null,
+                        new ReissueProposalResponse.ReviewProposal(0, 0, List.of()),
+                        new ReissueProposalResponse.SimilarProposal(5, 5, "mid",
+                                List.of(new ReissueProposalResponse.ReferenceQuestion(901L, 2, null)),
+                                List.of(999L)),
+                        new ReissueProposalResponse.AdvancedProposal(false, 0, 0, 0, 0,
+                                null, null, List.of(), List.of()))));
+    }
+
+    private static RetrievedProblemReference retrieved(long questionId) {
+        return new RetrievedProblemReference(questionId, snapshot(20L), .9, 1,
+                "hash-" + questionId, "cluster-" + questionId, java.util.Set.of());
     }
 
     private static CurriculumPathResponse path(long subUnitId) {

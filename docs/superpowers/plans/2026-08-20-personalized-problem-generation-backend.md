@@ -452,7 +452,7 @@ git commit -m "feat : 맞춤 복습 슬롯과 단계 순서 계획"
 - Modify: `src/main/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningService.java`
 - Modify: `src/test/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningServiceTest.java`
 
-- [ ] **Step 1: SIMILAR 검색·제외·은행 우선·AI 부족분 코드를 구현하고 검증 테스트를 추가한다**
+- [x] **Step 1: SIMILAR 검색·제외·은행 우선·AI 부족분 코드를 구현하고 검증 테스트를 추가한다**
 
 다음을 한 테스트 fixture에서 검증한다.
 
@@ -463,13 +463,13 @@ git commit -m "feat : 맞춤 복습 슬롯과 단계 순서 계획"
 - AI 명령 references는 ORIGIN 1개와 나머지 오답/검색 후보 EXAMPLE을 포함한다.
 - AI 슬롯의 `sourceQuestionId=null`, `originQuestionId=ORIGIN ID`, `customStage=SIMILAR`이다.
 
-- [ ] **Step 2: SIMILAR 계획 테스트를 실행한다**
+- [x] **Step 2: SIMILAR 계획 테스트를 실행한다**
 
 Run: `./gradlew test --tests '*PersonalizedProblemGenerationPlanningServiceTest.similar*'`
 
 Expected: PASS.
 
-- [ ] **Step 3: RAG 활성 상태에서 개인화 retrieval query를 만든다**
+- [x] **Step 3: RAG 활성 상태에서 개인화 retrieval query를 만든다**
 
 계획기는 기존 방식과 동일하게 `ObjectProvider<ProblemReferenceRetrievalPort>`와 `ProblemRagProperties`를 주입받는다. query 핵심값은 다음과 같다.
 
@@ -491,17 +491,17 @@ RAG가 비활성/Provider 부재/검색 실패면 검색 결과를 빈 목록으
 
 ORIGIN과 나머지 오답 reference ID는 `ProblemBankSnapshotQueryService#getSnapshots`로 한 번에 조회한다. ORIGIN Snapshot이 누락되거나 재사용 불가하면 `CUSTOM_PROBLEM_SIMILAR_REFERENCE_MISSING`으로 거절한다. 학생 답안 데이터는 이 조회와 명령에 포함하지 않는다.
 
-- [ ] **Step 4: 검색 결과를 BANK_REUSE와 AI 부족분으로 나눈다**
+- [x] **Step 4: 검색 결과를 BANK_REUSE와 AI 부족분으로 나눈다**
 
 검색 결과는 이미 `QuestionSnapshotV1`을 포함하므로 재조회하지 않는다. BANK_REUSE asset이 필요한 경우 `ProblemBankSnapshotQueryService#getSnapshots`로 선택 ID만 조회해 `assetStorageKeys`까지 확보한다. AI 명령은 `GenerationSpecification(STEP_FILL, difficulty, null, List.of())`를 사용한다.
 
-- [ ] **Step 5: SIMILAR 테스트를 통과시킨다**
+- [x] **Step 5: SIMILAR 테스트를 통과시킨다**
 
 Run: `./gradlew test --tests '*PersonalizedProblemGenerationPlanningServiceTest.similar*' --tests '*ProblemGenerationPlanningServiceTest'`
 
 Expected: PASS, 일반 계획기 회귀 없음.
 
-- [ ] **Step 6: 커밋한다**
+- [x] **Step 6: 커밋한다**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningService.java src/test/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningServiceTest.java
