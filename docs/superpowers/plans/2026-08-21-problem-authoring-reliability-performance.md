@@ -389,11 +389,11 @@ Repair 대상을 고르기 위한 LLM은 호출하지 않고 Java 규칙으로 F
 - [x] **Step 3-B: 검증 Finding에 수정 대상과 수정 이유를 Java 규칙으로 구조화한다**
   - `CONTENT`, `CHOICES`, `ANSWERS`, `STEPS`, `EXPLANATION`, `RUBRIC` 대상과 의존 필드를 정의한다.
   - 각 Finding에 왜 틀렸는지와 어떤 값을 재생성해야 하는지 기록한다.
-- [ ] **Step 3-C: 모든 오류 항목을 한 번에 수정하는 묶음 Repair Delta를 추가한다**
+- [x] **Step 3-C: 모든 오류 항목을 한 번에 수정하는 묶음 Repair Delta를 추가한다**
   - 필드마다 LLM을 따로 호출하지 않고 모든 RepairTarget을 한 요청으로 전달한다.
   - 전체 Snapshot이 아니라 수정 대상 필드만 반환하는 `ProblemRepairPort`를 추가한다.
   - 수정 대상 외 필드가 응답에 포함되면 계약 위반으로 거부한다.
-- [ ] **Step 3-D: Snapshot Delta Merger와 수정 후 구조 검증을 연결한다**
+- [x] **Step 3-D: Snapshot Delta Merger와 수정 후 구조 검증을 연결한다**
   - 기존 Snapshot의 문제 유형·난이도·교육과정·수정 대상 외 필드는 보존한다.
   - `CHOICES→ANSWERS`, `STEPS→ANSWERS/EXPLANATION`, `CONTENT→연관 전체` 의존성을 반영한다.
 - [ ] **Step 3-E: 수정 범위별 선택적 재검증과 호출 예산을 적용한다**
