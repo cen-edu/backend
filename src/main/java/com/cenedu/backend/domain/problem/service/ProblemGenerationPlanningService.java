@@ -88,6 +88,13 @@ public class ProblemGenerationPlanningService {
                     null, command));
             }
         }
+        log.info("event=problem_authoring_plan stage=PLANNING outcome=SUCCESS clientRequestId={} jobType={} "
+                        + "slotCount={} bankReuseCount={} aiGenerationCount={} ragEnabled={}",
+                clientRequestId, jobType,
+                slots.size(),
+                slots.stream().filter(slot -> slot.source() == GenerationSlotSource.BANK_REUSE).count(),
+                slots.stream().filter(slot -> slot.source() == GenerationSlotSource.AI_GENERATION).count(),
+                ragProperties != null && ragProperties.enabled());
         return new ProblemGenerationPlan(clientRequestId, jobType, slots);
     }
 
@@ -96,7 +103,8 @@ public class ProblemGenerationPlanningService {
         boolean enabled = ragProperties != null && ragProperties.enabled();
         ProblemReferenceRetrievalPort port = !enabled || retrievalPort == null
                 ? null : retrievalPort.getIfAvailable();
-        log.info("문제 Retrieval 경계 — enabled={} providerPresent={} purpose={} subUnitId={} excludedCount={}",
+        log.info("event=problem_retrieval stage=PLANNING outcome=STARTED enabled={} providerPresent={} "
+                        + "purpose={} subUnitId={} excludedCount={}",
                 enabled, port != null, requirement.purpose(), requirement.subUnitId(), excludedQuestionIds.size());
         UUID retrievalRequestId = enabled && port != null ? UUID.randomUUID() : null;
         List<GenerationReference> references = new ArrayList<>(requirement.references());
@@ -111,15 +119,17 @@ public class ProblemGenerationPlanningService {
                                                            UUID retrievalRequestId, Set<Long> excludedQuestionIds) {
         ProblemReferenceRetrievalPort port = retrievalPort.getIfAvailable();
         if (port == null) return List.of();
+        long startedAt = System.nanoTime();
         try {
             List<RetrievedProblemReference> retrieved = port.retrieve(createRetrievalQuery(requirement, retrievalRequestId, excludedQuestionIds));
-            log.info("문제 Retrieval 결과 — requestId={} candidateReferenceCount={}", retrievalRequestId, retrieved.size());
+            log.info("event=problem_retrieval stage=RAG outcome=SUCCESS requestId={} candidateReferenceCount={} elapsedMs={}",
+                    retrievalRequestId, retrieved.size(), elapsedMs(startedAt));
             return retrieved.stream()
                     .map(reference -> new GenerationReference(GenerationReferenceRole.EXAMPLE,
                             reference.questionId(), reference.snapshot())).toList();
         } catch (RuntimeException exception) {
-            log.warn("문제 Retrieval 실패 — requestId={} exceptionType={} message={}",
-                    retrievalRequestId, exception.getClass().getSimpleName(), exception.getMessage());
+            log.warn("event=problem_retrieval stage=RAG outcome=FALLBACK requestId={} elapsedMs={} exceptionType={}",
+                    retrievalRequestId, elapsedMs(startedAt), exception.getClass().getSimpleName());
             if (tracePort != null && tracePort.getIfAvailable() != null) {
                 tracePort.getIfAvailable().recordFallback(
                         createRetrievalQuery(requirement, retrievalRequestId, excludedQuestionIds),
@@ -144,5 +154,9 @@ public class ProblemGenerationPlanningService {
 
     private String difficultyLabel(short difficulty) {
         return switch (difficulty) { case 1 -> "low"; case 3 -> "high"; default -> "mid"; };
+    }
+
+    private long elapsedMs(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
     }
 }

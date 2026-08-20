@@ -49,10 +49,13 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** 생성·수정 후보를 S1 검증, Version 보관, 의미·자산 검증, current 승격 순서로 조율한다. */
 @Service
 public class ProblemCandidateProcessingService {
+    private static final Logger log = LoggerFactory.getLogger(ProblemCandidateProcessingService.class);
     private final ProblemAuthoringSessionRepository sessionRepository;
     private final ProblemAuthoringVersionRepository versionRepository;
     private final SnapshotStructuralValidator structuralValidator;
@@ -111,18 +114,32 @@ public class ProblemCandidateProcessingService {
     /** 외부 AI 호출을 트랜잭션 밖에서 수행하고 최종 PASSED 후보만 current로 승격한다. */
     public CandidateProcessingResult process(CandidateProcessingRequest request) {
         validateRequest(request);
+        long startedAt = System.nanoTime();
+        log.info("event=problem_authoring_stage operation={} stage=REGISTRATION outcome=STARTED",
+                request.operationType());
         RegisteredCandidate registered = Objects.requireNonNull(
                 transactionTemplate.execute(status -> registerCandidate(request)));
+        log.info("event=problem_authoring_stage operation={} stage=REGISTRATION outcome=SUCCESS elapsedMs={} versionId={}",
+                request.operationType(), elapsedMs(startedAt), registered.versionId());
 
+        long assetStartedAt = System.nanoTime();
         DraftAssetManifest manifest = produceAssets(request, registered);
+        log.info("event=problem_authoring_stage operation={} stage=ASSET outcome={} elapsedMs={} assetCount={}",
+                request.operationType(), assetOutcome(manifest), elapsedMs(assetStartedAt), manifest.plans().size());
         UUID verificationRequestId = UUID.randomUUID();
         transactionTemplate.executeWithoutResult(status -> beginVerification(
                 registered, manifest, verificationRequestId));
 
+        long verificationStartedAt = System.nanoTime();
         ProblemVerificationBundle bundle = verify(request, manifest, verificationRequestId);
+        log.info("event=problem_authoring_stage operation={} stage=VERIFICATION outcome={} elapsedMs={} verificationRequestId={}",
+                request.operationType(), bundle.overallStatus(), elapsedMs(verificationStartedAt), verificationRequestId);
         ProblemVerificationBundle completedBundle = bundle;
+        long promotionStartedAt = System.nanoTime();
         transactionTemplate.executeWithoutResult(status -> completeVerification(
                 request, registered, completedBundle));
+        log.info("event=problem_authoring_stage operation={} stage=PROMOTION outcome={} elapsedMs={} versionId={}",
+                request.operationType(), bundle.overallStatus(), elapsedMs(promotionStartedAt), registered.versionId());
 
         return new CandidateProcessingResult(
                 registered.versionId(),
@@ -131,6 +148,18 @@ public class ProblemCandidateProcessingService {
                 bundle.overallStatus(),
                 bundle,
                 bundle.overallStatus() == VerificationOverallStatus.PASSED);
+    }
+
+    /** 자산 계획의 처리 결과를 본문 없이 요약해 로그에 남긴다. */
+    private String assetOutcome(DraftAssetManifest manifest) {
+        if (manifest.plans().isEmpty()) return "NOT_APPLICABLE";
+        return manifest.artifacts().stream().allMatch(artifact ->
+                artifact.status() == com.cenedu.backend.domain.problem.authoring.asset.DraftAssetStatus.READY)
+                ? "SUCCESS" : "INCOMPLETE";
+    }
+
+    private long elapsedMs(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
     }
 
     private RegisteredCandidate registerCandidate(CandidateProcessingRequest request) {
