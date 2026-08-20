@@ -13,6 +13,8 @@ class AnswerNormalizerTest {
         assertThat(normalizer.normalize("2^{2}\\times 3^{3}\\div 6", null)).isEqualTo("2^2*3^3/6");
         assertThat(normalizer.normalize("−12", null)).isEqualTo("-12");
         assertThat(normalizer.normalize("∠D", null)).isEqualTo("D");
+        assertThat(normalizer.normalize("2²³", null)).isEqualTo("2^23");
+        assertThat(normalizer.normalize("10⁻²", null)).isEqualTo("10^-2");
     }
 
     @Test

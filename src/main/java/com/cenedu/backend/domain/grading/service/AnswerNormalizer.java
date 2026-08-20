@@ -133,10 +133,34 @@ public class AnswerNormalizer {
     }
 
     private String replaceUnicodeSuperscripts(String value) {
-        return value.replace("⁰", "^0").replace("¹", "^1").replace("²", "^2")
-                .replace("³", "^3").replace("⁴", "^4").replace("⁵", "^5")
-                .replace("⁶", "^6").replace("⁷", "^7").replace("⁸", "^8")
-                .replace("⁹", "^9").replace("⁺", "+").replace("⁻", "-");
+        StringBuilder result = new StringBuilder(value.length());
+        for (int index = 0; index < value.length();) {
+            char current = value.charAt(index);
+            if (!isUnicodeSuperscript(current)) {
+                result.append(current);
+                index++;
+                continue;
+            }
+            StringBuilder exponent = new StringBuilder();
+            while (index < value.length() && isUnicodeSuperscript(value.charAt(index))) {
+                exponent.append(unicodeSuperscriptValue(value.charAt(index++)));
+            }
+            result.append('^').append(exponent);
+        }
+        return result.toString();
+    }
+
+    private boolean isUnicodeSuperscript(char value) {
+        return "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻".indexOf(value) >= 0;
+    }
+
+    private char unicodeSuperscriptValue(char value) {
+        return switch (value) {
+            case '⁰' -> '0'; case '¹' -> '1'; case '²' -> '2'; case '³' -> '3';
+            case '⁴' -> '4'; case '⁵' -> '5'; case '⁶' -> '6'; case '⁷' -> '7';
+            case '⁸' -> '8'; case '⁹' -> '9'; case '⁺' -> '+'; case '⁻' -> '-';
+            default -> throw new IllegalArgumentException("지원하지 않는 위첨자: " + value);
+        };
     }
 
     /**
