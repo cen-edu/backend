@@ -292,19 +292,62 @@ AI 생성 후보의 주요 실패 Finding은 다음과 같다.
 > 보강 범위: 검증 오류가 발견되어도 후보 전체를 재생성하지 않고, 오류가 발생한 구성요소만
 > 수정할 수 있도록 부분 수정(Repair Delta) 흐름을 함께 도입한다. 호출 형식 오류·일시적
 > 공급자 오류는 검증 호출만 최대 1회 재시도하고, 해설·정답·보기·풀이·루브릭의 내용 오류는
-> 대상 필드와 의존 필드만 부분 수정한다. 본문 자체가 불완전하거나 부분 수정으로 일관성을
-> 회복할 수 없는 경우에만 후보 전체 재생성을 허용한다.
+> 대상 필드와 의존 필드만 부분 수정한다. Task 3 내부에서는 후보 생성 Port를 다시 호출하지 않는다.
+> 본문 자체가 불완전하거나 부분 수정으로 일관성을 회복할 수 없으면 후보를 종료하고, 전체 재생성
+> 여부는 Task 5의 문항별 호출 예산과 Worker 재시도 정책에서 한 번만 결정한다.
+
+**검증 책임 경계:** Java는 자연어 문제를 읽어 독립적으로 정답을 계산하지 않는다.
+`BlindQuestionFactory`가 정답·해설을 제거한 문제를 만들고 검증 Solver LLM이 독립 답을 계산한다.
+Java의 `AnswerNormalizer`·`RuleGrader`·`ExpressionEvaluator`는 저작측 정답과 Solver 답의 표기 및
+수학적 동치만 비교한다. 따라서 두 답이 다르다는 사실만으로 저작측 정답 오류를 단정하지 않는다.
+
+```text
+저작측 정답 A ─┐
+                ├─ Java 동치 비교 → 일치/불일치
+Blind Solver B ─┘
+
+불일치 → 기존 원본 검사에서 원인 판정
+       → 두 신호가 저작 오류에 동의할 때만 Repair
+```
+
+**자동 수정 합의 조건:** Solver 불일치와 원본 검사를 별도 추가 호출로 만들지 않는다. 기존
+원본 검사 응답에 `AUTHORING_ANSWER_WRONG`, `SOLVER_UNCERTAIN`, `QUESTION_AMBIGUOUS`,
+`EXPLANATION_INCONSISTENT` 원인을 포함한다. Solver 불일치와 원본 검사가 모두 저작 오류를
+지목할 때만 부분 수정한다. 두 신호가 충돌하면 `UNVERIFIABLE`로 종료하며 자동 수정하지 않는다.
+
+**문항별 호출 예산(비자산):** 정상 후보는 생성 1회 + 최초 검증 최대 2회에서 종료한다. 실패
+후보도 묶음 Repair 1회와 선택적 재검증 최대 2회만 허용해 논리적 LLM 호출을 최대 6회로 제한한다.
+Repair 대상을 고르기 위한 LLM은 호출하지 않고 Java 규칙으로 Finding을 매핑한다. 부분 수정은
+문항당 최대 1회이며, 수정 후 실패하면 반복 Repair 없이 종료한다. SDK 내부 재시도는 별도 API
+시도이므로 Task 5 호출 예산에서 함께 계측한다.
 
 **Files:**
 - Create: `src/main/java/com/cenedu/backend/ai/verification/adapter/VerificationStructuredOutputSchemas.java`
+- Create: `src/main/java/com/cenedu/backend/domain/problem/authoring/repair/RepairTarget.java`
+- Create: `src/main/java/com/cenedu/backend/domain/problem/authoring/repair/ProblemRepairPlan.java`
+- Create: `src/main/java/com/cenedu/backend/domain/problem/authoring/repair/ProblemRepairCommand.java`
+- Create: `src/main/java/com/cenedu/backend/domain/problem/authoring/repair/ProblemRepairDelta.java`
+- Create: `src/main/java/com/cenedu/backend/domain/problem/authoring/port/ProblemRepairPort.java`
+- Create: `src/main/java/com/cenedu/backend/domain/problem/service/ProblemRepairPlanner.java`
+- Create: `src/main/java/com/cenedu/backend/domain/problem/service/ProblemRepairDeltaMerger.java`
+- Create: `src/main/java/com/cenedu/backend/ai/problem/adapter/ProblemRepairAdapter.java`
+- Create: `src/main/java/com/cenedu/backend/ai/problem/adapter/ProblemRepairPromptFactory.java`
 - Modify: `src/main/java/com/cenedu/backend/ai/verification/adapter/VerificationLlmClient.java`
+- Modify: `src/main/java/com/cenedu/backend/ai/verification/adapter/ContentIntegrityChecker.java`
+- Modify: `src/main/java/com/cenedu/backend/ai/verification/adapter/ProblemVerificationAdapter.java`
 - Modify: `src/main/java/com/cenedu/backend/domain/problem/service/ProblemCandidateProcessingService.java`
+- Test: `src/test/java/com/cenedu/backend/domain/problem/service/ProblemRepairPlannerTest.java`
+- Test: `src/test/java/com/cenedu/backend/domain/problem/service/ProblemRepairDeltaMergerTest.java`
+- Test: `src/test/java/com/cenedu/backend/ai/problem/adapter/ProblemRepairAdapterTest.java`
 - Test: `src/test/java/com/cenedu/backend/ai/verification/adapter/ProblemVerificationAdapterTest.java`
 - Test: `src/test/java/com/cenedu/backend/domain/problem/service/ProblemCandidateProcessingServiceTest.java`
 
 **Interfaces:**
 - Consumes: `LlmClient.completeStructured(systemPrompt, messages, seed, LlmUseCase.VERIFICATION, outputSchema)`
 - Produces: Solver, 원본 검사, 루브릭, 자산 판정별 `additionalProperties=false` JSON Schema
+- Produces: `ProblemRepairPlanner.plan(ProblemVerificationBundle)` → 수정 불가 또는 단일 묶음 `ProblemRepairPlan`
+- Produces: `ProblemRepairPort.repair(ProblemRepairCommand)` → 허용된 대상 필드만 포함한 `ProblemRepairDelta`
+- Produces: `ProblemRepairDeltaMerger.merge(QuestionSnapshotV1, ProblemRepairPlan, ProblemRepairDelta)` → 구조 검증 전 Snapshot
 
 - [x] **Step 1: Solver 구조화 출력 사용 테스트를 작성한다**
 
@@ -338,21 +381,31 @@ AI 생성 후보의 주요 실패 Finding은 다음과 같다.
 
 #### Task 3 하위 범위: 오류 항목 부분 수정
 
-- [ ] **Step 3-A: 검증 Finding에 수정 대상과 수정 이유를 구조화한다**
+- [ ] **Step 3-A: Solver 불일치의 원인을 기존 원본 검사에서 함께 판정한다**
+  - 원본 검사 Schema에 `answerMismatchCause`를 추가하고 값은 `NONE`, `AUTHORING_ANSWER_WRONG`,
+    `SOLVER_UNCERTAIN`, `QUESTION_AMBIGUOUS`, `EXPLANATION_INCONSISTENT`로 제한한다.
+  - 별도 판정 LLM 호출은 추가하지 않는다.
+  - Solver와 원본 검사가 저작 오류에 동의하지 않으면 `UNVERIFIABLE`로 종료한다.
+- [ ] **Step 3-B: 검증 Finding에 수정 대상과 수정 이유를 Java 규칙으로 구조화한다**
   - `CONTENT`, `CHOICES`, `ANSWERS`, `STEPS`, `EXPLANATION`, `RUBRIC` 대상과 의존 필드를 정의한다.
   - 각 Finding에 왜 틀렸는지와 어떤 값을 재생성해야 하는지 기록한다.
-- [ ] **Step 3-B: 필드별 Repair Delta Schema와 시스템 수정 Port를 추가한다**
-  - 전체 Snapshot이 아니라 수정 대상 필드만 반환하도록 제한한다.
+- [ ] **Step 3-C: 모든 오류 항목을 한 번에 수정하는 묶음 Repair Delta를 추가한다**
+  - 필드마다 LLM을 따로 호출하지 않고 모든 RepairTarget을 한 요청으로 전달한다.
+  - 전체 Snapshot이 아니라 수정 대상 필드만 반환하는 `ProblemRepairPort`를 추가한다.
   - 수정 대상 외 필드가 응답에 포함되면 계약 위반으로 거부한다.
-- [ ] **Step 3-C: Snapshot Delta Merger와 수정 후 구조 검증을 연결한다**
+- [ ] **Step 3-D: Snapshot Delta Merger와 수정 후 구조 검증을 연결한다**
   - 기존 Snapshot의 문제 유형·난이도·교육과정·수정 대상 외 필드는 보존한다.
   - `CHOICES→ANSWERS`, `STEPS→ANSWERS/EXPLANATION`, `CONTENT→연관 전체` 의존성을 반영한다.
-- [ ] **Step 3-D: 수정 범위별 선택적 재검증과 전체 재생성 최후 fallback을 추가한다**
-  - 부분 수정은 문항당 최대 1~2회로 제한한다.
-  - 수정 후 관련 검사와 Java 구조 검사를 수행한다.
-  - 본문 자체 오류 또는 부분 수정 실패 시에만 후보 전체 재생성을 허용한다.
-- [ ] **Step 3-E: 해설·정답·보기·풀이·루브릭 부분 수정 회귀 테스트를 통과시키고 커밋한다**
+- [ ] **Step 3-E: 수정 범위별 선택적 재검증과 호출 예산을 적용한다**
+  - `EXPLANATION`·`RUBRIC`은 관련 원본 검사 1회, `CHOICES`·`ANSWERS`·`STEPS`는 Solver와 원본 검사 최대 2회만 수행한다.
+  - 부분 수정은 문항당 최대 1회, 비자산 논리적 LLM 호출은 생성부터 최대 6회로 제한한다.
+  - 수정 후 관련 검사와 비용 없는 Java 구조·정규화 검사를 수행한다.
+  - 본문 정보 부족·교육과정 이탈·신호 충돌은 부분 수정하지 않고 종료한다.
+- [ ] **Step 3-F: 해설·정답·보기·풀이·루브릭 부분 수정 회귀 테스트를 통과시키고 커밋한다**
   - 검증 오류와 내용 오류를 구분하고, 후보 생성 Port가 재호출되지 않는지 검증한다.
+  - 여러 오류가 있어도 Repair Port가 정확히 1회만 호출되는지 검증한다.
+  - Solver와 원본 검사 신호가 충돌하면 Repair Port가 0회인지 검증한다.
+  - 정상 후보 3회, 해설 수정 5회, 정답·보기 수정 최대 6회 호출 예산을 검증한다.
   - Commit: `feat : 검증 오류 항목 부분 수정 흐름 추가`
 
 ### Task 4: 의미 저작 비활성 시 의미 추출 호출 제거
