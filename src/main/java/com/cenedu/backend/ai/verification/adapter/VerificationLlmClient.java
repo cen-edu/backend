@@ -46,7 +46,8 @@ public class VerificationLlmClient {
         String blindJson = writeBlind(blind);
         JsonNode root = call(
                 VerificationPrompts.solverSystemPrompt(),
-                VerificationPrompts.solverUserPrompt(blindJson));
+                VerificationPrompts.solverUserPrompt(blindJson),
+                VerificationStructuredOutputSchemas.SOLVER);
 
         boolean solved = root.path("solved").asBoolean(false);
         String reason = root.path("reason").asString("");
@@ -85,7 +86,8 @@ public class VerificationLlmClient {
     ) {
         JsonNode root = call(
                 VerificationPrompts.contentIntegritySystemPrompt(includeRubric),
-                VerificationPrompts.contentIntegrityUserPrompt(snapshot, expectedCurriculum));
+                VerificationPrompts.contentIntegrityUserPrompt(snapshot, expectedCurriculum),
+                VerificationStructuredOutputSchemas.ORIGINAL);
 
         JsonNode findings = root.path("findings");
         if (findings.isMissingNode() || findings.isNull()) {
@@ -114,7 +116,8 @@ public class VerificationLlmClient {
     public RubricJudgement judgeRubric(QuestionSnapshotV1 snapshot) {
         JsonNode root = call(
                 VerificationPrompts.rubricSystemPrompt(),
-                VerificationPrompts.rubricUserPrompt(snapshot));
+                VerificationPrompts.rubricUserPrompt(snapshot),
+                VerificationStructuredOutputSchemas.RUBRIC);
         return new RubricJudgement(
                 root.path("axis").asString("").trim(),
                 root.path("detail").asString("").trim());
@@ -124,18 +127,21 @@ public class VerificationLlmClient {
     public AssetJudgement judgeAsset(QuestionSnapshotV1 snapshot) {
         JsonNode root = call(
                 VerificationPrompts.assetSystemPrompt(),
-                VerificationPrompts.assetUserPrompt(snapshot));
+                VerificationPrompts.assetUserPrompt(snapshot),
+                VerificationStructuredOutputSchemas.ASSET);
         return new AssetJudgement(
                 root.path("issue").asString("").trim(),
                 root.path("detail").asString("").trim());
     }
 
     private JsonNode call(String systemPrompt, String userPrompt) {
-        String text = llmClient.complete(
-                systemPrompt,
-                List.of(ChatMessage.user(userPrompt)),
-                VERIFICATION_SEED,
-                LlmUseCase.VERIFICATION).text();
+        return call(systemPrompt, userPrompt, null);
+    }
+
+    private JsonNode call(String systemPrompt, String userPrompt, String schema) {
+        String text = llmClient.completeStructured(
+                systemPrompt, List.of(ChatMessage.user(userPrompt)), VERIFICATION_SEED,
+                LlmUseCase.VERIFICATION, schema).text();
         return parse(text);
     }
 

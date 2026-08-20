@@ -289,6 +289,12 @@ AI 생성 후보의 주요 실패 Finding은 다음과 같다.
 
 ### Task 3: 검증 구조화 출력과 검증 전용 재시도 도입
 
+> 보강 범위: 검증 오류가 발견되어도 후보 전체를 재생성하지 않고, 오류가 발생한 구성요소만
+> 수정할 수 있도록 부분 수정(Repair Delta) 흐름을 함께 도입한다. 호출 형식 오류·일시적
+> 공급자 오류는 검증 호출만 최대 1회 재시도하고, 해설·정답·보기·풀이·루브릭의 내용 오류는
+> 대상 필드와 의존 필드만 부분 수정한다. 본문 자체가 불완전하거나 부분 수정으로 일관성을
+> 회복할 수 없는 경우에만 후보 전체 재생성을 허용한다.
+
 **Files:**
 - Create: `src/main/java/com/cenedu/backend/ai/verification/adapter/VerificationStructuredOutputSchemas.java`
 - Modify: `src/main/java/com/cenedu/backend/ai/verification/adapter/VerificationLlmClient.java`
@@ -300,15 +306,15 @@ AI 생성 후보의 주요 실패 Finding은 다음과 같다.
 - Consumes: `LlmClient.completeStructured(systemPrompt, messages, seed, LlmUseCase.VERIFICATION, outputSchema)`
 - Produces: Solver, 원본 검사, 루브릭, 자산 판정별 `additionalProperties=false` JSON Schema
 
-- [ ] **Step 1: Solver 구조화 출력 사용 테스트를 작성한다**
+- [x] **Step 1: Solver 구조화 출력 사용 테스트를 작성한다**
 
   Fake LLM Client가 전달받은 Schema를 기록하도록 하고 `solved`, `answers`, `reason` 필수 필드와 `answers[].unitKey`, `answers[].answer` 필수 여부를 검증한다.
 
-- [ ] **Step 2: 현재 일반 `complete()` 호출 때문에 테스트가 실패하는지 확인한다**
+- [x] **Step 2: RED 단계는 사용자 지시에 따라 생략하고 구현 후 회귀 테스트로 검증한다**
 
   Run: `bash gradlew test --tests '*ProblemVerificationAdapterTest'`
 
-- [ ] **Step 3: 네 종류의 검증 Schema를 추가하고 `completeStructured()`로 전환한다**
+- [x] **Step 3: 네 종류의 검증 Schema를 추가하고 `completeStructured()`로 전환한다**
 
   Schema는 `SOLVER`, `ORIGINAL`, `RUBRIC`, `ASSET` 네 상수로 분리한다. 기존 파싱 검증은 공급자 계약 위반을 방어하기 위해 유지한다.
 
@@ -329,6 +335,25 @@ AI 생성 후보의 주요 실패 Finding은 다음과 같다.
   Run: `bash gradlew test --tests '*ProblemVerificationAdapterTest' --tests '*ProblemCandidateProcessingServiceTest'`
 
   Commit: `fix : 문제 검증 구조화 출력과 제한 재시도 적용`
+
+#### Task 3 하위 범위: 오류 항목 부분 수정
+
+- [ ] **Step 3-A: 검증 Finding에 수정 대상과 수정 이유를 구조화한다**
+  - `CONTENT`, `CHOICES`, `ANSWERS`, `STEPS`, `EXPLANATION`, `RUBRIC` 대상과 의존 필드를 정의한다.
+  - 각 Finding에 왜 틀렸는지와 어떤 값을 재생성해야 하는지 기록한다.
+- [ ] **Step 3-B: 필드별 Repair Delta Schema와 시스템 수정 Port를 추가한다**
+  - 전체 Snapshot이 아니라 수정 대상 필드만 반환하도록 제한한다.
+  - 수정 대상 외 필드가 응답에 포함되면 계약 위반으로 거부한다.
+- [ ] **Step 3-C: Snapshot Delta Merger와 수정 후 구조 검증을 연결한다**
+  - 기존 Snapshot의 문제 유형·난이도·교육과정·수정 대상 외 필드는 보존한다.
+  - `CHOICES→ANSWERS`, `STEPS→ANSWERS/EXPLANATION`, `CONTENT→연관 전체` 의존성을 반영한다.
+- [ ] **Step 3-D: 수정 범위별 선택적 재검증과 전체 재생성 최후 fallback을 추가한다**
+  - 부분 수정은 문항당 최대 1~2회로 제한한다.
+  - 수정 후 관련 검사와 Java 구조 검사를 수행한다.
+  - 본문 자체 오류 또는 부분 수정 실패 시에만 후보 전체 재생성을 허용한다.
+- [ ] **Step 3-E: 해설·정답·보기·풀이·루브릭 부분 수정 회귀 테스트를 통과시키고 커밋한다**
+  - 검증 오류와 내용 오류를 구분하고, 후보 생성 Port가 재호출되지 않는지 검증한다.
+  - Commit: `feat : 검증 오류 항목 부분 수정 흐름 추가`
 
 ### Task 4: 의미 저작 비활성 시 의미 추출 호출 제거
 
