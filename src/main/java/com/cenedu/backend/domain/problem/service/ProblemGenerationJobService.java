@@ -181,7 +181,7 @@ public class ProblemGenerationJobService {
             if (slot.source() == GenerationSlotSource.BANK_REUSE) {
                 itemRepository.save(ProblemGenerationItem.createBankReuse(
                         job.getId(), slot.slotIndex(), java.util.UUID.randomUUID(),
-                        session.getId(), slot.sourceQuestionId()));
+                        session.getId(), slot.sourceQuestionId(), slot.customStage()));
                 versionService.saveBankReuse(ownerTeacherId, session.getId(),
                         slot.sourceQuestionId(), jsonCodec.write(slot.sourceSnapshot()),
                         jsonCodec.write(java.util.Map.of(
@@ -198,7 +198,8 @@ public class ProblemGenerationJobService {
                 ProblemGenerationCommand command = slot.generationCommand();
                 ProblemGenerationItem savedItem = itemRepository.save(ProblemGenerationItem.create(
                         job.getId(), slot.slotIndex(), command.requestId(), session.getId(),
-                        command.purpose(), 1, jsonCodec.write(command)));
+                        command.purpose(), 1, jsonCodec.write(command),
+                        slot.customStage(), slot.originQuestionId()));
                 linkGeneration(command, job, savedItem);
             }
         }
@@ -237,7 +238,9 @@ public class ProblemGenerationJobService {
                 .findAllByJobIdOrderByItemOrder(job.getId()).stream()
                 .map(item -> new ProblemGenerationItemResult(
                         item.getId(), item.getSessionId(), item.getItemOrder(),
-                        item.getStatus(), item.getRetryCount(), item.getLastErrorCode()))
+                        item.getStatus(), item.getRetryCount(), item.getLastErrorCode(),
+                        item.getSlotSource(), item.getSourceQuestionId(), item.getOriginQuestionId(),
+                        item.getCustomStage()))
                 .toList();
         return new ProblemGenerationJobResult(job.getId(), job.getStatus(), items);
     }

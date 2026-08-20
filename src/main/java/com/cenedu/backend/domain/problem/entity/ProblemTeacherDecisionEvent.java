@@ -6,6 +6,8 @@ import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 교사의 성공한 저작 상태 결정을 append-only로 보관하는 품질 이벤트다. */
 @Entity
@@ -19,7 +21,9 @@ public class ProblemTeacherDecisionEvent {
     @Column(name = "session_id", updatable = false) private Long sessionId;
     @Column(name = "version_id", updatable = false) private Long versionId;
     @Enumerated(EnumType.STRING) @Column(name = "decision_type", nullable = false, updatable = false, length = 30) private TeacherDecisionType decisionType;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "change_natures", columnDefinition = "jsonb", updatable = false) private String changeNaturesJson;
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "target_types", columnDefinition = "jsonb", updatable = false) private String targetTypesJson;
     @Column(name = "created_at", nullable = false, updatable = false) private LocalDateTime createdAt;
 

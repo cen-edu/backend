@@ -121,7 +121,9 @@ public class ProblemEditPolicy {
                     targets.add(single(EditTargetType.LEARNING_GUIDE));
                 }
                 case CHOICE -> {
-                    addAllAnswerUnits(snapshot, targets);
+                    if (isCurrentAnswerChoice(snapshot, instruction.targetKey())) {
+                        addAllAnswerUnits(snapshot, targets);
+                    }
                     targets.add(single(EditTargetType.EXPLANATION));
                 }
                 case STEP -> {
@@ -151,6 +153,13 @@ public class ProblemEditPolicy {
         }
         targets.removeAll(requested);
         return targets;
+    }
+
+    private boolean isCurrentAnswerChoice(QuestionSnapshotV1 snapshot, String choiceKey) {
+        if (choiceKey == null) return false;
+        return snapshot.answerUnits().stream().anyMatch(unit ->
+                choiceKey.equals(unit.answerRaw())
+                        || choiceKey.equals(unit.answerNormalized()));
     }
 
     private LinkedHashSet<ProblemEditTargetRef> allTargets(QuestionSnapshotV1 snapshot) {

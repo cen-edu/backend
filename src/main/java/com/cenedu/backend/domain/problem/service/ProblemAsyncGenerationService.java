@@ -10,6 +10,7 @@ import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationJobResult;
+import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationPlan;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationRequirement;
 import com.cenedu.backend.domain.problem.dto.request.AsyncAssessmentGenerationRequest;
 import com.cenedu.backend.domain.problem.dto.request.AsyncProblemGenerationRequest;
@@ -76,6 +77,14 @@ public class ProblemAsyncGenerationService {
         return createAndRun(teacherId, request.clientRequestId(), GenerationJobType.COMPREHENSIVE_ASSESSMENT, requirements);
     }
 
+    /** 검증된 맞춤 계획을 멱등 Job으로 저장하고 AI 슬롯만 비동기 실행한다. */
+    public ProblemGenerationStartResponse startPersonalized(long teacherId, ProblemGenerationPlan plan) {
+        if (plan == null || plan.jobType() != GenerationJobType.PERSONALIZED) {
+            throw new IllegalArgumentException("맞춤 생성 계획만 접수할 수 있습니다.");
+        }
+        return createAndRun(teacherId, plan);
+    }
+
     /** 교사 소유 Job의 전체 상태와 문항별 미리보기를 반환한다. */
     public ProblemGenerationJobStatusResponse getStatus(long teacherId, long jobId) {
         ProblemGenerationJobResult job = jobService.get(teacherId, jobId);
@@ -90,6 +99,8 @@ public class ProblemAsyncGenerationService {
                 case FAILED -> AuthoringSlotDisplayStatus.FAILED;
             };
             return new ProblemGenerationSlotResponse(item.itemOrder(), item.itemId(), item.sessionId(),
+                    com.cenedu.backend.domain.problem.dto.response.CustomProblemStageFormatter.format(item.customStage()),
+                    item.sourceQuestionId(), item.originQuestionId(),
                     display, preview, item.errorCode(),
                     item.status() == GenerationItemStatus.FAILED && item.retryCount() < 2);
         }).toList();
@@ -104,6 +115,14 @@ public class ProblemAsyncGenerationService {
                                                          List<ProblemGenerationRequirement> requirements) {
         ProblemGenerationJobResult job = jobService.create(teacherId,
                 planningService.plan(clientRequestId, type, requirements));
+        job.items().stream().filter(item -> item.status() == GenerationItemStatus.QUEUED)
+                .forEach(item -> runner.execute(item.itemId()));
+        return new ProblemGenerationStartResponse(job.jobId(), job.status(), job.items().size());
+    }
+
+    /** 이미 수립된 계획을 Job으로 저장하고 대기 AI Item만 실행한다. */
+    private ProblemGenerationStartResponse createAndRun(long teacherId, ProblemGenerationPlan plan) {
+        ProblemGenerationJobResult job = jobService.create(teacherId, plan);
         job.items().stream().filter(item -> item.status() == GenerationItemStatus.QUEUED)
                 .forEach(item -> runner.execute(item.itemId()));
         return new ProblemGenerationStartResponse(job.jobId(), job.status(), job.items().size());

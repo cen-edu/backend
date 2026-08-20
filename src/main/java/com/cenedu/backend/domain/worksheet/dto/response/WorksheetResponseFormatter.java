@@ -1,6 +1,6 @@
 package com.cenedu.backend.domain.worksheet.dto.response;
 
-import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.domain.worksheet.entity.enums.SupportMode;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetOrigin;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType;

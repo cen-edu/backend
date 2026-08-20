@@ -1,1 +1,5 @@
-package com.cenedu.backend.domain.problem.authoring.diagram; public record PlaneArcSpec(String arcKey,String centerPointKey,String radiusKey,String startAngleKey,String endAngleKey,String labelTemplate) {}
+package com.cenedu.backend.domain.problem.authoring.diagram;
+
+public record PlaneArcSpec(String arcKey, String centerPointKey, String radiusKey, String startAngleKey,
+                           String endAngleKey, String labelTemplate) {
+}

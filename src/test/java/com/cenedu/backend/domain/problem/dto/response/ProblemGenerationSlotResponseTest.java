@@ -9,6 +9,7 @@ import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationStatus;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationItemStatus;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationJobStatus;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import org.junit.jupiter.api.Test;
 
 class ProblemGenerationSlotResponseTest {
@@ -62,5 +63,18 @@ class ProblemGenerationSlotResponseTest {
 
         assertThat(response.totalCount()).isEqualTo(1);
         assertThat(response.slots()).containsExactly(slot);
+    }
+
+    @Test
+    void 맞춤_단계와_출처를_응답에_보존한다() {
+        ProblemGenerationSlotResponse response = new ProblemGenerationSlotResponse(
+                1, 100L, 10L, CustomProblemStageFormatter.format(CustomStage.SIMILAR),
+                301L, null, AuthoringSlotDisplayStatus.QUEUED, null, null, false);
+
+        assertThat(response.customStage()).isEqualTo("similar");
+        assertThat(response.sourceQuestionId()).isEqualTo(301L);
+        assertThat(response.originQuestionId()).isNull();
+        assertThat(CustomProblemStageFormatter.format(CustomStage.ADVANCED)).isEqualTo("advanced");
+        assertThat(CustomProblemStageFormatter.format(null)).isNull();
     }
 }

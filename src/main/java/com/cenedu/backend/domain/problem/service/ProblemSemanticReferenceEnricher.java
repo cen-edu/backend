@@ -47,7 +47,8 @@ public class ProblemSemanticReferenceEnricher {
             }
         }
         ProblemGenerationCommand enriched = new ProblemGenerationCommand(command.requestId(), command.retrievalRequestId(), command.purpose(),
-                command.specification(), command.curriculum(), references, command.conceptEvidence());
+                command.specification(), command.curriculum(), references, command.conceptEvidence(),
+                command.personalizedEvidence());
         return new SemanticReferenceEnrichmentResult(enriched, unsupportedOrigin);
     }
 }

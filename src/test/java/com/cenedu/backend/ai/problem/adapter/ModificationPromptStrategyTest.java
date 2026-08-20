@@ -22,4 +22,20 @@ class ModificationPromptStrategyTest {
         assertThat(prompt).contains("12를 구하시오.", "protectedTargets")
                 .doesNotContain("98765", "87654", "answerRaw");
     }
+
+    @Test
+    void 정답_수정_대상은_필요한_정답_문맥을_제공하고_출력_계약과_모순되지_않는다() {
+        var base = ProblemSnapshotFixtures.shortInput();
+        var plan = new ProblemEditExecutionPlan(UUID.randomUUID(), 1L, 2L,
+                EditAction.MODIFY, ReplacementSourcePolicy.NONE, null, List.of(),
+                List.of(new ProblemEditTargetRef(EditTargetType.ANSWER_UNIT, "MAIN")),
+                List.of(), List.of(), null);
+
+        String prompt = new ModificationPromptStrategy(new tools.jackson.databind.ObjectMapper())
+                .create(new ProblemModificationCommand(plan.requestId(), plan, base));
+
+        assertThat(prompt)
+                .contains("answerUnits", "answerRaw")
+                .doesNotContain("schemaVersion 1", "정답, requestId");
+    }
 }

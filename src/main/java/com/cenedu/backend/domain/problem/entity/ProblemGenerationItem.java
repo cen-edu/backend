@@ -6,6 +6,7 @@ import java.util.UUID;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSlotSource;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationItemStatus;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.global.common.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -78,6 +79,13 @@ public class ProblemGenerationItem extends BaseTimeEntity {
     private Long sourceQuestionId;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "custom_stage", length = 20, updatable = false)
+    private CustomStage customStage;
+
+    @Column(name = "origin_question_id", updatable = false)
+    private Long originQuestionId;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private GenerationItemStatus status;
 
@@ -118,13 +126,33 @@ public class ProblemGenerationItem extends BaseTimeEntity {
                 generationPurpose, commandSchemaVersion, generationCommand);
     }
 
+    /** 맞춤 AI 생성 슬롯을 단계와 기준 문항까지 보존해 생성한다. */
+    public static ProblemGenerationItem create(Long jobId, int itemOrder, UUID requestId,
+                                               Long sessionId, GenerationPurpose generationPurpose,
+                                               int commandSchemaVersion, String generationCommand,
+                                               CustomStage customStage, Long originQuestionId) {
+        ProblemGenerationItem item = create(jobId, itemOrder, requestId, sessionId,
+                generationPurpose, commandSchemaVersion, generationCommand);
+        item.customStage = customStage;
+        item.originQuestionId = originQuestionId;
+        return item;
+    }
+
     /** 문제은행 문항을 재사용하는 즉시 완료 슬롯을 생성한다. */
     public static ProblemGenerationItem createBankReuse(Long jobId, int itemOrder, UUID requestId,
                                                         Long sessionId, Long sourceQuestionId) {
+        return createBankReuse(jobId, itemOrder, requestId, sessionId, sourceQuestionId, null);
+    }
+
+    /** 맞춤 문제은행 재사용 슬롯을 단계와 함께 즉시 완료 상태로 생성한다. */
+    public static ProblemGenerationItem createBankReuse(Long jobId, int itemOrder, UUID requestId,
+                                                        Long sessionId, Long sourceQuestionId,
+                                                        CustomStage customStage) {
         ProblemGenerationItem item = new ProblemGenerationItem(jobId, itemOrder, requestId,
             sessionId, null, 0, null);
         item.slotSource = GenerationSlotSource.BANK_REUSE;
         item.sourceQuestionId = sourceQuestionId;
+        item.customStage = customStage;
         item.status = GenerationItemStatus.SUCCEEDED;
         item.completedAt = LocalDateTime.now();
         return item;
