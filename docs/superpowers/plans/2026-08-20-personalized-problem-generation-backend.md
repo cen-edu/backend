@@ -398,7 +398,7 @@ git commit -m "feat : 맞춤 생성 슬롯 단계 메타데이터 저장"
 - Create: `src/main/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningService.java`
 - Create: `src/test/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningServiceTest.java`
 
-- [ ] **Step 1: 맞춤 계획기와 REVIEW 슬롯 조립 코드를 구현하고 순서 테스트를 추가한다**
+- [x] **Step 1: 맞춤 계획기와 REVIEW 슬롯 조립 코드를 구현하고 순서 테스트를 추가한다**
 
 테스트 제안은 교육과정 순서가 `[subUnit 20, subUnit 30]`이고 각 단계 수량이 섞이게 만든다. 결과 순서는 모든 REVIEW → 모든 SIMILAR → 모든 ADVANCED이며, REVIEW source ID는 `candidateQuestionIds` 앞에서부터 정확히 일치해야 한다.
 
@@ -413,17 +413,17 @@ public ProblemGenerationPlan plan(
         Map<Long, CurriculumPathResponse> curriculumPaths)
 ```
 
-- [ ] **Step 2: REVIEW 및 단계 순서 테스트를 실행한다**
+- [x] **Step 2: REVIEW 및 단계 순서 테스트를 실행한다**
 
 Run: `./gradlew test --tests '*PersonalizedProblemGenerationPlanningServiceTest'`
 
 Expected: PASS.
 
-- [ ] **Step 3: 단계별 3-pass 조립 뼈대를 구현한다**
+- [x] **Step 3: 단계별 3-pass 조립 뼈대를 구현한다**
 
 요청 Map은 수량 lookup에만 쓰고, 반복 순서는 `proposal.subcategories()` 순서를 사용한다. `appendReviewSlots`, `appendSimilarSlots`, `appendAdvancedSlots`를 순서대로 호출하고 마지막에 연속 `slotIndex`를 부여한다.
 
-- [ ] **Step 4: REVIEW Snapshot을 public 문제 Service로 조회해 BANK_REUSE로 만든다**
+- [x] **Step 4: REVIEW Snapshot을 public 문제 Service로 조회해 BANK_REUSE로 만든다**
 
 선택한 후보 ID를 한 번에 `ProblemBankSnapshotQueryService#getSnapshots`로 가져와 ID Map으로 만든다. 누락되거나 `reusable=false`인 후보는 `BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID)`로 거절하고 다른 문항으로 조용히 대체하지 않는다.
 
@@ -432,13 +432,13 @@ new ProblemGenerationSlotPlan(index, BANK_REUSE, questionId, null,
         CustomStage.REVIEW, snapshot, assetKeys, null)
 ```
 
-- [ ] **Step 5: REVIEW와 순서 테스트를 통과시킨다**
+- [x] **Step 5: REVIEW와 순서 테스트를 통과시킨다**
 
 Run: `./gradlew test --tests '*PersonalizedProblemGenerationPlanningServiceTest.review*' --tests '*PersonalizedProblemGenerationPlanningServiceTest.stage*'`
 
 Expected: PASS.
 
-- [ ] **Step 6: 커밋한다**
+- [x] **Step 6: 커밋한다**
 
 ```bash
 git add src/main/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningService.java src/test/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningServiceTest.java
