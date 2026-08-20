@@ -361,15 +361,15 @@ Repair 대상을 고르기 위한 LLM은 호출하지 않고 Java 규칙으로 F
 
   Schema는 `SOLVER`, `ORIGINAL`, `RUBRIC`, `ASSET` 네 상수로 분리한다. 기존 파싱 검증은 공급자 계약 위반을 방어하기 위해 유지한다.
 
-- [ ] **Step 4: 검증 일시 오류만 한 번 재시도하는 테스트를 작성한다**
+- [x] **Step 4: 검증 일시 오류만 한 번 재시도하는 테스트를 작성한다**
 
   첫 호출이 `SolverResponseParseException` 또는 재시도 가능한 공급자 오류이고 두 번째 호출이 성공할 때 후보 생성 Port가 다시 호출되지 않고 기존 Version의 검증만 완료되는지 검증한다. 정답 불일치 `FAILED`는 검증 재시도 대상이 아니다.
 
-- [ ] **Step 5: 검증 전용 재시도를 최대 1회 구현한다**
+- [x] **Step 5: 검증 전용 재시도를 최대 1회 구현한다**
 
   `ProblemCandidateProcessingService.callVerification()` 경계에서 오류 종류를 분류한다. 형식 오류와 일시 공급자 오류만 같은 `verificationRequestId` 문맥에서 한 번 재시도하고, 인증·쿼터·잘못된 요청 오류는 즉시 종료한다.
 
-- [ ] **Step 6: Solver ERROR 회로 차단을 검증한다**
+- [x] **Step 6: Solver ERROR 회로 차단을 검증한다**
 
   `CORRECTNESS=ERROR`이면 Java 검사는 계속 수행하되 원본·해설 LLM 검사는 호출하지 않고 관련 Finding을 `ERROR`로 남기는 기존 동작을 회귀 테스트로 고정한다.
 

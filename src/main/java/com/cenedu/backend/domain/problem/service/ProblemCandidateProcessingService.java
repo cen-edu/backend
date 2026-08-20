@@ -307,22 +307,56 @@ public class ProblemCandidateProcessingService {
             ProblemVerificationPort port,
             ProblemVerificationRequest request
     ) {
-        try {
-            ProblemVerificationReport report;
-            try (ProblemAiConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire()) {
-                report = port.verify(request);
-            }
-            if (report == null
-                    || !request.verificationRequestId().equals(report.requestId())
-                    || report.scope() != request.scope()) {
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                ProblemVerificationReport report;
+                try (ProblemAiConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire()) {
+                    report = port.verify(request);
+                }
+                if (report == null
+                        || !request.verificationRequestId().equals(report.requestId())
+                        || report.scope() != request.scope()) {
+                    return errorReport(request.verificationRequestId(), request.scope(),
+                            "INVALID_VERIFICATION_REPORT");
+                }
+                if (attempt == 1 && retryableVerificationError(report)) {
+                    log.warn("검증 일시 오류 — 검증만 재시도합니다. requestId={}, scope={}, attempt=2",
+                            request.verificationRequestId(), request.scope());
+                    continue;
+                }
+                return report;
+            } catch (RuntimeException exception) {
+                if (attempt == 1 && retryableVerificationException(exception)) {
+                    log.warn("검증 공급자 예외 — 검증만 재시도합니다. requestId={}, scope={}, attempt=2",
+                            request.verificationRequestId(), request.scope());
+                    continue;
+                }
                 return errorReport(request.verificationRequestId(), request.scope(),
-                        "INVALID_VERIFICATION_REPORT");
+                        "VERIFICATION_PROVIDER_ERROR");
             }
-            return report;
-        } catch (RuntimeException exception) {
-            return errorReport(request.verificationRequestId(), request.scope(),
-                    "VERIFICATION_PROVIDER_ERROR");
         }
+        return errorReport(request.verificationRequestId(), request.scope(),
+                "VERIFICATION_PROVIDER_ERROR");
+    }
+
+    /** 내용 실패는 재시도하지 않고 형식·공급자 오류만 한 번 재검증한다. */
+    private boolean retryableVerificationError(ProblemVerificationReport report) {
+        if (report.overallStatus() != VerificationOverallStatus.ERROR
+                || report.findings() == null || report.findings().isEmpty()) {
+            return false;
+        }
+        return report.findings().stream().allMatch(finding ->
+                finding.status() == VerificationFindingStatus.ERROR
+                        && (finding.code() == VerificationIssueCode.PROVIDER_ERROR
+                        || (finding.message() != null
+                        && finding.message().contains("응답이 요구한 형식"))));
+    }
+
+    private boolean retryableVerificationException(RuntimeException exception) {
+        if (exception instanceof BusinessException businessException) {
+            return businessException.getErrorCode() == ErrorCode.AI_CLIENT_CALL_FAILED;
+        }
+        return exception instanceof com.cenedu.backend.ai.verification.adapter.SolverResponseParseException;
     }
 
     private void completeVerification(CandidateProcessingRequest request,
