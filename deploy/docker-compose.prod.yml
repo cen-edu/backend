@@ -21,6 +21,9 @@ services:
     image: pgvector/pgvector:pg17
     container_name: cen-edu-postgres
     restart: always
+    # 상한이 없으면 페이지 캐시를 계속 물고 있어 실측 237MB 까지 올라간다. 상한을 걸면
+    # 45MB 선에서 돈다 — t3.micro(1GB) 에서 백엔드와 나눠 쓰려면 눌러 둬야 한다.
+    mem_limit: 256m
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USERNAME}
@@ -43,6 +46,10 @@ services:
     image: ${DOCKERHUB_USER}/cen-edu-backend:${APP_TAG}
     container_name: cen-edu-backend
     restart: always
+    # 반드시 걸어야 한다. JAVA_OPTS 의 MaxRAMPercentage=75 는 상한이 없으면 호스트 전체를
+    # 기준으로 잡아, t3.micro 에서 힙만 768MB 를 노린다. 그러면 PostgreSQL 과 부딪혀
+    # 커널이 자바를 OOM 으로 죽인다. 512m 이면 힙 384MB, 실측 사용량 481MB 다.
+    mem_limit: 512m
     env_file:
       - .env
     environment:
@@ -69,6 +76,7 @@ services:
     image: ${DOCKERHUB_USER}/cen-edu-frontend:${FRONTEND_TAG}
     container_name: cen-edu-frontend
     restart: always
+    mem_limit: 64m
     # 정적 파일만 서빙한다. 바깥으로는 nginx 만 열고 이쪽은 열지 않는다.
     networks:
       - cen-edu-net
@@ -77,6 +85,7 @@ services:
     image: nginx:alpine
     container_name: cen-edu-nginx
     restart: always
+    mem_limit: 64m
     ports:
       - "80:80"
     volumes:
