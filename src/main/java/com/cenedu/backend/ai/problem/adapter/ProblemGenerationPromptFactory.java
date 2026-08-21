@@ -37,6 +37,9 @@ public class ProblemGenerationPromptFactory {
                 explanation, learningGuide(conceptTitle, summary, keyPoints 1~3개)는 필수다.
                 explanation에는 이 문제의 구체적인 계산 또는 모범 응답 방향을 담고 일반론만 쓰지 않는다.
                 keyPoints는 직접적인 정답이나 계산 절차를 노출하지 않는다.
+                학생에게 표시되는 contentBlocks, choices, steps, explanation, learningGuide의 수식은
+                인라인 LaTeX인 $...$로 감싸라(예: $2^3$, $\\frac{1}{2}$). 일반 문장과 단위만 있는 텍스트는 감싸지 마라.
+                answerUnits의 answerRaw는 화면 표시용 구분자($, $$, \\(, \\)) 없이 비교 가능한 원시값만 작성하라.
                 현재 MVP에서는 그림 자산을 만들지 않으므로 assets는 항상 []다.
                 유형별 규칙:
                 %s

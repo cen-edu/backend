@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import com.cenedu.backend.domain.problem.authoring.edit.semantic.*;
+import com.cenedu.backend.domain.problem.authoring.edit.*;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.dto.request.ProblemEditTurnRequest;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringSession;
@@ -59,5 +60,58 @@ class ProblemEditApplicationServiceTest {
                 .hasMessage("AI unavailable");
         verify(conversation).start(7L, 3L);
         verify(conversation).cancel(7L, 3L);
+    }
+
+    @Test
+    void 명시적_취소_턴은_gateway를_호출하지_않는다() {
+        var sessions = mock(ProblemAuthoringSessionRepository.class);
+        var versions = mock(ProblemAuthoringVersionRepository.class);
+        var jsonCodec = mock(ProblemAuthoringJsonCodec.class);
+        var conversation = mock(ProblemEditConversationService.class);
+        var gateway = mock(ProblemEditAgentGateway.class);
+        var coordinator = mock(ProblemModificationExecutionCoordinator.class);
+        var session = mock(ProblemAuthoringSession.class);
+        var version = mock(ProblemAuthoringVersion.class);
+        when(session.getCurrentVersionId()).thenReturn(11L);
+        when(version.getSnapshot()).thenReturn("snapshot");
+        when(sessions.findByIdAndOwnerTeacherId(3L, 7L)).thenReturn(Optional.of(session));
+        when(versions.findByIdAndSessionId(11L, 3L)).thenReturn(Optional.of(version));
+        when(jsonCodec.read("snapshot", QuestionSnapshotV1.class)).thenReturn(mock(QuestionSnapshotV1.class));
+        var service = new ProblemEditApplicationService(sessions, versions, jsonCodec, conversation, gateway, coordinator);
+
+        service.handleTurn(7L, 3L, new ProblemEditTurnRequest("취소", null, null, false));
+
+        verify(conversation).cancel(7L, 3L);
+        verifyNoInteractions(gateway);
+    }
+
+    @Test
+    void 명시적_확인_턴은_gateway없이_pending을_실행한다() {
+        var sessions = mock(ProblemAuthoringSessionRepository.class);
+        var versions = mock(ProblemAuthoringVersionRepository.class);
+        var jsonCodec = mock(ProblemAuthoringJsonCodec.class);
+        var conversation = mock(ProblemEditConversationService.class);
+        var gateway = mock(ProblemEditAgentGateway.class);
+        var coordinator = mock(ProblemModificationExecutionCoordinator.class);
+        var session = mock(ProblemAuthoringSession.class);
+        var version = mock(ProblemAuthoringVersion.class);
+        var snapshot = mock(QuestionSnapshotV1.class);
+        var pending = new PendingProblemEditCommand(UUID.randomUUID(), 3L, 11L, List.of(), null, null, null);
+        var plan = mock(ProblemEditExecutionPlan.class);
+        when(session.getCurrentVersionId()).thenReturn(11L);
+        when(session.getPendingInstructions()).thenReturn("pending");
+        when(version.getSnapshot()).thenReturn("snapshot");
+        when(sessions.findByIdAndOwnerTeacherId(3L, 7L)).thenReturn(Optional.of(session));
+        when(versions.findByIdAndSessionId(11L, 3L)).thenReturn(Optional.of(version));
+        when(jsonCodec.read("snapshot", QuestionSnapshotV1.class)).thenReturn(snapshot);
+        when(jsonCodec.read("pending", PendingProblemEditCommand.class)).thenReturn(pending);
+        when(conversation.confirm(eq(7L), any())).thenReturn(plan);
+        when(plan.action()).thenReturn(EditAction.RESTORE);
+        var service = new ProblemEditApplicationService(sessions, versions, jsonCodec, conversation, gateway, coordinator);
+
+        service.handleTurn(7L, 3L, new ProblemEditTurnRequest("확인", null, null, true));
+
+        verify(conversation).confirm(eq(7L), any());
+        verifyNoInteractions(gateway, coordinator);
     }
 }

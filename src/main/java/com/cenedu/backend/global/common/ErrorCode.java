@@ -168,6 +168,7 @@ public enum ErrorCode {
     // 사용자에게 나가는 문구는 같다. 원인은 로그와 예외 메시지에만 남긴다.
     AI_CLIENT_CALL_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "답변을 생성하지 못했습니다. 다시 시도해 주세요."),
     AI_CLIENT_EMPTY_RESPONSE(HttpStatus.INTERNAL_SERVER_ERROR, "답변을 생성하지 못했습니다. 다시 시도해 주세요."),
+    AI_CLIENT_CALL_BUDGET_EXHAUSTED(HttpStatus.INTERNAL_SERVER_ERROR, "문항 생성에 허용된 AI 호출 한도를 초과했습니다."),
     ;
 
     private final HttpStatus status;

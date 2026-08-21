@@ -15,13 +15,26 @@ public record ProblemVerificationRequest(
         DraftAssetManifest assetManifest,
         VerificationExpectation expectation,
         VerificationContext context,
-        SemanticMaterializationReport semanticReport
+        SemanticMaterializationReport semanticReport,
+        VerificationProfile profile
 ) {
+    public ProblemVerificationRequest {
+        profile = profile == null ? VerificationProfile.FULL_CONTENT : profile;
+    }
+
+    public ProblemVerificationRequest(UUID verificationRequestId, VerificationScope scope,
+            VerificationOperationType operationType, ProblemCandidateDraft candidate,
+            DraftAssetManifest assetManifest, VerificationExpectation expectation,
+            VerificationContext context, SemanticMaterializationReport semanticReport) {
+        this(verificationRequestId, scope, operationType, candidate, assetManifest,
+                expectation, context, semanticReport, VerificationProfile.FULL_CONTENT);
+    }
+
     public ProblemVerificationRequest(UUID verificationRequestId, VerificationScope scope,
             VerificationOperationType operationType, ProblemCandidateDraft candidate,
             DraftAssetManifest assetManifest, VerificationExpectation expectation,
             VerificationContext context) {
         this(verificationRequestId, scope, operationType, candidate, assetManifest,
-                expectation, context, null);
+                expectation, context, null, VerificationProfile.FULL_CONTENT);
     }
 }

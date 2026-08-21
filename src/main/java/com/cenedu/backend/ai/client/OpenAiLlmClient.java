@@ -11,6 +11,8 @@ import com.openai.errors.OpenAIException;
 import com.openai.models.completions.CompletionUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -37,15 +39,31 @@ public class OpenAiLlmClient implements LlmClient {
 
     private final OpenAiChatModel chatModel;
     private final OpenAiProperties properties;
+    private final LlmCallBudgetManager budgetManager;
+    private final OpenAiFailureClassifier failureClassifier;
 
     /**
      * <b>파라미터 이름을 바꾸지 않는다.</b> {@code OpenAiChatModel} 빈은 둘이다 — 여기서 쓰는
      * {@code openAiChatModel} 과 도구 루프의 {@code loopChatModel}. 타입만으로는 갈리지 않아
      * Spring 이 파라미터 이름으로 후보를 고른다. 이름이 어긋나면 기동이 실패한다.
      */
-    public OpenAiLlmClient(OpenAiChatModel openAiChatModel, OpenAiProperties properties) {
+    @Autowired
+    public OpenAiLlmClient(OpenAiChatModel openAiChatModel, OpenAiProperties properties,
+            LlmCallBudgetManager budgetManager) {
+        this(openAiChatModel, properties, budgetManager, new OpenAiFailureClassifier());
+    }
+
+    public OpenAiLlmClient(OpenAiChatModel openAiChatModel, OpenAiProperties properties,
+            LlmCallBudgetManager budgetManager, OpenAiFailureClassifier failureClassifier) {
         this.chatModel = openAiChatModel;
         this.properties = properties;
+        this.budgetManager = budgetManager;
+        this.failureClassifier = failureClassifier;
+    }
+
+    /** 기존 단위 테스트와 비문항 호출 호환용 생성자다. */
+    public OpenAiLlmClient(OpenAiChatModel openAiChatModel, OpenAiProperties properties) {
+        this(openAiChatModel, properties, new LlmCallBudgetManager());
     }
 
     @Override
@@ -82,15 +100,27 @@ public class OpenAiLlmClient implements LlmClient {
 
         long startedAt = System.nanoTime();
         ChatResponse response;
-        try {
-            response = chatModel.call(prompt);
-        } catch (OpenAIException e) {
-            // 재시도는 SDK 가 max-retries 만큼 이미 끝낸 뒤다. 여기 오면 최종 실패다.
-            log.warn("LLM 호출 실패 — useCase={}, model={}, elapsedMs={}",
-                    useCase, options.model(), elapsedMs(startedAt), e);
+        LlmCallBudgetManager.Scope budget = budgetManager.current();
+        int apiAttempt = 0;
+        while (true) {
+            apiAttempt = budget == null ? apiAttempt + 1 : budget.reserve();
+            try {
+                response = chatModel.call(prompt);
+                break;
+            } catch (OpenAIException e) {
+                if (failureClassifier.retryable(e) && apiAttempt == 1) {
+                    log.warn("event=llm_call outcome=RETRY useCase={} apiAttempt={} reason=TRANSIENT", useCase, apiAttempt);
+                    continue;
+                }
+            log.warn("event=llm_call outcome=ERROR useCase={} model={} elapsedMs={} apiAttempt={} "
+                            + "traceId={} jobId={} itemId={} sessionId={} operationId={} requestId={} stage={} failureType={}",
+                    useCase, options.model(), elapsedMs(startedAt), apiAttempt, context("traceId"), context("jobId"),
+                    context("itemId"), context("sessionId"), context("operationId"), context("requestId"), context("stage"),
+                    e.getClass().getSimpleName());
             throw new BusinessException(
                     ErrorCode.AI_CLIENT_CALL_FAILED,
                     "LLM 호출에 실패했습니다: " + e.getMessage());
+            }
         }
         long elapsedMs = elapsedMs(startedAt);
 
@@ -116,10 +146,12 @@ public class OpenAiLlmClient implements LlmClient {
 
         // 프롬프트 본문과 응답 본문은 남기지 않는다. 학생 입력과 시험 문항이 로그로 나가면
         // 정답 유출 정책이 무너진다. 길이만으로도 대부분의 추적은 된다.
-        log.info("LLM 호출 — useCase={}, model={}, elapsedMs={}, promptTokens={}, completionTokens={},"
-                        + " reasoningTokens={}, finishReason={}, responseLength={}",
-                useCase, response.getMetadata().getModel(), elapsedMs, promptTokens, completionTokens,
-                reasoningTokens, finishReason, text != null ? text.length() : 0);
+        log.info("event=llm_call outcome=SUCCESS useCase={} model={} elapsedMs={} apiAttempt={} "
+                        + "traceId={} jobId={} itemId={} sessionId={} operationId={} requestId={} stage={} "
+                        + "promptTokens={} completionTokens={} reasoningTokens={} finishReason={} responseLength={}",
+                useCase, response.getMetadata().getModel(), elapsedMs, apiAttempt, context("traceId"), context("jobId"),
+                context("itemId"), context("sessionId"), context("operationId"), context("requestId"), context("stage"),
+                promptTokens, completionTokens, reasoningTokens, finishReason, text != null ? text.length() : 0);
 
         if (text == null || text.isBlank()) {
             // 빈 문자열을 정상 응답으로 흘리면 챗봇이 빈 말풍선을 띄우고 원인을 못 찾는다.
@@ -131,6 +163,12 @@ public class OpenAiLlmClient implements LlmClient {
         }
 
         return new LlmResponse(text, promptTokens, completionTokens, reasoningTokens);
+    }
+
+    /** MDC에 없는 선택적 추적값은 빈 문자열로 남겨 공통 로그 형식을 유지한다. */
+    private String context(String key) {
+        String value = MDC.get(key);
+        return value == null ? "" : value;
     }
 
     private Prompt buildPrompt(

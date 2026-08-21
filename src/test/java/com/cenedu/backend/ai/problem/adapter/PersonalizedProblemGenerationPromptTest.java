@@ -23,11 +23,13 @@ class PersonalizedProblemGenerationPromptTest {
 
     @Test
     void legacy_prompt에_구조화된_근거가_포함되고_학생_답안_원문은_포함되지_않는다() {
-        String prompt = new ProblemGenerationPromptFactory().create(command()).messages().getLast().content();
+        ProblemGenerationPrompt generated = new ProblemGenerationPromptFactory().create(command());
+        String prompt = generated.messages().getLast().content();
 
         assertThat(prompt).contains("personalizedEvidence", "historicalIncorrectItemCount",
                 "evaluationAreaEvidence", "diagnosticEvidence", "EXECUTE");
         assertThat(prompt).doesNotContain("studentAnswer", "handwritingText");
+        assertThat(generated.systemPrompt()).contains("$...$", "answerRaw");
     }
 
     @Test
@@ -36,7 +38,7 @@ class PersonalizedProblemGenerationPromptTest {
                 .create(command(), List.of());
 
         assertThat(prompt).contains("personalizedEvidence", "historicalIncorrectItemCount",
-                "incorrectRate", "EXECUTE");
+                "incorrectRate", "EXECUTE", "$...$");
     }
 
     private ProblemGenerationCommand command() {

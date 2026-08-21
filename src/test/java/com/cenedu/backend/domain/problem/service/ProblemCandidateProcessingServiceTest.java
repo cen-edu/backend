@@ -32,6 +32,11 @@ import com.cenedu.backend.domain.problem.authoring.verification.ProblemVerificat
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationExpectation;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationOperationType;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationOverallStatus;
+import com.cenedu.backend.domain.problem.authoring.verification.VerificationFinding;
+import com.cenedu.backend.domain.problem.authoring.verification.VerificationFindingStatus;
+import com.cenedu.backend.domain.problem.authoring.verification.VerificationIssueCode;
+import com.cenedu.backend.domain.problem.authoring.verification.VerificationScope;
+import com.cenedu.backend.domain.problem.authoring.verification.VerificationSeverity;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringSession;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationStatus;
@@ -155,6 +160,38 @@ class ProblemCandidateProcessingServiceTest {
 
         assertThat(result.status()).isEqualTo(VerificationOverallStatus.ERROR);
         verify(verificationPort).verify(any());
+    }
+
+    @Test
+    @DisplayName("재시도 가능한 검증 오류만 같은 후보에서 한 번 재검증한다")
+    void retriesRetryableVerificationErrorOnce() {
+        when(verificationPort.verify(any())).thenAnswer(new org.mockito.stubbing.Answer<ProblemVerificationReport>() {
+            private int calls;
+
+            @Override
+            public ProblemVerificationReport answer(org.mockito.invocation.InvocationOnMock invocation) {
+                var request = (com.cenedu.backend.domain.problem.authoring.verification.ProblemVerificationRequest)
+                        invocation.getArgument(0);
+                calls++;
+                if (calls == 1) {
+                    return new ProblemVerificationReport(request.verificationRequestId(), request.scope(),
+                            VerificationOverallStatus.ERROR,
+                            List.of(new VerificationFinding(
+                                    VerificationScope.CONTENT == request.scope()
+                                            ? com.cenedu.backend.domain.problem.authoring.verification.VerificationCheckType.CORRECTNESS
+                                            : com.cenedu.backend.domain.problem.authoring.verification.VerificationCheckType.ASSET_CONSISTENCY,
+                                    VerificationFindingStatus.ERROR, VerificationSeverity.ERROR,
+                                    VerificationIssueCode.PROVIDER_ERROR, "검증 응답이 요구한 형식이 아닙니다.", null)));
+                }
+                return new ProblemVerificationReport(request.verificationRequestId(), request.scope(),
+                        VerificationOverallStatus.PASSED, List.of());
+            }
+        });
+
+        CandidateProcessingResult result = service.process(request());
+
+        assertThat(result.promoted()).isTrue();
+        verify(verificationPort, org.mockito.Mockito.times(2)).verify(any());
     }
 
     @Test

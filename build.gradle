@@ -109,6 +109,13 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 
+    // Task7 라이브 비교 배치의 필터를 Gradle JVM에서 fork된 테스트 JVM으로 전달한다.
+    ['task7.generator', 'task7.verifier', 'task7.path',
+     'task7.batch.start', 'task7.batch.end'].each { key ->
+        def value = System.getProperty(key)
+        if (value != null) systemProperty key, value
+    }
+
     // 테스트 워커 힙을 과도하게 키우면 로컬/CI 컨테이너의 메모리 한도를 넘어
     // 워커가 강제 종료되고 Gradle에는 원인 대신 EOFException만 전달될 수 있다.
     maxHeapSize = '1g'

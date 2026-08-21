@@ -18,6 +18,11 @@ import com.cenedu.backend.domain.problem.authoring.candidate.CandidateSourceType
 import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemAssetProductionPort;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemVerificationPort;
+import com.cenedu.backend.domain.problem.authoring.port.ProblemRepairPort;
+import com.cenedu.backend.domain.problem.authoring.repair.ProblemRepairCommand;
+import com.cenedu.backend.domain.problem.authoring.repair.ProblemRepairDelta;
+import com.cenedu.backend.domain.problem.authoring.repair.ProblemRepairPlan;
+import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProvenance;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotNormalizedValidator;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator;
 import com.cenedu.backend.domain.problem.authoring.verification.ProblemVerificationBundle;
@@ -30,6 +35,7 @@ import com.cenedu.backend.domain.problem.authoring.verification.VerificationIssu
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationOverallStatus;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationScope;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationSeverity;
+import com.cenedu.backend.domain.problem.authoring.verification.VerificationProfile;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemSemanticMaterializer;
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.MaterializedProblem;
 import com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemSemanticDocumentCodec;
@@ -49,10 +55,14 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 /** 생성·수정 후보를 S1 검증, Version 보관, 의미·자산 검증, current 승격 순서로 조율한다. */
 @Service
 public class ProblemCandidateProcessingService {
+    private static final Logger log = LoggerFactory.getLogger(ProblemCandidateProcessingService.class);
     private final ProblemAuthoringSessionRepository sessionRepository;
     private final ProblemAuthoringVersionRepository versionRepository;
     private final SnapshotStructuralValidator structuralValidator;
@@ -60,6 +70,9 @@ public class ProblemCandidateProcessingService {
     private final ProblemAuthoringJsonCodec jsonCodec;
     private final ObjectProvider<ProblemVerificationPort> verificationPortProvider;
     private final ObjectProvider<ProblemAssetProductionPort> assetPortProvider;
+    private final ObjectProvider<ProblemRepairPort> repairPortProvider;
+    private final ProblemRepairPlanner repairPlanner;
+    private final ProblemRepairDeltaMerger repairDeltaMerger;
     private final TransactionTemplate transactionTemplate;
     private final ProblemAiConcurrencyLimiter concurrencyLimiter;
     private final ProblemSemanticMaterializer semanticMaterializer = new DefaultProblemSemanticMaterializer();
@@ -80,7 +93,24 @@ public class ProblemCandidateProcessingService {
     ) {
         this(sessionRepository, versionRepository, structuralValidator, normalizedValidator, jsonCodec,
                 verificationPortProvider, assetPortProvider, transactionManager, concurrencyLimiter,
-                new SemanticAuthoringProperties(false));
+                new SemanticAuthoringProperties(false), null, new ProblemRepairPlanner(), new ProblemRepairDeltaMerger(new tools.jackson.databind.ObjectMapper()));
+    }
+
+    public ProblemCandidateProcessingService(
+            ProblemAuthoringSessionRepository sessionRepository,
+            ProblemAuthoringVersionRepository versionRepository,
+            SnapshotStructuralValidator structuralValidator,
+            SnapshotNormalizedValidator normalizedValidator,
+            ProblemAuthoringJsonCodec jsonCodec,
+            ObjectProvider<ProblemVerificationPort> verificationPortProvider,
+            ObjectProvider<ProblemAssetProductionPort> assetPortProvider,
+            PlatformTransactionManager transactionManager,
+            ProblemAiConcurrencyLimiter concurrencyLimiter,
+            SemanticAuthoringProperties semanticProperties
+    ) {
+        this(sessionRepository, versionRepository, structuralValidator, normalizedValidator, jsonCodec,
+                verificationPortProvider, assetPortProvider, transactionManager, concurrencyLimiter,
+                semanticProperties, null, new ProblemRepairPlanner(), new ProblemRepairDeltaMerger(new tools.jackson.databind.ObjectMapper()));
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -94,7 +124,10 @@ public class ProblemCandidateProcessingService {
             ObjectProvider<ProblemAssetProductionPort> assetPortProvider,
             PlatformTransactionManager transactionManager,
             ProblemAiConcurrencyLimiter concurrencyLimiter,
-            SemanticAuthoringProperties semanticProperties
+            SemanticAuthoringProperties semanticProperties,
+            ObjectProvider<ProblemRepairPort> repairPortProvider,
+            ProblemRepairPlanner repairPlanner,
+            ProblemRepairDeltaMerger repairDeltaMerger
     ) {
         this.sessionRepository = sessionRepository;
         this.versionRepository = versionRepository;
@@ -103,6 +136,9 @@ public class ProblemCandidateProcessingService {
         this.jsonCodec = jsonCodec;
         this.verificationPortProvider = verificationPortProvider;
         this.assetPortProvider = assetPortProvider;
+        this.repairPortProvider = repairPortProvider;
+        this.repairPlanner = repairPlanner;
+        this.repairDeltaMerger = repairDeltaMerger;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.concurrencyLimiter = concurrencyLimiter;
         this.semanticProperties = semanticProperties;
@@ -110,27 +146,118 @@ public class ProblemCandidateProcessingService {
 
     /** 외부 AI 호출을 트랜잭션 밖에서 수행하고 최종 PASSED 후보만 current로 승격한다. */
     public CandidateProcessingResult process(CandidateProcessingRequest request) {
+        return processInternal(request, true, VerificationProfile.FULL_CONTENT);
+    }
+
+    private CandidateProcessingResult processInternal(CandidateProcessingRequest request, boolean allowRepair,
+                                                      VerificationProfile profile) {
         validateRequest(request);
+        long startedAt = System.nanoTime();
+        log.info("event=problem_authoring_stage operation={} stage=REGISTRATION outcome=STARTED "
+                        + "jobId={} itemId={} sessionId={} operationId={}",
+                request.operationType(), context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
         RegisteredCandidate registered = Objects.requireNonNull(
                 transactionTemplate.execute(status -> registerCandidate(request)));
+        log.info("event=problem_authoring_stage operation={} stage=REGISTRATION outcome=SUCCESS elapsedMs={} versionId={} "
+                        + "jobId={} itemId={} sessionId={} operationId={}",
+                request.operationType(), elapsedMs(startedAt), registered.versionId(),
+                context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
 
+        long assetStartedAt = System.nanoTime();
         DraftAssetManifest manifest = produceAssets(request, registered);
+        log.info("event=problem_authoring_stage operation={} stage=ASSET outcome={} elapsedMs={} assetCount={} "
+                        + "jobId={} itemId={} sessionId={} operationId={}",
+                request.operationType(), assetOutcome(manifest), elapsedMs(assetStartedAt), manifest.plans().size(),
+                context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
         UUID verificationRequestId = UUID.randomUUID();
         transactionTemplate.executeWithoutResult(status -> beginVerification(
                 registered, manifest, verificationRequestId));
 
-        ProblemVerificationBundle bundle = verify(request, manifest, verificationRequestId);
+        long verificationStartedAt = System.nanoTime();
+        ProblemVerificationBundle bundle = verify(request, manifest, verificationRequestId, profile);
+        log.info("event=problem_authoring_stage operation={} stage=VERIFICATION outcome={} elapsedMs={} verificationRequestId={} "
+                        + "jobId={} itemId={} sessionId={} operationId={}",
+                request.operationType(), bundle.overallStatus(), elapsedMs(verificationStartedAt), verificationRequestId,
+                context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
         ProblemVerificationBundle completedBundle = bundle;
+        long promotionStartedAt = System.nanoTime();
         transactionTemplate.executeWithoutResult(status -> completeVerification(
                 request, registered, completedBundle));
+        log.info("event=problem_authoring_stage operation={} stage=PROMOTION outcome={} elapsedMs={} versionId={} "
+                        + "jobId={} itemId={} sessionId={} operationId={}",
+                request.operationType(), bundle.overallStatus(), elapsedMs(promotionStartedAt), registered.versionId(),
+                context("jobId"), context("itemId"), context("sessionId"), context("operationId"));
 
-        return new CandidateProcessingResult(
+        CandidateProcessingResult result = new CandidateProcessingResult(
                 registered.versionId(),
                 registered.versionNo(),
                 verificationRequestId,
                 bundle.overallStatus(),
                 bundle,
                 bundle.overallStatus() == VerificationOverallStatus.PASSED);
+        if (allowRepair && result.status() == VerificationOverallStatus.FAILED) {
+            CandidateProcessingResult repaired = repairFailedCandidate(request, registered, bundle);
+            if (repaired != null) return repaired;
+        }
+        return result;
+    }
+
+    /** 실패 원인이 부분 수정 가능할 때만 새 Version을 만들고 생성 Port 없이 재검증한다. */
+    private CandidateProcessingResult repairFailedCandidate(
+            CandidateProcessingRequest request,
+            RegisteredCandidate registered,
+            ProblemVerificationBundle bundle
+    ) {
+        if (request.candidate().semanticModel() != null || repairPortProvider == null) return null;
+        ProblemRepairPlan plan = repairPlanner.plan(bundle);
+        if (!plan.repairable()) return null;
+        ProblemRepairPort repairPort = repairPortProvider.getIfAvailable();
+        if (repairPort == null) return null;
+        ProblemRepairDelta delta = repairPort.repair(new ProblemRepairCommand(
+                UUID.randomUUID(), request.candidate().snapshot(), plan));
+        var repairedSnapshot = repairDeltaMerger.merge(request.candidate().snapshot(), plan, delta);
+        structuralValidator.validate(repairedSnapshot);
+        normalizedValidator.validate(repairedSnapshot);
+        ProblemCandidateDraft repairedCandidate = ProblemCandidateDraft.legacy(
+                UUID.randomUUID(), repairedSnapshot, request.candidate().assetPlans(),
+                new CandidateProvenance(CandidateSourceType.AI_MODIFY,
+                        registered.versionId(), List.of(registered.versionId())));
+        CandidateProcessingRequest repairedRequest = new CandidateProcessingRequest(
+                request.ownerTeacherId(), request.sessionId(), registered.versionId(),
+                AuthoringOperationType.AI_MODIFY, request.verificationOperationType(), repairedCandidate,
+                request.expectation(), request.verificationContext(), "검증 오류 항목 부분 수정");
+        return processInternal(repairedRequest, false, repairProfile(plan));
+    }
+
+    private VerificationProfile repairProfile(ProblemRepairPlan plan) {
+        Set<com.cenedu.backend.domain.problem.authoring.repair.RepairTarget> targets = plan.targets();
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.ANSWERS)
+                || targets.contains(com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.CHOICES)
+                || targets.contains(com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.STEPS)) {
+            return VerificationProfile.ANSWER_RELATED;
+        }
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.RUBRIC)) {
+            return VerificationProfile.RUBRIC_ONLY;
+        }
+        return VerificationProfile.ORIGINAL_ONLY;
+    }
+
+    /** 자산 계획의 처리 결과를 본문 없이 요약해 로그에 남긴다. */
+    private String assetOutcome(DraftAssetManifest manifest) {
+        if (manifest.plans().isEmpty()) return "NOT_APPLICABLE";
+        return manifest.artifacts().stream().allMatch(artifact ->
+                artifact.status() == com.cenedu.backend.domain.problem.authoring.asset.DraftAssetStatus.READY)
+                ? "SUCCESS" : "INCOMPLETE";
+    }
+
+    private long elapsedMs(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
+    }
+
+    /** MDC 추적값이 없는 직접 호출 테스트에서도 공통 로그 형식을 유지한다. */
+    private String context(String key) {
+        String value = MDC.get(key);
+        return value == null ? "" : value;
     }
 
     private RegisteredCandidate registerCandidate(CandidateProcessingRequest request) {
@@ -214,7 +341,8 @@ public class ProblemCandidateProcessingService {
 
     private ProblemVerificationBundle verify(CandidateProcessingRequest request,
                                              DraftAssetManifest manifest,
-                                             UUID verificationRequestId) {
+                                             UUID verificationRequestId,
+                                             VerificationProfile profile) {
         ProblemVerificationPort verificationPort = verificationPortProvider.getIfAvailable();
         if (verificationPort == null) {
             return ProblemVerificationBundle.contentOnly(
@@ -226,7 +354,7 @@ public class ProblemCandidateProcessingService {
         ProblemVerificationReport content = callVerification(
                 verificationPort,
                 verificationRequest(request, manifest, verificationRequestId,
-                        VerificationScope.CONTENT));
+                        VerificationScope.CONTENT, profile));
         if (manifest.plans().isEmpty()) {
             return ProblemVerificationBundle.contentOnly(verificationRequestId, content);
         }
@@ -238,7 +366,7 @@ public class ProblemCandidateProcessingService {
                 : callVerification(
                         verificationPort,
                         verificationRequest(request, manifest, verificationRequestId,
-                                VerificationScope.ASSET));
+                                VerificationScope.ASSET, profile));
         return ProblemVerificationBundle.merge(verificationRequestId, content, asset);
     }
 
@@ -246,7 +374,8 @@ public class ProblemCandidateProcessingService {
             CandidateProcessingRequest request,
             DraftAssetManifest manifest,
             UUID verificationRequestId,
-            VerificationScope scope
+            VerificationScope scope,
+            VerificationProfile profile
     ) {
         return new ProblemVerificationRequest(
                 verificationRequestId,
@@ -255,29 +384,63 @@ public class ProblemCandidateProcessingService {
                 request.candidate(),
                 manifest,
                 request.expectation(),
-                request.verificationContext(), semanticReport(request.candidate()));
+                request.verificationContext(), semanticReport(request.candidate()), profile);
     }
 
     private ProblemVerificationReport callVerification(
             ProblemVerificationPort port,
             ProblemVerificationRequest request
     ) {
-        try {
-            ProblemVerificationReport report;
-            try (ProblemAiConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire()) {
-                report = port.verify(request);
-            }
-            if (report == null
-                    || !request.verificationRequestId().equals(report.requestId())
-                    || report.scope() != request.scope()) {
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                ProblemVerificationReport report;
+                try (ProblemAiConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire()) {
+                    report = port.verify(request);
+                }
+                if (report == null
+                        || !request.verificationRequestId().equals(report.requestId())
+                        || report.scope() != request.scope()) {
+                    return errorReport(request.verificationRequestId(), request.scope(),
+                            "INVALID_VERIFICATION_REPORT");
+                }
+                if (attempt == 1 && retryableVerificationError(report)) {
+                    log.warn("검증 일시 오류 — 검증만 재시도합니다. requestId={}, scope={}, attempt=2",
+                            request.verificationRequestId(), request.scope());
+                    continue;
+                }
+                return report;
+            } catch (RuntimeException exception) {
+                if (attempt == 1 && retryableVerificationException(exception)) {
+                    log.warn("검증 공급자 예외 — 검증만 재시도합니다. requestId={}, scope={}, attempt=2",
+                            request.verificationRequestId(), request.scope());
+                    continue;
+                }
                 return errorReport(request.verificationRequestId(), request.scope(),
-                        "INVALID_VERIFICATION_REPORT");
+                        "VERIFICATION_PROVIDER_ERROR");
             }
-            return report;
-        } catch (RuntimeException exception) {
-            return errorReport(request.verificationRequestId(), request.scope(),
-                    "VERIFICATION_PROVIDER_ERROR");
         }
+        return errorReport(request.verificationRequestId(), request.scope(),
+                "VERIFICATION_PROVIDER_ERROR");
+    }
+
+    /** 내용 실패는 재시도하지 않고 형식·공급자 오류만 한 번 재검증한다. */
+    private boolean retryableVerificationError(ProblemVerificationReport report) {
+        if (report.overallStatus() != VerificationOverallStatus.ERROR
+                || report.findings() == null || report.findings().isEmpty()) {
+            return false;
+        }
+        return report.findings().stream().allMatch(finding ->
+                finding.status() == VerificationFindingStatus.ERROR
+                        && (finding.code() == VerificationIssueCode.PROVIDER_ERROR
+                        || (finding.message() != null
+                        && finding.message().contains("응답이 요구한 형식"))));
+    }
+
+    private boolean retryableVerificationException(RuntimeException exception) {
+        if (exception instanceof BusinessException businessException) {
+            return businessException.getErrorCode() == ErrorCode.AI_CLIENT_CALL_FAILED;
+        }
+        return exception instanceof com.cenedu.backend.ai.verification.adapter.SolverResponseParseException;
     }
 
     private void completeVerification(CandidateProcessingRequest request,

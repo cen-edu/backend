@@ -47,9 +47,13 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
     @Override
     public ProblemCandidateDraft modify(ProblemModificationCommand command) {
         try {
+            java.util.Set<EditTargetType> targets = java.util.stream.Stream.concat(
+                    command.plan().requestedTargets().stream(), command.plan().dependentTargets().stream())
+                    .map(com.cenedu.backend.domain.problem.authoring.edit.ProblemEditTargetRef::targetType)
+                    .collect(java.util.stream.Collectors.toSet());
             String response = llmClient.completeStructured(promptStrategy.create(command),
                     List.of(ChatMessage.user("확정된 수정 계획을 실행하라.")),
-                    ProblemStructuredOutputSchemas.CANDIDATE).text();
+                    ProblemStructuredOutputSchemas.modificationDeltaFor(targets)).text();
             ProblemGenerationOutput output = withProtectedBaseValues(command,
                     objectMapper.readValue(response, ProblemGenerationOutput.class));
             var requested = command.plan().requestedSpecification();
