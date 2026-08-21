@@ -103,6 +103,12 @@ public class ProblemGenerationWorker {
                         ProblemGenerationCommand commandBeforeEnrichment = attemptCommand;
                         var enrichment = runStage("ENRICHMENT",
                                 () -> semanticReferenceEnricher.enrichWithStatus(commandBeforeEnrichment));
+                        if (enrichment.unsupportedOrigin()
+                                && commandBeforeEnrichment.specification().visualRequirement().mode()
+                                == com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode.PRESERVE_ORIGIN) {
+                            throw new com.cenedu.backend.global.common.BusinessException(
+                                    com.cenedu.backend.global.common.ErrorCode.PROBLEM_VISUAL_SOURCE_UNSUPPORTED);
+                        }
                         attemptCommand = enrichment.command();
                     }
                     ProblemGenerationCommand commandForGeneration = attemptCommand;
