@@ -174,6 +174,9 @@ public enum ErrorCode {
     AI_CLIENT_CALL_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "답변을 생성하지 못했습니다. 다시 시도해 주세요."),
     AI_CLIENT_EMPTY_RESPONSE(HttpStatus.INTERNAL_SERVER_ERROR, "답변을 생성하지 못했습니다. 다시 시도해 주세요."),
     AI_CLIENT_CALL_BUDGET_EXHAUSTED(HttpStatus.INTERNAL_SERVER_ERROR, "문항 생성에 허용된 AI 호출 한도를 초과했습니다."),
+    PROBLEM_DRAFT_NOT_FOUND(HttpStatus.NOT_FOUND, "문항 초안을 찾을 수 없습니다."),
+    PROBLEM_DRAFT_PREVIEW_NOT_READY(HttpStatus.CONFLICT, "문항 초안 이미지가 아직 미리보기 가능한 상태가 아닙니다."),
+    PROBLEM_DRAFT_PREVIEW_INVALID(HttpStatus.UNPROCESSABLE_ENTITY, "문항 초안 이미지 무결성 검증에 실패했습니다."),
     ;
 
     private final HttpStatus status;

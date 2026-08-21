@@ -37,6 +37,7 @@ RUN apt-get update  && apt-get install -y --no-install-recommends curl  && rm -r
 
 # root 로 돌리지 않는다. 컨테이너가 뚫려도 호스트로 넘어갈 여지를 줄인다.
 RUN useradd --system --create-home --shell /usr/sbin/nologin cenedu
+RUN mkdir -p /var/lib/cen-edu/problem-drafts && chown -R cenedu:cenedu /var/lib/cen-edu
 COPY --from=build /workspace/build/libs/*.jar app.jar
 RUN chown cenedu:cenedu /app/app.jar
 USER cenedu
