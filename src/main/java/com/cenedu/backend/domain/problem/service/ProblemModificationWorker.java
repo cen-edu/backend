@@ -7,6 +7,7 @@ import com.cenedu.backend.domain.problem.authoring.candidate.*;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditExecutionPlan;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemModificationPort;
+import com.cenedu.backend.domain.problem.authoring.port.ProblemAiExecutionBudgetPort;
 import com.cenedu.backend.domain.problem.authoring.verification.*;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringSessionRepository;
@@ -22,15 +23,26 @@ public class ProblemModificationWorker {
     private final ProblemCandidateProcessingService processingService;
     private final ProblemAuthoringSessionRepository sessionRepository;
     private final ProblemAuthoringStateService stateService;
+    private final ProblemAiExecutionBudgetPort executionBudgetPort;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ProblemModificationWorker(ObjectProvider<ProblemModificationPort> modificationPortProvider,
             ProblemCandidateProcessingService processingService,
             ProblemAuthoringSessionRepository sessionRepository,
             ProblemAuthoringStateService stateService) {
+        this(modificationPortProvider, processingService, sessionRepository, stateService, null);
+    }
+
+    public ProblemModificationWorker(ObjectProvider<ProblemModificationPort> modificationPortProvider,
+            ProblemCandidateProcessingService processingService,
+            ProblemAuthoringSessionRepository sessionRepository,
+            ProblemAuthoringStateService stateService,
+            ProblemAiExecutionBudgetPort executionBudgetPort) {
         this.modificationPortProvider = modificationPortProvider;
         this.processingService = processingService;
         this.sessionRepository = sessionRepository;
         this.stateService = stateService;
+        this.executionBudgetPort = executionBudgetPort;
     }
 
     /** 수정 후보를 AI_MODIFY Version으로 등록하고 의미 실패 시 최대 두 번 새 후보로 재시도한다. */
@@ -38,8 +50,13 @@ public class ProblemModificationWorker {
         ProblemModificationPort port = modificationPortProvider.getIfAvailable();
         if (port == null) throw new BusinessException(ErrorCode.PROBLEM_AI_PORT_NOT_CONFIGURED);
         ProblemEditExecutionPlan plan = command.plan();
+        ProblemAiExecutionBudgetPort.Scope budget = executionBudgetPort == null ? null
+                : executionBudgetPort.open(command.requestId().toString(), Long.toString(plan.baseVersionId()),
+                        Long.toString(plan.sessionId()), "MODIFICATION");
         CandidateProcessingResult lastResult = null;
-        for (int attempt = 0; attempt <= 2; attempt++) {
+        try {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            if (budget != null) budget.stage(ProblemAiExecutionBudgetPort.Stage.MODIFICATION, attempt + 1);
             ProblemModificationCommand attemptCommand = commandForAttempt(command, attempt);
             ProblemCandidateDraft candidate;
             try {
@@ -53,13 +70,16 @@ public class ProblemModificationWorker {
                     teacherId, plan, command, candidate));
             if (lastResult.promoted()
                     || lastResult.status() == VerificationOverallStatus.ERROR
-                    || attempt == 2) {
+                    || attempt == 1) {
                 return lastResult;
             }
             stateService.prepareModificationRetry(
                     teacherId, plan.sessionId(), lastResult.status().name());
         }
         return lastResult;
+        } finally {
+            if (budget != null) budget.close();
+        }
     }
 
     private CandidateProcessingRequest processingRequest(

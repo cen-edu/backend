@@ -63,6 +63,10 @@ app:
       # 볼 수 있어 기본값을 짧게 둔다 — 측정용으로 길게 쓰는 local 만 따로 덮는다.
       grading-pipeline-url-expiration: ${AWS_S3_GRADING_PIPELINE_URL_EXPIRATION:15m}
   ai:
+    problem:
+      call-budget:
+        generation: ${AI_PROBLEM_GENERATION_CALL_BUDGET:8}
+        modification: ${AI_PROBLEM_MODIFICATION_CALL_BUDGET:8}
     embedding:
       model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
       dimensions: 1024

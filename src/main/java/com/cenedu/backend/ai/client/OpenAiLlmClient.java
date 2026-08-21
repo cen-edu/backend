@@ -38,15 +38,30 @@ public class OpenAiLlmClient implements LlmClient {
 
     private final OpenAiChatModel chatModel;
     private final OpenAiProperties properties;
+    private final LlmCallBudgetManager budgetManager;
+    private final OpenAiFailureClassifier failureClassifier;
 
     /**
      * <b>파라미터 이름을 바꾸지 않는다.</b> {@code OpenAiChatModel} 빈은 둘이다 — 여기서 쓰는
      * {@code openAiChatModel} 과 도구 루프의 {@code loopChatModel}. 타입만으로는 갈리지 않아
      * Spring 이 파라미터 이름으로 후보를 고른다. 이름이 어긋나면 기동이 실패한다.
      */
-    public OpenAiLlmClient(OpenAiChatModel openAiChatModel, OpenAiProperties properties) {
+    public OpenAiLlmClient(OpenAiChatModel openAiChatModel, OpenAiProperties properties,
+            LlmCallBudgetManager budgetManager) {
+        this(openAiChatModel, properties, budgetManager, new OpenAiFailureClassifier());
+    }
+
+    public OpenAiLlmClient(OpenAiChatModel openAiChatModel, OpenAiProperties properties,
+            LlmCallBudgetManager budgetManager, OpenAiFailureClassifier failureClassifier) {
         this.chatModel = openAiChatModel;
         this.properties = properties;
+        this.budgetManager = budgetManager;
+        this.failureClassifier = failureClassifier;
+    }
+
+    /** 기존 단위 테스트와 비문항 호출 호환용 생성자다. */
+    public OpenAiLlmClient(OpenAiChatModel openAiChatModel, OpenAiProperties properties) {
+        this(openAiChatModel, properties, new LlmCallBudgetManager());
     }
 
     @Override
@@ -83,18 +98,27 @@ public class OpenAiLlmClient implements LlmClient {
 
         long startedAt = System.nanoTime();
         ChatResponse response;
-        try {
-            response = chatModel.call(prompt);
-        } catch (OpenAIException e) {
-            // 재시도는 SDK 가 max-retries 만큼 이미 끝낸 뒤다. 여기 오면 최종 실패다.
-            log.warn("event=llm_call outcome=ERROR useCase={} model={} elapsedMs={} apiAttempt=1 "
+        LlmCallBudgetManager.Scope budget = budgetManager.current();
+        int apiAttempt = 0;
+        while (true) {
+            apiAttempt = budget == null ? apiAttempt + 1 : budget.reserve();
+            try {
+                response = chatModel.call(prompt);
+                break;
+            } catch (OpenAIException e) {
+                if (failureClassifier.retryable(e) && apiAttempt == 1) {
+                    log.warn("event=llm_call outcome=RETRY useCase={} apiAttempt={} reason=TRANSIENT", useCase, apiAttempt);
+                    continue;
+                }
+            log.warn("event=llm_call outcome=ERROR useCase={} model={} elapsedMs={} apiAttempt={} "
                             + "traceId={} jobId={} itemId={} sessionId={} operationId={} requestId={} stage={} failureType={}",
-                    useCase, options.model(), elapsedMs(startedAt), context("traceId"), context("jobId"),
+                    useCase, options.model(), elapsedMs(startedAt), apiAttempt, context("traceId"), context("jobId"),
                     context("itemId"), context("sessionId"), context("operationId"), context("requestId"), context("stage"),
                     e.getClass().getSimpleName());
             throw new BusinessException(
                     ErrorCode.AI_CLIENT_CALL_FAILED,
                     "LLM 호출에 실패했습니다: " + e.getMessage());
+            }
         }
         long elapsedMs = elapsedMs(startedAt);
 
@@ -120,10 +144,10 @@ public class OpenAiLlmClient implements LlmClient {
 
         // 프롬프트 본문과 응답 본문은 남기지 않는다. 학생 입력과 시험 문항이 로그로 나가면
         // 정답 유출 정책이 무너진다. 길이만으로도 대부분의 추적은 된다.
-        log.info("event=llm_call outcome=SUCCESS useCase={} model={} elapsedMs={} apiAttempt=1 "
+        log.info("event=llm_call outcome=SUCCESS useCase={} model={} elapsedMs={} apiAttempt={} "
                         + "traceId={} jobId={} itemId={} sessionId={} operationId={} requestId={} stage={} "
                         + "promptTokens={} completionTokens={} reasoningTokens={} finishReason={} responseLength={}",
-                useCase, response.getMetadata().getModel(), elapsedMs, context("traceId"), context("jobId"),
+                useCase, response.getMetadata().getModel(), elapsedMs, apiAttempt, context("traceId"), context("jobId"),
                 context("itemId"), context("sessionId"), context("operationId"), context("requestId"), context("stage"),
                 promptTokens, completionTokens, reasoningTokens, finishReason, text != null ? text.length() : 0);
 

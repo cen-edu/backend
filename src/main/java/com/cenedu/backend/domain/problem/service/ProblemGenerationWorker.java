@@ -12,6 +12,7 @@ import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationC
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationWorkItem;
 import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemRetrievalTracePort;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemGenerationPort;
+import com.cenedu.backend.domain.problem.authoring.port.ProblemAiExecutionBudgetPort;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationExpectation;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationOperationType;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
@@ -34,6 +35,7 @@ public class ProblemGenerationWorker {
     private final ProblemAiConcurrencyLimiter concurrencyLimiter;
     private final ObjectProvider<ProblemRetrievalTracePort> tracePort;
     private final ProblemSemanticReferenceEnricher semanticReferenceEnricher;
+    private final ProblemAiExecutionBudgetPort executionBudgetPort;
 
     public ProblemGenerationWorker(
             ProblemGenerationJobService jobService,
@@ -41,11 +43,10 @@ public class ProblemGenerationWorker {
             ObjectProvider<ProblemGenerationPort> generationPortProvider,
             ProblemAiConcurrencyLimiter concurrencyLimiter
     ) {
-        this(jobService, candidateProcessingService, generationPortProvider, concurrencyLimiter, null, null);
+        this(jobService, candidateProcessingService, generationPortProvider, concurrencyLimiter, null, null, null);
     }
 
     /** retrieval trace 연결 Port를 선택적으로 주입한다. */
-    @org.springframework.beans.factory.annotation.Autowired
     public ProblemGenerationWorker(
             ProblemGenerationJobService jobService,
             ProblemCandidateProcessingService candidateProcessingService,
@@ -54,12 +55,28 @@ public class ProblemGenerationWorker {
             ObjectProvider<ProblemRetrievalTracePort> tracePort,
             ProblemSemanticReferenceEnricher semanticReferenceEnricher
     ) {
+        this(jobService, candidateProcessingService, generationPortProvider, concurrencyLimiter,
+                tracePort, semanticReferenceEnricher, null);
+    }
+
+    /** retrieval trace와 호출 예산 Port를 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public ProblemGenerationWorker(
+            ProblemGenerationJobService jobService,
+            ProblemCandidateProcessingService candidateProcessingService,
+            ObjectProvider<ProblemGenerationPort> generationPortProvider,
+            ProblemAiConcurrencyLimiter concurrencyLimiter,
+            ObjectProvider<ProblemRetrievalTracePort> tracePort,
+            ProblemSemanticReferenceEnricher semanticReferenceEnricher,
+            ProblemAiExecutionBudgetPort executionBudgetPort
+    ) {
         this.jobService = jobService;
         this.candidateProcessingService = candidateProcessingService;
         this.generationPortProvider = generationPortProvider;
         this.concurrencyLimiter = concurrencyLimiter;
         this.tracePort = tracePort;
         this.semanticReferenceEnricher = semanticReferenceEnricher;
+        this.executionBudgetPort = executionBudgetPort;
     }
 
     /** 선점한 Item을 생성·검증하고 의미 실패 시 최대 두 번 같은 명령으로 재생성한다. */
@@ -70,10 +87,14 @@ public class ProblemGenerationWorker {
         }
         Map<String, String> previousContext = MDC.getCopyOfContextMap();
         putItemContext(workItem);
+        ProblemAiExecutionBudgetPort.Scope budget = executionBudgetPort == null ? null
+                : executionBudgetPort.open(workItem.command().requestId().toString(), Long.toString(workItem.itemId()),
+                        Long.toString(workItem.sessionId()), "GENERATION");
         try {
             int attempt = 0;
             while (true) {
                 MDC.put("candidateAttempt", Integer.toString(attempt + 1));
+                if (budget != null) budget.stage(ProblemAiExecutionBudgetPort.Stage.GENERATION, attempt + 1);
                 ProblemGenerationCommand attemptCommand = commandForAttempt(workItem.command(), attempt);
                 ProblemCandidateDraft candidate;
                 try {
@@ -145,6 +166,7 @@ public class ProblemGenerationWorker {
                 attempt++;
             }
         } finally {
+            if (budget != null) budget.close();
             restoreContext(previousContext);
         }
     }
