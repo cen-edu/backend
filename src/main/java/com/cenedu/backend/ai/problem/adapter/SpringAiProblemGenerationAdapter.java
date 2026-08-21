@@ -8,6 +8,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode;
+import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.ErrorCode;
 @Component
 public final class SpringAiProblemGenerationAdapter implements ProblemGenerationPort {
     private final SemanticAuthoringProperties properties; private final ProblemSemanticGenerationPipeline semanticPipeline; private final LegacyProblemGenerationPipeline legacyPipeline;
@@ -22,11 +24,11 @@ public final class SpringAiProblemGenerationAdapter implements ProblemGeneration
                         && reference.semanticModel() == null);
         if (command.specification().visualRequirement().mode() == VisualGenerationMode.PRESERVE_ORIGIN
                 && originUnavailable) {
-            throw new IllegalArgumentException("원본 시각 자료를 확인할 수 없어 생성할 수 없습니다.");
+            throw new BusinessException(ErrorCode.PROBLEM_VISUAL_SOURCE_UNSUPPORTED);
         }
         if (command.specification().visualRequirement().mode() == VisualGenerationMode.NONE) {
             return legacyPipeline.generate(command);
         }
-        return originUnavailable ? legacyPipeline.generate(command) : semanticPipeline.generate(command);
+        return semanticPipeline.generate(command);
     }
 }
