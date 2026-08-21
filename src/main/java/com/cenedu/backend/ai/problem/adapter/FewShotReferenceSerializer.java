@@ -38,7 +38,21 @@ public class FewShotReferenceSerializer {
         result.put("choices", snapshot.choices().stream().sorted(Comparator.comparingInt(SnapshotChoice::displayOrder)).map(SnapshotChoice::content).toList());
         result.put("steps", snapshot.steps().stream().sorted(Comparator.comparingInt(SnapshotStep::displayOrder)).map(this::step).toList());
         result.put("solutionStrategy", strategy(snapshot.learningGuide())); result.put("visualSummary", visual(metadata.presentation())); result.put("directCopyForbidden", true);
+        if (reference.role() == com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole.ORIGIN) {
+            result.put("originVisual", originVisual(reference));
+        }
         return result;
+    }
+
+    private Map<String, Object> originVisual(GenerationReference reference) {
+        if (reference.visualReference() != null) {
+            var visual = reference.visualReference();
+            return Map.of("visualKind", visual.kind().name(), "visualAssetKey", visual.assetKey() == null ? "" : visual.assetKey(),
+                    "directCopyForbidden", true);
+        }
+        if (reference.semanticModel() == null) return Map.of("visualKind", "UNKNOWN_FIGURE", "directCopyForbidden", true);
+        return Map.of("visualKind", reference.semanticModel().diagrams().isEmpty() ? "NONE" : reference.semanticModel().diagrams().get(0).kind().name(),
+                "semanticModel", reference.semanticModel(), "directCopyForbidden", true);
     }
 
     private Map<String, Object> step(SnapshotStep step) {

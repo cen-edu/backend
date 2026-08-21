@@ -10,6 +10,7 @@ import com.cenedu.backend.domain.analysis.reissue.ReissueProposalResponse;
 import com.cenedu.backend.domain.curriculum.dto.response.CurriculumPathResponse;
 import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
+import com.cenedu.backend.domain.problem.authoring.visual.*;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationReference;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification;
@@ -382,7 +383,8 @@ public class PersonalizedProblemGenerationPlanningService {
                                              List<GenerationReference> references) {
         String difficulty = stage == CustomStage.ADVANCED ? "high" : subUnit.similar().difficulty();
         GenerationSpecification specification = new GenerationSpecification(
-                QuestionType.STEP_FILL, difficulty, null, List.of());
+                QuestionType.STEP_FILL, difficulty, null, List.of(), false,
+                new VisualGenerationRequirement(VisualGenerationMode.PRESERVE_ORIGIN, VisualReferenceKind.UNKNOWN_FIGURE));
         ProblemGenerationCommand command = new ProblemGenerationCommand(UUID.randomUUID(), null,
                 purpose, specification, curriculum, references, List.of());
         return new ProblemGenerationSlotPlan(1, GenerationSlotSource.AI_GENERATION, null,

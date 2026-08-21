@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.ObjectProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode;
 @Component
 public final class SpringAiProblemGenerationAdapter implements ProblemGenerationPort {
     private final SemanticAuthoringProperties properties; private final ProblemSemanticGenerationPipeline semanticPipeline; private final LegacyProblemGenerationPipeline legacyPipeline;
@@ -19,6 +20,13 @@ public final class SpringAiProblemGenerationAdapter implements ProblemGeneration
         boolean originUnavailable = command.references().stream().anyMatch(reference ->
                 reference.role() == com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole.ORIGIN
                         && reference.semanticModel() == null);
+        if (command.specification().visualRequirement().mode() == VisualGenerationMode.PRESERVE_ORIGIN
+                && originUnavailable) {
+            throw new IllegalArgumentException("원본 시각 자료를 확인할 수 없어 생성할 수 없습니다.");
+        }
+        if (command.specification().visualRequirement().mode() == VisualGenerationMode.NONE) {
+            return legacyPipeline.generate(command);
+        }
         return originUnavailable ? legacyPipeline.generate(command) : semanticPipeline.generate(command);
     }
 }

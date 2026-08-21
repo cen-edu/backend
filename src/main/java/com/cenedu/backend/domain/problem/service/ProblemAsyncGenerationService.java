@@ -9,6 +9,7 @@ import com.cenedu.backend.domain.curriculum.service.CurriculumUnitQueryService;
 import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification;
+import com.cenedu.backend.domain.problem.authoring.visual.*;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationJobResult;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationPlan;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationRequirement;
@@ -138,8 +139,11 @@ public class ProblemAsyncGenerationService {
         CurriculumScope context = new CurriculumScope(path.curriculumRevision(), path.schoolLevel(),
                 path.grade(), path.semester() == null ? null : path.semester().intValue(), path.achievementStandardId(), subUnitId,
                 path.majorUnitName(), path.middleUnitName(), path.subUnitName());
+        VisualGenerationRequirement visual = (type == QuestionType.MULTIPLE_CHOICE || type == QuestionType.SHORT_INPUT)
+                ? new VisualGenerationRequirement(VisualGenerationMode.AUTO, VisualReferenceKind.UNKNOWN_FIGURE)
+                : VisualGenerationRequirement.none();
         return new ProblemGenerationRequirement(subUnitId, difficulty, type, count, purpose,
-                new GenerationSpecification(type, difficultyLabel, null, List.of()), context,
+                new GenerationSpecification(type, difficultyLabel, null, List.of(), false, visual), context,
                 List.of(), List.of());
     }
 

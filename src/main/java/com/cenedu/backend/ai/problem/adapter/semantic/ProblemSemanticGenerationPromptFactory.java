@@ -22,6 +22,8 @@ public final class ProblemSemanticGenerationPromptFactory {
             if (command.personalizedEvidence() != null) {
                 requestData.put("personalizedEvidence", command.personalizedEvidence());
             }
+            command.references().stream().filter(r -> r.role() == com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole.ORIGIN)
+                    .findFirst().ifPresent(origin -> requestData.put("originVisual", originVisual(origin)));
             request = mapper.writeValueAsString(requestData);
         }
         catch (Exception e) { throw new IllegalStateException("semantic generation request를 만들 수 없습니다.", e); }
@@ -37,6 +39,13 @@ public final class ProblemSemanticGenerationPromptFactory {
                 비교용 정답 값에는 $, $$, \\(, \\) 구분자를 넣지 마라.
                 CURRENT_REQUEST_JSON:\n%s%s
                 """.formatted(request, repair);
+    }
+
+    private Object originVisual(com.cenedu.backend.domain.problem.authoring.generation.GenerationReference origin) {
+        if (origin.visualReference() != null) return origin.visualReference();
+        if (origin.semanticModel() == null) return Map.of("visualKind", "UNKNOWN_FIGURE", "directCopyForbidden", true);
+        return Map.of("visualKind", origin.semanticModel().diagrams().isEmpty() ? "NONE" : origin.semanticModel().diagrams().get(0).kind().name(),
+                "semanticModel", origin.semanticModel(), "directCopyForbidden", true);
     }
 
     public List<ChatMessage> messages(ProblemGenerationCommand command) {
