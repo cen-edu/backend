@@ -367,6 +367,30 @@ Flyway 가 기동할 때 스키마를 올린다(`vector` 확장 생성 포함 �
 
 ### 5.1 한 사이클 (코드 수정 → 서버 반영)
 
+**릴리스 스크립트를 쓰면 아래 (1)~(3) 이 한 줄이다.** 빌드 → push → EC2 배포 → 헬스체크를
+이어서 하고, 이미 올라간 태그면 빌드 전에 막는다.
+
+```powershell
+git fetch origin; git merge origin/main     # 팀원 코드 먼저 받는다
+.\scriptselease.ps1 1.0.3                 # 백엔드만
+.\scriptselease.ps1 1.0.3 -Frontend       # 백엔드 + 프론트
+.\scriptselease.ps1 1.0.3 -FrontendOnly   # 프론트만
+```
+
+주소나 경로가 바뀌면 스크립트를 고치지 않고 환경 변수로 덮는다 — `CEN_EDU_HOST`,
+`CEN_EDU_KEY`, `CEN_EDU_FRONTEND_REPO`, `CEN_EDU_HEALTH_URL`, `DOCKERHUB_USER`.
+
+**`.env` 만 고쳤을 때는 스크립트를 쓸 수 없다.** 이미지 태그가 그대로라 갈아끼울 것이
+없기 때문이다. EC2 에서 직접 한다:
+
+```bash
+cd ~/app && vi .env && docker compose -f docker-compose.prod.yml up -d --force-recreate backend
+```
+
+**스키마가 바뀌는 배포(마이그레이션 추가) 전에는 덤프를 먼저 뜬다**(5.4).
+
+아래는 스크립트가 대신 해 주는 일이다. 손으로 할 때 참고한다.
+
 **(1) 로컬에서 빌드·푸시.** 백엔드 저장소에서:
 
 ```powershell
