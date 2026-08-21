@@ -49,7 +49,7 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
         try {
             String response = llmClient.completeStructured(promptStrategy.create(command),
                     List.of(ChatMessage.user("확정된 수정 계획을 실행하라.")),
-                    ProblemStructuredOutputSchemas.CANDIDATE).text();
+                    ProblemStructuredOutputSchemas.MODIFICATION_DELTA).text();
             ProblemGenerationOutput output = withProtectedBaseValues(command,
                     objectMapper.readValue(response, ProblemGenerationOutput.class));
             var requested = command.plan().requestedSpecification();

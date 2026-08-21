@@ -10,6 +10,11 @@ import jakarta.validation.constraints.NotBlank;
 public record ProblemEditTurnRequest(
         @NotBlank String userInput,
         List<ChatMessage> history,
-        ProblemEditTargetRef selectedTarget
+        ProblemEditTargetRef selectedTarget,
+        Boolean confirmed
 ) {
+    public ProblemEditTurnRequest(String userInput, List<ChatMessage> history,
+            ProblemEditTargetRef selectedTarget) {
+        this(userInput, history, selectedTarget, null);
+    }
 }

@@ -99,6 +99,16 @@ public final class ProblemStructuredOutputSchemas {
             }
             """;
 
+    /** 수정 대상 Delta 출력 계약. 서버 병합기가 기준 Snapshot의 보호 필드를 최종 보존한다. */
+    public static final String MODIFICATION_DELTA = """
+            {"type":"object","additionalProperties":false,"properties":{
+              "question":{"type":"string"},"contentBlocks":{"type":"array"},
+              "choices":{"type":"array"},"steps":{"type":"array"},"answerUnits":{"type":"array"},
+              "explanation":{"type":"string"},"learningGuide":{"type":"object"},"rubricItems":{"type":"array"},
+              "assets":{"type":"array","maxItems":0}
+            }}
+            """;
+
     /** 사용자 수정 대화 한 턴의 분류·지시 추출 계약이다. */
     public static final String EDIT_TURN = """
             {
