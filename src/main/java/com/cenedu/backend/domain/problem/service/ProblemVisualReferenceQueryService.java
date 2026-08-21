@@ -32,7 +32,9 @@ public class ProblemVisualReferenceQueryService {
             return new VisualReferenceDescriptor(null, VisualReferenceKind.NONE, null, "", null);
         if (values.size() != 1) return unknown(values.get(0));
         var asset = values.get(0);
-        var semantic = semanticDiagram(question.getSemanticModel());
+        var semanticJson = question.getSemanticModel();
+        if (semanticJson != null && semanticDiagramCount(semanticJson) != 1) return unknown(asset);
+        var semantic = semanticDiagram(semanticJson);
         if (semantic != null) {
             VisualReferenceKind semanticKind = VisualReferenceKind.valueOf(semantic.kind().name());
             VisualReferenceKind assetKind = kindFromRenderSpec(asset.getRenderSpec());
@@ -52,6 +54,11 @@ public class ProblemVisualReferenceQueryService {
             var diagrams = codec.readSemanticModel(json).diagrams();
             return diagrams.size() == 1 ? diagrams.getFirst() : null;
         } catch (RuntimeException ignored) { return null; }
+    }
+
+    private int semanticDiagramCount(String json) {
+        try { return codec.readSemanticModel(json).diagrams().size(); }
+        catch (RuntimeException ignored) { return -1; }
     }
 
     private VisualReferenceKind kindFromRenderSpec(String renderSpec) {

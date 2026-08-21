@@ -22,12 +22,14 @@ public class ProblemSearchIndexingService {
     private final CurriculumUnitQueryService curriculumService;
     private final SearchIndexingPort indexingPort;
     private final ProblemRagProperties properties;
+    private final ProblemVisualReferenceQueryService visualReferenceQueryService;
 
     public ProblemSearchIndexingService(ProblemQuestionRepository questionRepository,
             CurriculumUnitQueryService curriculumService, SearchIndexingPort indexingPort,
-            ProblemRagProperties properties) {
+            ProblemRagProperties properties, ProblemVisualReferenceQueryService visualReferenceQueryService) {
         this.questionRepository = questionRepository; this.curriculumService = curriculumService;
         this.indexingPort = indexingPort; this.properties = properties;
+        this.visualReferenceQueryService = visualReferenceQueryService;
     }
 
     /** 최종 승인 문항을 검색 인덱싱 큐에 멱등 등록한다. */
@@ -59,8 +61,9 @@ public class ProblemSearchIndexingService {
         CurriculumScope scope = new CurriculumScope(path.curriculumRevision(), path.schoolLevel(), path.grade(),
                 path.semester() == null ? null : path.semester().intValue(), path.achievementStandardId(),
                 path.subUnitId(), path.majorUnitName(), path.middleUnitName(), path.subUnitName());
-        UUID key = UUID.nameUUIDFromBytes(("problem-search:" + questionId).getBytes(StandardCharsets.UTF_8));
+        UUID key = UUID.nameUUIDFromBytes(("problem-search:v2:" + questionId).getBytes(StandardCharsets.UTF_8));
+        var visualKind = visualReferenceQueryService.get(questionId).kind();
         return indexingPort.enqueue(new SearchIndexingCommand(key, questionId, versionId, scope,
-                question.getSourceRef(), snapshot, Set.of(), assetStorageKeys));
+                question.getSourceRef(), snapshot, Set.of(), assetStorageKeys, (short) 2, visualKind));
     }
 }
