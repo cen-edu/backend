@@ -5,17 +5,18 @@ import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind;
 
 /** 승인·최종화된 문제를 비동기 검색 인덱싱으로 넘기는 명령이다. */
 public record SearchIndexingCommand(
         UUID idempotencyKey, Long questionId, Long authoringVersionId, CurriculumScope curriculum,
         String sourceRef, QuestionSnapshotV1 snapshot, Set<String> conceptKeys,
-        Map<String, String> assetStorageKeys) {
+        Map<String, String> assetStorageKeys, short indexSchemaVersion, VisualReferenceKind visualKind) {
     public SearchIndexingCommand(UUID idempotencyKey, Long questionId, Long authoringVersionId,
             CurriculumScope curriculum, String sourceRef, QuestionSnapshotV1 snapshot,
-            Set<String> conceptKeys) {
+            Set<String> conceptKeys, Map<String, String> assetStorageKeys) {
         this(idempotencyKey, questionId, authoringVersionId, curriculum, sourceRef, snapshot,
-                conceptKeys, Map.of());
+                conceptKeys, assetStorageKeys, (short) 2, visualKind(snapshot));
     }
     public SearchIndexingCommand {
         if (idempotencyKey == null || questionId == null || curriculum == null || snapshot == null) {
@@ -23,5 +24,13 @@ public record SearchIndexingCommand(
         }
         conceptKeys = conceptKeys == null ? Set.of() : Set.copyOf(conceptKeys);
         assetStorageKeys = assetStorageKeys == null ? Map.of() : Map.copyOf(assetStorageKeys);
+        if (indexSchemaVersion < 1 || visualKind == null) throw new IllegalArgumentException("검색 visual 계약이 올바르지 않습니다.");
+    }
+    private static VisualReferenceKind visualKind(QuestionSnapshotV1 snapshot) {
+        return switch (snapshot.metadata().presentation().name()) {
+            case "WITH_TABLE" -> VisualReferenceKind.DATA_TABLE;
+            case "WITH_FIGURE" -> VisualReferenceKind.UNKNOWN_FIGURE;
+            default -> VisualReferenceKind.NONE;
+        };
     }
 }
