@@ -11,9 +11,14 @@ class ProblemAuthoringModelComparisonLiveTest {
   @Test void comparesApprovedPairs() throws Exception {
     Path file=Path.of("build/measurements/task7-model-comparison-pilot.tsv"); Files.createDirectories(file.getParent());
     int start=Integer.getInteger("task7.batch.start",1), end=Integer.getInteger("task7.batch.end",5);
+    String generatorFilter=System.getProperty("task7.generator", "");
+    String verifierFilter=System.getProperty("task7.verifier", "");
+    String pathFilter=System.getProperty("task7.path", "");
     StringBuilder out=new StringBuilder();
     if(!Files.exists(file) || Files.size(file)==0) out.append("generator\\tverifier\\tcaseId\\tgenMs\\tverifyMs\\tgenPrompt\\tgenCompletion\\tverifyPrompt\\tverifyCompletion\\n");
-    for(String g:List.of("gpt-4o-mini","gpt-5.6-luna")) for(String v:List.of("gpt-4o-mini","gpt-5.6-luna")) for(String path:PATHS) for(int i=start;i<=end;i++){
+    for(String g:List.of("gpt-4o-mini","gpt-5.6-luna")) if(generatorFilter.isBlank() || generatorFilter.equals(g))
+      for(String v:List.of("gpt-4o-mini","gpt-5.6-luna")) if(verifierFilter.isBlank() || verifierFilter.equals(v))
+        for(String path:PATHS) if(pathFilter.isBlank() || pathFilter.equals(path)) for(int i=start;i<=end;i++){
       String caseId=path+"-"+i; String prompt="중학교 1학년 수학의 "+path+" 출제 경로 표본 "+i+"번 문제를 생성하라. 정수와 일차방정식을 활용하라.";
       try { Timed a=call(g,"문제를 생성한다.",prompt); Timed b=call(v,"문제의 수학 오류를 점검한다.",a.text());
         out.append(g).append('\t').append(v).append('\t').append(caseId).append('\t').append(a.ms).append('\t').append(b.ms).append('\t').append(a.r.promptTokens()).append('\t').append(a.r.completionTokens()).append('\t').append(b.r.promptTokens()).append('\t').append(b.r.completionTokens()).append('\n');
