@@ -16,14 +16,16 @@ public final class DefaultProblemSemanticMaterializer implements ProblemSemantic
     public MaterializedProblem materialize(ProblemSemanticModelV1 m) {
         validator.validate(m);
         var e = new SemanticComputationEngine().evaluate(m);
+        validator.validateResolved(m, e.values());
         var snapshot = new SemanticSnapshotFactory().create(m, e.values());
-        var plans = new SemanticAssetPlanFactory().create(m.diagrams());
+        var plans = new SemanticAssetPlanFactory().create(m.diagrams(), e.values());
         var blocks = new ArrayList<>(snapshot.contentBlocks());
         var refs = new ArrayList<SnapshotAssetReference>();
         var keys = new LinkedHashSet<String>();
         int order = 2;
         for (var d : m.diagrams()) {
-            blocks.add(new SnapshotContentBlock("CB" + order++, d.kind() == DiagramKind.DATA_TABLE ? SnapshotBlockKind.TABLE : SnapshotBlockKind.FIGURE, blocks.size(), null, d.kind() == DiagramKind.DATA_TABLE ? null : d.assetKey(), d.kind() == DiagramKind.DATA_TABLE ? d.assetKey() : null));
+            blocks.add(new SnapshotContentBlock("CB" + order++, SnapshotBlockKind.FIGURE,
+                    blocks.size(), null, d.assetKey(), null));
             refs.add(new SnapshotAssetReference(d.assetKey(), d.assetKey()));
             keys.add(d.assetKey());
         }

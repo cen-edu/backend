@@ -44,10 +44,12 @@ public final class SolidGeometrySvgRenderer {
     }
 
     private int scaled(Map<String, SemanticResolvedValue> v, String k, int d) {
+        if (k == null) return Math.max(8, d);
+        if (!v.containsKey(k) || v.get(k) == null) throw new IllegalArgumentException("solid geometry resolved value가 없습니다.");
         try {
             return Math.max(8, Integer.parseInt(v.get(k).canonicalValue()) * 10);
         } catch (Exception e) {
-            return Math.max(8, d);
+            throw new IllegalArgumentException("solid geometry numeric resolved value가 올바르지 않습니다.", e);
         }
     }
 

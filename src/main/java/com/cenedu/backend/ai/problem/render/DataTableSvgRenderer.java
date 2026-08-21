@@ -23,7 +23,8 @@ public final class DataTableSvgRenderer {
         for (int i = 0; i < s.rowHeaderTemplates().size(); i++)
             b.append("<text x=\"").append(p + 4).append("\" y=\"").append(p + i * rh + 14).append("\">").append(escape(s.rowHeaderTemplates().get(i))).append("</text>");
         for (var c : s.cells()) {
-            String t = c.valueKey() != null && values.containsKey(c.valueKey()) ? values.get(c.valueKey()).canonicalValue() : c.textTemplate();
+            if (c.valueKey() != null && !values.containsKey(c.valueKey())) throw new IllegalArgumentException("table resolved value가 없습니다.");
+            String t = c.valueKey() != null ? values.get(c.valueKey()).canonicalValue() : c.textTemplate();
             b.append("<text x=\"").append(p + c.column() * cw + 4).append("\" y=\"").append(p + c.row() * rh + 14).append("\">").append(escape(t)).append("</text>");
         }
         for (var c : s.highlightedCells())

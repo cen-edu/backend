@@ -64,10 +64,11 @@ public final class CoordinateGraphSvgRenderer {
     }
 
     private double num(Map<String, SemanticResolvedValue> v, String k, double d) {
+        if (k == null || !v.containsKey(k) || v.get(k) == null) throw new IllegalArgumentException("coordinate graph resolved value가 없습니다.");
         try {
             return Double.parseDouble(v.get(k).canonicalValue());
         } catch (Exception e) {
-            return d;
+            throw new IllegalArgumentException("coordinate graph numeric resolved value가 올바르지 않습니다.", e);
         }
     }
 }

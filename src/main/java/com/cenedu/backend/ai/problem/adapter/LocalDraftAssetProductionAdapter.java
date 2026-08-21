@@ -37,9 +37,12 @@ public class LocalDraftAssetProductionAdapter implements ProblemAssetProductionP
                 || plan.outputFormat() != AssetOutputFormat.SVG) {
             throw new IllegalArgumentException("현재 임시 자산 Adapter는 STRUCTURED_RENDER SVG만 지원합니다.");
         }
-        String svg = plan.specification().diagramSpec() == null
-                ? sanitizer.sanitize(renderSvg(plan))
-                : renderer.render(plan.specification().diagramSpec(), new DiagramRenderContext(java.util.Map.of())).svg();
+        if (plan.specification().diagramSpec() == null) {
+            throw new IllegalArgumentException("구조화 SVG 생성에는 diagram spec이 필요합니다.");
+        }
+        var rendered = renderer.render(plan.specification().diagramSpec(),
+                new DiagramRenderContext(plan.specification().resolvedValues()));
+        String svg = rendered.svg();
         byte[] bytes = svg.getBytes(StandardCharsets.UTF_8);
         Path directory = draftRoot.resolve(String.valueOf(context.sessionId()))
                 .resolve(String.valueOf(context.versionNo())).normalize();
@@ -51,24 +54,11 @@ public class LocalDraftAssetProductionAdapter implements ProblemAssetProductionP
             Files.write(temporary, bytes);
             Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             return new DraftAssetArtifact(plan.assetKey(), DraftAssetStatus.READY,
-                    draftRoot.relativize(target).toString(), "image/svg+xml", null, null,
-                    sha256(bytes), 1, null);
+                    draftRoot.relativize(target).toString(), "image/svg+xml", rendered.widthPx(), rendered.heightPx(),
+                    rendered.sha256(), 1, null);
         } catch (IOException exception) {
             throw new IllegalStateException("임시 자산 저장에 실패했습니다.", exception);
         }
-    }
-
-    private String renderSvg(GeneratedAssetPlan plan) {
-        String description = escape(plan.specification().visualDescription());
-        return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 640 120\">"
-                + "<rect width=\"640\" height=\"120\" fill=\"white\"/>"
-                + "<text x=\"20\" y=\"65\" font-size=\"18\">" + description + "</text></svg>";
-    }
-
-    private String escape(String value) {
-        if (value == null) return "";
-        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                .replace("\"", "&quot;").replace("'", "&apos;");
     }
 
     private String sha256(byte[] bytes) {

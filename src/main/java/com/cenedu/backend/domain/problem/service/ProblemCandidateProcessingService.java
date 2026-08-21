@@ -508,7 +508,13 @@ public class ProblemCandidateProcessingService {
                 .filter(plan -> plan.specification() != null && plan.specification().diagramSpec() != null)
                 .map(plan -> plan.specification().diagramSpec())
                 .toList();
-        new DiagramSpecValidator().validateAll(specs, Map.of());
+        Map<String, com.cenedu.backend.domain.problem.authoring.semantic.evaluation.SemanticResolvedValue> values =
+                materialized.assetPlans().stream()
+                        .filter(plan -> plan.specification() != null)
+                        .findFirst()
+                        .map(plan -> plan.specification().resolvedValues())
+                        .orElse(Map.of());
+        new DiagramSpecValidator().validateAll(specs, values);
     }
 
     private SemanticMaterializationReport semanticReport(ProblemCandidateDraft candidate) {
