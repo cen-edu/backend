@@ -82,7 +82,7 @@ app:
       # content 가 빈 문자열로 잘려 돌아온다. minimal + 3000 은 실측으로 정한 값이다.
       reasoning-effort: ${OPENAI_REASONING_EFFORT:medium}
       max-completion-tokens: ${OPENAI_MAX_COMPLETION_TOKENS:3000}
-      timeout: ${OPENAI_TIMEOUT:60s}
+      timeout: ${OPENAI_TIMEOUT:30s}
       max-retries: ${OPENAI_MAX_RETRIES:2}
       # 목적별 모델. 지정하지 않은 값은 위 기본값을 따른다.
       use-cases:
