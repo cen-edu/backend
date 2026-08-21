@@ -99,6 +99,7 @@ public class ProblemGenerationWorker {
                 ProblemCandidateDraft candidate;
                 try {
                     if (semanticReferenceEnricher != null) {
+                        if (budget != null) budget.stage(ProblemAiExecutionBudgetPort.Stage.ENRICHMENT, attempt + 1);
                         ProblemGenerationCommand commandBeforeEnrichment = attemptCommand;
                         var enrichment = runStage("ENRICHMENT",
                                 () -> semanticReferenceEnricher.enrichWithStatus(commandBeforeEnrichment));
@@ -130,6 +131,7 @@ public class ProblemGenerationWorker {
 
                 CandidateProcessingResult result;
                 try {
+                    if (budget != null) budget.stage(ProblemAiExecutionBudgetPort.Stage.VERIFICATION, attempt + 1);
                     result = runStage("VERIFICATION", () -> candidateProcessingService.process(
                             processingRequest(workItem, candidate)));
                 } catch (RuntimeException exception) {
