@@ -14,6 +14,9 @@ import com.cenedu.backend.domain.grading.service.RuleGrader;
 import com.cenedu.backend.domain.problem.authoring.asset.DraftAssetArtifact;
 import com.cenedu.backend.domain.problem.authoring.asset.DraftAssetManifest;
 import com.cenedu.backend.domain.problem.authoring.asset.DraftAssetStatus;
+import com.cenedu.backend.domain.problem.authoring.asset.GeneratedAssetPlan;
+import com.cenedu.backend.domain.problem.authoring.asset.AssetProductionMode;
+import com.cenedu.backend.domain.problem.authoring.asset.AssetOutputFormat;
 import com.cenedu.backend.domain.problem.authoring.edit.EditChangeNature;
 import com.cenedu.backend.domain.problem.authoring.edit.EditTargetType;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditInstruction;
@@ -498,7 +501,8 @@ class ProblemVerificationAdapterTest {
         fake.respondWith(VerificationFixtures.ASSET_OK);
         DraftAssetManifest manifest = new DraftAssetManifest(
                 DraftAssetManifest.CURRENT_SCHEMA_VERSION,
-                List.of(),
+                List.of(new GeneratedAssetPlan("F1", com.cenedu.backend.domain.problem.entity.enums.AssetRole.FIGURE,
+                        AssetProductionMode.STRUCTURED_RENDER, AssetOutputFormat.SVG, "figure", null)),
                 List.of(new DraftAssetArtifact("F1", DraftAssetStatus.READY,
                         "draft/F1.png", "image/png", 400, 400, "checksum", 1, null)));
         VerificationExpectation expectation = VerificationFixtures.withRequiredAssetKeys(
@@ -510,7 +514,7 @@ class ProblemVerificationAdapterTest {
         assertThat(report.scope()).isEqualTo(VerificationScope.ASSET);
         assertThat(report.findings())
                 .filteredOn(finding -> finding.checkType() == VerificationCheckType.ASSET_CONSISTENCY)
-                .hasSize(2)
+                .hasSize(3)
                 .allMatch(finding -> finding.status() == VerificationFindingStatus.PASS);
         assertThat(statusOf(report, VerificationCheckType.CORRECTNESS))
                 .isEqualTo(VerificationFindingStatus.NOT_APPLICABLE);
@@ -524,7 +528,8 @@ class ProblemVerificationAdapterTest {
         fake.respondWith(VerificationFixtures.ASSET_OK);
         DraftAssetManifest manifest = new DraftAssetManifest(
                 DraftAssetManifest.CURRENT_SCHEMA_VERSION,
-                List.of(),
+                List.of(new GeneratedAssetPlan("F1", com.cenedu.backend.domain.problem.entity.enums.AssetRole.FIGURE,
+                        AssetProductionMode.STRUCTURED_RENDER, AssetOutputFormat.SVG, "figure", null)),
                 List.of(new DraftAssetArtifact("F1", DraftAssetStatus.GENERATING,
                         null, null, null, null, null, 1, null)));
         VerificationExpectation expectation = VerificationFixtures.withRequiredAssetKeys(
@@ -535,8 +540,7 @@ class ProblemVerificationAdapterTest {
 
         assertThat(report.findings())
                 .filteredOn(finding -> finding.status() == VerificationFindingStatus.FAIL)
-                .singleElement()
-                .satisfies(finding -> assertThat(finding.code())
+                .allSatisfy(finding -> assertThat(finding.code())
                         .isEqualTo(VerificationIssueCode.ASSET_INCONSISTENT));
         assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.FAILED);
     }

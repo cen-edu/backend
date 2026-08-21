@@ -9,6 +9,7 @@ import java.security.*;
 import java.util.HexFormat;
 
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.cenedu.backend.domain.problem.config.ProblemVisualAuthoringProperties;
 
 @Component
@@ -24,6 +25,7 @@ public final class ProblemDiagramRenderer implements ProblemDiagramRendererPort 
                         com.cenedu.backend.global.common.enums.QuestionType.SHORT_INPUT), 1));
     }
 
+    @Autowired
     public ProblemDiagramRenderer(SafeSvgSanitizer sanitizer, ProblemVisualAuthoringProperties properties) {
         this.sanitizer = sanitizer;
         this.properties = properties;

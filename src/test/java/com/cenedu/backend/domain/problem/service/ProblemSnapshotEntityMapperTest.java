@@ -91,7 +91,8 @@ class ProblemSnapshotEntityMapperTest {
 
         var bundle = new ProblemSnapshotEntityMapper(new ObjectMapper()).map(
                 snapshot, Map.of("FIGURE_1", "final/figure.svg"), null, null,
-                Map.of("FIGURE_1", render));
+                Map.of("FIGURE_1", render),
+                Map.of("FIGURE_1", com.cenedu.backend.domain.problem.entity.enums.AssetRole.FIGURE));
 
         assertThat(bundle.assets()).hasSize(1);
         assertThat(bundle.assets().getFirst().getRenderSpecHash()).isEqualTo("b".repeat(64));
