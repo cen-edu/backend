@@ -35,6 +35,10 @@ public final class ProblemSemanticGenerationPromptFactory {
                 parameters와 computations의 key는 대문자 논리 키를 사용하고 모든 목록은 null 대신 []를 사용하라.
                 직접 복사한 참고 문제, 지원하지 않는 operation, free-form SVG, 범위 밖 교육 내용을 만들지 마라.
                 questionTemplate과 explanationTemplate은 실제 값이 삽입될 수 있는 템플릿이어야 한다.
+                visualRequirement.mode가 AUTO이면 구체적인 시각 대상이 없거나 자산 없이 정답을 결정할 수 없는 경우에만
+                diagram을 정확히 하나 생성하고, 본문에 그림 정보를 전부 중복하지 마라. 조건을 만족하지 않으면
+                visualRequired=false와 diagrams=[]를 출력하라.
+                visualRequirement.mode가 PRESERVE_ORIGIN이면 originVisual의 visualKind와 diagram 구조를 유지하라.
                 최종적으로 학생에게 표시되는 문제·풀이·해설의 수식은 인라인 LaTeX $...$ 형식을 사용하고,
                 비교용 정답 값에는 $, $$, \\(, \\) 구분자를 넣지 마라.
                 CURRENT_REQUEST_JSON:\n%s%s
