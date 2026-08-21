@@ -13,6 +13,8 @@ import java.util.*;
 
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.ObjectProvider;
+import com.cenedu.backend.domain.problem.config.ProblemVisualAuthoringProperties;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationPolicy;
 
 @Component
 public final class ProblemSemanticGenerationPipeline {
@@ -21,13 +23,21 @@ public final class ProblemSemanticGenerationPipeline {
     private final ProblemSemanticOutputParser parser;
     private final ProblemSemanticMaterializer materializer;
     private final ObjectMapper mapper;
+    private final VisualGenerationPolicy visualPolicy;
 
     public ProblemSemanticGenerationPipeline(LlmClient client, ProblemSemanticGenerationPromptFactory prompts, ProblemSemanticOutputParser parser, ProblemSemanticMaterializer materializer, ObjectProvider<ObjectMapper> mapper) {
+        this(client, prompts, parser, materializer, mapper, null);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public ProblemSemanticGenerationPipeline(LlmClient client, ProblemSemanticGenerationPromptFactory prompts, ProblemSemanticOutputParser parser, ProblemSemanticMaterializer materializer, ObjectProvider<ObjectMapper> mapper, ObjectProvider<ProblemVisualAuthoringProperties> visualProperties) {
         this.client = client;
         this.prompts = prompts;
         this.parser = parser;
         this.materializer = materializer;
         this.mapper = mapper.getIfAvailable(ObjectMapper::new);
+        this.visualPolicy = new VisualGenerationPolicy(visualProperties == null
+                ? new ProblemVisualAuthoringProperties(false, Set.of(), Set.of(), 1)
+                : visualProperties.getIfAvailable(() -> new ProblemVisualAuthoringProperties(false, Set.of(), Set.of(), 1)));
     }
 
     public ProblemCandidateDraft generate(ProblemGenerationCommand command) {
@@ -37,6 +47,7 @@ public final class ProblemSemanticGenerationPipeline {
                 String json = client.completeStructured(prompts.create(command, findings), prompts.messages(command), ProblemStructuredOutputSchemas.SEMANTIC_MODEL).text();
                 ProblemSemanticModelV1 parsed = parser.parse(json);
                 ProblemSemanticModelV1 serverOwned = new ProblemSemanticModelV1(1, command.curriculum(), parsed.intent(), parsed.parameters(), parsed.computations(), parsed.constraints(), parsed.presentation(), parsed.diagrams(), parsed.assertions());
+                visualPolicy.validate(command.specification().visualRequirement(), serverOwned);
                 MaterializedProblem evaluated = materializer.materialize(serverOwned);
                 var normalizedComputations = serverOwned.computations().stream().map(c -> new SemanticComputation(c.key(), c.operation(), c.operands(), c.literal(), c.unit(), evaluated.report().resolvedValues().get(c.key()))).toList();
                 ProblemSemanticModelV1 normalized = new ProblemSemanticModelV1(1, command.curriculum(), serverOwned.intent(), serverOwned.parameters(), normalizedComputations, serverOwned.constraints(), serverOwned.presentation(), serverOwned.diagrams(), serverOwned.assertions());
