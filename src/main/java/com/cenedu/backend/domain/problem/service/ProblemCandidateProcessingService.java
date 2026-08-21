@@ -504,6 +504,8 @@ public class ProblemCandidateProcessingService {
                 || !Objects.equals(materialized.assetPlans(), candidate.assetPlans())) {
             throw new IllegalArgumentException("의미 모델과 materialized 후보가 일치하지 않습니다.");
         }
+        new com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator()
+                .validate(candidate.semanticModel(), candidate.snapshot(), candidate.assetPlans());
         List<com.cenedu.backend.domain.problem.authoring.diagram.DiagramSpecV1> specs = candidate.assetPlans().stream()
                 .filter(plan -> plan.specification() != null && plan.specification().diagramSpec() != null)
                 .map(plan -> plan.specification().diagramSpec())

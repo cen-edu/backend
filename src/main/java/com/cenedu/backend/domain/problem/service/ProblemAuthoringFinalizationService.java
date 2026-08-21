@@ -8,6 +8,8 @@ import com.cenedu.backend.domain.problem.authoring.asset.DraftAssetArtifact;
 import com.cenedu.backend.domain.problem.authoring.asset.DraftAssetManifest;
 import com.cenedu.backend.domain.problem.authoring.asset.GeneratedAssetPlan;
 import com.cenedu.backend.domain.problem.authoring.asset.GeneratedAssetStorageKeyFactory;
+import com.cenedu.backend.domain.problem.authoring.model.SnapshotContentBlock;
+import com.cenedu.backend.domain.problem.authoring.model.SnapshotBlockKind;
 import com.cenedu.backend.domain.problem.dto.response.FinalizedProblemReferenceResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemDeploymentStatus;
 import com.cenedu.backend.domain.problem.entity.*;
@@ -117,6 +119,7 @@ public class ProblemAuthoringFinalizationService {
         } else {
             QuestionSnapshotV1 snapshot = read(version.getSnapshot(), QuestionSnapshotV1.class);
             DraftAssetManifest draftManifest = read(version.getAssetManifest(), DraftAssetManifest.class);
+            validateDraftManifest(snapshot, draftManifest);
             Map<String, String> keys = draftManifest.artifacts().stream()
                     .collect(java.util.stream.Collectors.toMap(DraftAssetArtifact::assetKey,
                             DraftAssetArtifact::draftStorageKey));
@@ -126,6 +129,10 @@ public class ProblemAuthoringFinalizationService {
             SemanticModelDocument semanticModel = version.getSemanticModel() == null ? null
                     : semanticDocumentCodec.semanticModel(
                             semanticDocumentCodec.readSemanticModel(version.getSemanticModel()));
+            Map<String, GeneratedAssetPlan> planByKey = draftManifest.plans().stream()
+                    .collect(java.util.stream.Collectors.toMap(GeneratedAssetPlan::assetKey, p -> p));
+            Map<String, AssetRole> roles = planByKey.entrySet().stream()
+                    .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().role()));
             Map<String, RenderSpecDocument> renderSpecs = draftManifest.plans().stream()
                     .filter(plan -> plan.specification() != null && plan.specification().diagramSpec() != null)
                     .collect(java.util.stream.Collectors.toMap(
@@ -133,15 +140,14 @@ public class ProblemAuthoringFinalizationService {
                             plan -> semanticDocumentCodec.renderSpec(
                                     plan.specification().diagramSpec(), "semantic-svg-v1")));
             ProblemQuestionPersistenceBundle bundle = mapper.map(snapshot, keys, derivedFrom,
-                    semanticModel, renderSpecs);
+                    semanticModel, renderSpecs, roles);
             ProblemQuestion question = questionRepository.save(bundle.question());
             choiceRepository.saveAll(bundle.choices()); stepRepository.saveAll(bundle.steps());
             answerUnitRepository.saveAll(bundle.answerUnits()); rubricRepository.saveAll(bundle.rubricItems());
             DraftAssetManifest manifest = draftManifest;
             Map<String, DraftAssetArtifact> artifacts = manifest.artifacts().stream()
                     .collect(java.util.stream.Collectors.toMap(DraftAssetArtifact::assetKey, a -> a));
-            Map<String, GeneratedAssetPlan> plans = manifest.plans().stream()
-                    .collect(java.util.stream.Collectors.toMap(GeneratedAssetPlan::assetKey, p -> p));
+            Map<String, GeneratedAssetPlan> plans = planByKey;
             for (ProblemAsset asset : bundle.assets()) {
                 DraftAssetArtifact artifact = artifacts.get(asset.getAssetKey());
                 GeneratedAssetPlan plan = plans.get(asset.getAssetKey());
@@ -187,6 +193,44 @@ public class ProblemAuthoringFinalizationService {
         return read(version.getSnapshot(), QuestionSnapshotV1.class).metadata().questionType();
     }
     private int nonNull(Integer value) { return value == null ? 0 : value; }
+
+    /** 확정 전에 snapshot·계획·draft artifact가 같은 논리 자산을 가리키는지 검증한다. */
+    private void validateDraftManifest(QuestionSnapshotV1 snapshot, DraftAssetManifest manifest) {
+        if (manifest == null || manifest.schemaVersion() != DraftAssetManifest.CURRENT_SCHEMA_VERSION) {
+            throw new BusinessException(ErrorCode.PROBLEM_ASSET_NOT_READY);
+        }
+        var referenced = snapshot.assets() == null ? List.<String>of()
+                : snapshot.assets().stream().map(asset -> asset.assetKey()).toList();
+        var blockRefs = snapshot.contentBlocks() == null ? List.<String>of()
+                : snapshot.contentBlocks().stream().filter(block -> block.blockKind() == SnapshotBlockKind.FIGURE)
+                .map(SnapshotContentBlock::assetRef).filter(java.util.Objects::nonNull).toList();
+        var plans = manifest.plans() == null ? List.<GeneratedAssetPlan>of() : manifest.plans();
+        var artifacts = manifest.artifacts() == null ? List.<DraftAssetArtifact>of() : manifest.artifacts();
+        var planKeys = plans.stream().map(GeneratedAssetPlan::assetKey).toList();
+        var artifactKeys = artifacts.stream().map(DraftAssetArtifact::assetKey).toList();
+        if (!referenced.equals(planKeys) || !referenced.equals(artifactKeys)
+                || new java.util.HashSet<>(referenced).size() != referenced.size()) {
+            throw new BusinessException(ErrorCode.PROBLEM_ASSET_NOT_READY);
+        }
+        for (GeneratedAssetPlan plan : plans) {
+            if (plan.assetKey() == null || plan.specification() == null
+                    || plan.specification().diagramSpec() == null
+                    || !plan.assetKey().equals(plan.specification().diagramSpec().assetKey())) {
+                throw new BusinessException(ErrorCode.PROBLEM_ASSET_NOT_READY);
+            }
+            DraftAssetArtifact artifact = artifacts.stream()
+                    .filter(candidate -> plan.assetKey().equals(candidate.assetKey())).findFirst().orElse(null);
+            if (artifact == null || artifact.status() != com.cenedu.backend.domain.problem.authoring.asset.DraftAssetStatus.READY
+                    || artifact.draftStorageKey() == null || artifact.draftStorageKey().isBlank()
+                    || artifact.contentType() == null || !artifact.contentType().equals("image/svg+xml")
+                    || artifact.checksum() == null || artifact.checksum().isBlank()
+                    || artifact.widthPx() == null || artifact.widthPx() <= 0
+                    || artifact.heightPx() == null || artifact.heightPx() <= 0) {
+                throw new BusinessException(ErrorCode.PROBLEM_ASSET_NOT_READY);
+            }
+        }
+    }
+
     private <T> T read(String json, Class<T> type) {
         try { return objectMapper.readValue(json, type); }
         catch (Exception e) { throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_DATA_INVALID); }

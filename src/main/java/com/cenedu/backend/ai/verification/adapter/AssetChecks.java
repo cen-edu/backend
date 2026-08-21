@@ -75,6 +75,32 @@ public class AssetChecks {
                 EvidencePrefix.of(EvidencePrefix.MANIFEST, String.join(", ", notReady)));
     }
 
+    /** Snapshot·계획·artifact의 key와 구조화 SVG 메타데이터를 검증한다. */
+    public VerificationFinding assetIntegrity(QuestionSnapshotV1 snapshot, DraftAssetManifest manifest) {
+        var assets = snapshot == null || snapshot.assets() == null ? List.<String>of()
+                : snapshot.assets().stream().map(asset -> asset.assetKey()).toList();
+        var plans = manifest == null || manifest.plans() == null ? List.<String>of()
+                : manifest.plans().stream().map(plan -> plan.assetKey()).toList();
+        var artifacts = manifest == null || manifest.artifacts() == null ? List.<DraftAssetArtifact>of()
+                : manifest.artifacts();
+        if (!assets.equals(plans) || assets.size() != artifacts.size()) {
+            return Findings.fail(VerificationCheckType.ASSET_CONSISTENCY,
+                    VerificationIssueCode.ASSET_INCONSISTENT, "Snapshot과 자산 manifest의 key가 다릅니다.",
+                    EvidencePrefix.of(EvidencePrefix.MANIFEST, "KEY_MISMATCH"));
+        }
+        for (DraftAssetArtifact artifact : artifacts) {
+            if (artifact == null || artifact.status() != DraftAssetStatus.READY
+                    || artifact.checksum() == null || artifact.checksum().isBlank()
+                    || artifact.widthPx() == null || artifact.widthPx() <= 0
+                    || artifact.heightPx() == null || artifact.heightPx() <= 0) {
+                return Findings.fail(VerificationCheckType.ASSET_CONSISTENCY,
+                        VerificationIssueCode.ASSET_INCONSISTENT, "자산 무결성 메타데이터가 부족합니다.",
+                        EvidencePrefix.of(EvidencePrefix.MANIFEST, "INVALID_METADATA"));
+            }
+        }
+        return Findings.pass(VerificationCheckType.ASSET_CONSISTENCY, "자산 key와 무결성 메타데이터가 일치합니다.");
+    }
+
     /**
      * altText 에 정답이 새었는지, 발문과 어긋나는지 본다.
      *
