@@ -12,6 +12,7 @@ import com.openai.models.completions.CompletionUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -46,6 +47,7 @@ public class OpenAiLlmClient implements LlmClient {
      * {@code openAiChatModel} 과 도구 루프의 {@code loopChatModel}. 타입만으로는 갈리지 않아
      * Spring 이 파라미터 이름으로 후보를 고른다. 이름이 어긋나면 기동이 실패한다.
      */
+    @Autowired
     public OpenAiLlmClient(OpenAiChatModel openAiChatModel, OpenAiProperties properties,
             LlmCallBudgetManager budgetManager) {
         this(openAiChatModel, properties, budgetManager, new OpenAiFailureClassifier());
