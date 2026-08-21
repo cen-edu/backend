@@ -232,6 +232,78 @@ class WorksheetControllerTest {
     }
 
     @Test
+    @DisplayName("학생 한 명에게 배포하면 그 학생만 배정된다")
+    void assignWorksheet_toStudent_assignsOnlyThatStudent() throws Exception {
+        long studentId = insertAccount("STUDENT", "worksheet-test-solo", "혼자학생");
+        insertStudentProfile(studentId, teacherId);
+        long worksheetId = createWorksheet(teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+
+        assignWorksheetToStudent(teacherToken, worksheetId, studentId, FUTURE_DUE_AT)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.studentCount").value(1))
+                .andExpect(jsonPath("$.data.className").value("혼자학생"));
+    }
+
+    @Test
+    @DisplayName("같은 학생에게 재배포하면 409")
+    void assignWorksheet_sameStudentTwice_returns409() throws Exception {
+        long studentId = insertAccount("STUDENT", "worksheet-test-dup", "중복학생");
+        insertStudentProfile(studentId, teacherId);
+        long worksheetId = createWorksheet(teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+
+        assignWorksheetToStudent(teacherToken, worksheetId, studentId, FUTURE_DUE_AT)
+                .andExpect(status().isCreated());
+        assignWorksheetToStudent(teacherToken, worksheetId, studentId, FUTURE_DUE_AT)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("WORKSHEET_DUPLICATE_ASSIGNMENT"));
+    }
+
+    @Test
+    @DisplayName("남의 학생에게 배포하면 403")
+    void assignWorksheet_otherTeachersStudent_returns403() throws Exception {
+        long otherTeacherId = insertAccount("TEACHER", "worksheet-test-student-owner", "학생주인교사");
+        long otherStudentId = insertAccount("STUDENT", "worksheet-test-other-student", "남의학생");
+        insertStudentProfile(otherStudentId, otherTeacherId);
+        long worksheetId = createWorksheet(teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+
+        assignWorksheetToStudent(teacherToken, worksheetId, otherStudentId, FUTURE_DUE_AT)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("MEMBER_STUDENT_NOT_OWNED"));
+    }
+
+    @Test
+    @DisplayName("classId 와 studentId 를 함께 주면 400")
+    void assignWorksheet_bothTargets_returns400() throws Exception {
+        long studentId = insertAccount("STUDENT", "worksheet-test-both", "둘다학생");
+        insertStudentProfile(studentId, teacherId);
+        long worksheetId = createWorksheet(teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+        String requestJson = """
+                {"classId": %d, "studentId": %d, "dueAt": "%s"}
+                """.formatted(classId, studentId, FUTURE_DUE_AT);
+
+        mockMvc.perform(post("/api/teacher/worksheets/" + worksheetId + "/assignments")
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("대상을 아무것도 주지 않으면 400")
+    void assignWorksheet_noTarget_returns400() throws Exception {
+        long worksheetId = createWorksheet(teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
+        String requestJson = """
+                {"dueAt": "%s"}
+                """.formatted(FUTURE_DUE_AT);
+
+        mockMvc.perform(post("/api/teacher/worksheets/" + worksheetId + "/assignments")
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("배포된 학습지는 삭제할 수 없다 (409)")
     void deleteWorksheet_alreadyAssigned_returns409() throws Exception {
         long worksheetId = createWorksheet(teacherToken, practiceRequestJson(insertQuestions("STEP_FILL", 1)));
@@ -482,6 +554,17 @@ class WorksheetControllerTest {
         String requestJson = """
                 {"classId": %d, "dueAt": "%s"}
                 """.formatted(classId, dueAt);
+        return mockMvc.perform(post("/api/teacher/worksheets/" + worksheetId + "/assignments")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson));
+    }
+
+    private ResultActions assignWorksheetToStudent(
+            String token, long worksheetId, long studentId, String dueAt) throws Exception {
+        String requestJson = """
+                {"studentId": %d, "dueAt": "%s"}
+                """.formatted(studentId, dueAt);
         return mockMvc.perform(post("/api/teacher/worksheets/" + worksheetId + "/assignments")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)

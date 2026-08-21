@@ -99,14 +99,16 @@ public class WorksheetController {
 
     @PostMapping("/{worksheetId}/assignments")
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "학습지 배포", description = "학습지를 반에 배포하고 반 학생 전원을 배정한다.")
+    @Operation(summary = "학습지 배포",
+            description = "학습지를 반 또는 학생 한 명에게 배포한다. classId 와 studentId 중 하나만 준다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "201", description = "배포 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "404", description = "학습지 또는 반이 없거나 내 것이 아님", content = @Content),
+                    responseCode = "404", description = "학습지·반·학생이 없거나 내 것이 아님",
+                    content = @Content),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "409", description = "이미 배포된 반", content = @Content)
+                    responseCode = "409", description = "이미 배포된 반 또는 학생", content = @Content)
     })
     public ApiResponse<WorksheetAssignmentCreateResponse> assignWorksheet(
             @AuthenticationPrincipal AuthenticatedUser user,

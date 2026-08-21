@@ -12,7 +12,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import com.cenedu.backend.domain.member.dto.response.SchoolClassDetailResponse;
+import com.cenedu.backend.domain.member.dto.response.StudentDetailResponse;
 import com.cenedu.backend.domain.member.service.SchoolClassService;
+import com.cenedu.backend.domain.member.service.StudentListQueryService;
 import com.cenedu.backend.domain.problem.dto.response.FinalizedProblemReferenceResponse;
 import com.cenedu.backend.domain.problem.service.ProblemAuthoringFinalizationService;
 import com.cenedu.backend.domain.problem.service.ProblemQuestionDetailService;
@@ -62,6 +64,7 @@ public class WorksheetCommandService {
     private final ProblemQuestionDetailService problemQuestionDetailService;
     private final ProblemAuthoringFinalizationService problemAuthoringFinalizationService;
     private final SchoolClassService schoolClassService;
+    private final StudentListQueryService studentListQueryService;
 
     /** 학습지 저장 - 검증을 마친 뒤 학습지·출제조건·문항을 한 트랜잭션으로 저장한다. */
     @Transactional
@@ -169,14 +172,25 @@ public class WorksheetCommandService {
             long teacherId, long worksheetId, WorksheetAssignmentCreateRequest request
     ) {
         Worksheet worksheet = getOwnedWorksheet(teacherId, worksheetId);
-        SchoolClassDetailResponse classDetail = getOwnedClassDetail(teacherId, request.classId());
 
         OffsetDateTime now = OffsetDateTime.now();
         if (!request.dueAt().isAfter(now)) {
             throw new BusinessException(ErrorCode.WORKSHEET_DUE_IN_PAST);
         }
+
+        return request.isStudentTarget()
+                ? assignToStudent(teacherId, worksheet, request, now)
+                : assignToClass(teacherId, worksheet, request, now);
+    }
+
+    /** 반 전원에게 배포한다. */
+    private WorksheetAssignmentCreateResponse assignToClass(
+            long teacherId, Worksheet worksheet, WorksheetAssignmentCreateRequest request,
+            OffsetDateTime now
+    ) {
+        SchoolClassDetailResponse classDetail = getOwnedClassDetail(teacherId, request.classId());
         if (worksheetAssignmentRepository.existsByWorksheetIdAndClassId(
-                worksheetId, request.classId())) {
+                worksheet.getId(), request.classId())) {
             throw new BusinessException(ErrorCode.WORKSHEET_DUPLICATE_ASSIGNMENT);
         }
 
@@ -193,6 +207,34 @@ public class WorksheetCommandService {
 
         return WorksheetAssignmentCreateResponse.from(
                 assignment, classDetail.name(), assignmentStudents.size());
+    }
+
+    /**
+     * 학생 한 명에게 배포한다.
+     *
+     * <p>맞춤 학습지가 이 경로를 쓴다. 취약점은 학생마다 달라 반 전체에 같은 보강을 내보내는 것이
+     * 의미가 없고, 맞춤 학습 분석도 학생 배정만 세션으로 인식한다.
+     */
+    private WorksheetAssignmentCreateResponse assignToStudent(
+            long teacherId, Worksheet worksheet, WorksheetAssignmentCreateRequest request,
+            OffsetDateTime now
+    ) {
+        // 소유 검증까지 함께 한다. 남의 학생에게 배포하면 여기서 막힌다.
+        StudentDetailResponse student =
+                studentListQueryService.getStudentDetail(teacherId, request.studentId());
+        if (worksheetAssignmentRepository.existsByWorksheetIdAndStudentId(
+                worksheet.getId(), request.studentId())) {
+            throw new BusinessException(ErrorCode.WORKSHEET_DUPLICATE_ASSIGNMENT);
+        }
+
+        WorksheetAssignment assignment = WorksheetAssignment.create(
+                worksheet, null, request.studentId(), now, request.dueAt());
+        worksheetAssignmentRepository.save(assignment);
+
+        worksheetAssignmentStudentRepository.save(
+                WorksheetAssignmentStudent.create(assignment, request.studentId()));
+
+        return WorksheetAssignmentCreateResponse.from(assignment, student.name(), 1);
     }
 
     /** 학습지 삭제 - 배포된 학습지는 소프트 삭제를 막는다. */

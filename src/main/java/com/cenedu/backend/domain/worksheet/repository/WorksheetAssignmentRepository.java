@@ -26,6 +26,9 @@ public interface WorksheetAssignmentRepository extends JpaRepository<WorksheetAs
     /** 학습지가 해당 반에 이미 배포됐는지 반환한다. */
     boolean existsByWorksheetIdAndClassId(Long worksheetId, Long classId);
 
+    /** 학습지가 해당 학생에게 이미 배포됐는지 반환한다. */
+    boolean existsByWorksheetIdAndStudentId(Long worksheetId, Long studentId);
+
     /** 학습지에 배포 행이 하나라도 있는지 반환한다. */
     boolean existsByWorksheetId(Long worksheetId);
 
