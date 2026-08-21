@@ -9,6 +9,7 @@ import com.cenedu.backend.domain.problem.authoring.semantic.extraction.*;
 import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
 import com.cenedu.backend.domain.problem.support.ProblemSnapshotFixtures;
 import org.junit.jupiter.api.Test;
+import com.cenedu.backend.ai.problem.adapter.semantic.SemanticAuthoringProperties;
 
 class ProblemSemanticReferenceEnricherTest {
     @Test
@@ -78,5 +79,25 @@ class ProblemSemanticReferenceEnricherTest {
 
         assertThat(result.unsupportedOrigin()).isTrue();
         assertThat(result.command().references().getFirst().semanticModel()).isNull();
+    }
+
+    @Test
+    void semantic_비활성이면_참고문제를_그대로_반환하고_extraction을_호출하지_않는다() {
+        var service = mock(ProblemSemanticExtractionService.class);
+        var origin = new GenerationReference(GenerationReferenceRole.ORIGIN, 41L,
+                ProblemSnapshotFixtures.shortInput());
+        var command = new ProblemGenerationCommand(UUID.randomUUID(), null,
+                GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
+                new GenerationSpecification(com.cenedu.backend.global.common.enums.QuestionType.SHORT_INPUT,
+                        "mid", null, List.of()),
+                new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L,
+                        "수와 연산", "사칙연산", "덧셈"), List.of(origin), List.of());
+
+        var result = new ProblemSemanticReferenceEnricher(service,
+                new SemanticAuthoringProperties(false)).enrichWithStatus(command);
+
+        assertThat(result.command()).isSameAs(command);
+        assertThat(result.unsupportedOrigin()).isFalse();
+        verifyNoInteractions(service);
     }
 }

@@ -193,7 +193,7 @@ AI 생성 후보의 주요 실패 Finding은 다음과 같다.
 
 **Files:**
 - Modify: `src/main/java/com/cenedu/backend/domain/problem/config/ProblemGenerationAsyncConfig.java`
-- Modify: `src/main/java/com/cenedu/backend/domain/problem/service/ProblemGenerationWorker.java`
+- Verify: `src/main/java/com/cenedu/backend/domain/problem/service/ProblemGenerationWorker.java` (Enricher 경계 호출은 유지하고 비활성 판단은 Enricher가 담당)
 - Modify: `src/main/java/com/cenedu/backend/domain/problem/service/ProblemCandidateProcessingService.java`
 - Modify: `src/main/java/com/cenedu/backend/domain/problem/service/ProblemGenerationPlanningService.java`
 - Modify: `src/main/java/com/cenedu/backend/domain/problem/service/PersonalizedProblemGenerationPlanningService.java`
@@ -421,19 +421,19 @@ Repair 대상을 고르기 위한 LLM은 호출하지 않고 Java 규칙으로 F
 - Consumes: `app.problem-authoring.semantic.enabled`
 - Produces: 비활성 시 원본 `ProblemGenerationCommand`를 그대로 반환하고 extraction 호출을 0회로 보장
 
-- [ ] **Step 1: semantic 비활성 회귀 테스트를 작성한다**
+- [x] **Step 1: semantic 비활성 회귀 테스트를 작성한다**
 
   ORIGIN과 EXAMPLE이 모두 있어도 `ProblemSemanticExtractionService.ensureQuestionSemantic()`이 호출되지 않고 command 참조가 보존되는지 검증한다.
 
-- [ ] **Step 2: 현재 무조건 추출 동작 때문에 테스트가 실패하는지 확인한다**
+- [x] **Step 2: RED 단계는 사용자 지시에 따라 생략하고 구현 후 회귀 테스트로 검증한다**
 
   Run: `bash gradlew test --tests '*ProblemSemanticReferenceEnricherTest' --tests '*ProblemGenerationWorkerTest'`
 
-- [ ] **Step 3: Enricher에 활성 조건을 추가한다**
+- [x] **Step 3: Enricher에 활성 조건을 추가한다**
 
   비활성 시 즉시 `new SemanticReferenceEnrichmentResult(command, false)`를 반환한다. 활성 시 ORIGIN과 응용 문제 EXAMPLE 최대 2개를 보강하는 기존 규칙을 유지한다.
 
-- [ ] **Step 4: 활성·비활성 테스트를 모두 통과시키고 커밋한다**
+- [x] **Step 4: 활성·비활성 테스트를 모두 통과시키고 커밋한다**
 
   Run: `bash gradlew test --tests '*ProblemSemanticReferenceEnricherTest' --tests '*SpringAiProblemGenerationAdapterTest' --tests '*ProblemGenerationWorkerTest'`
 

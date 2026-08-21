@@ -2,15 +2,23 @@ package com.cenedu.backend.domain.problem.service;
 
 import java.util.ArrayList;
 import com.cenedu.backend.domain.problem.authoring.generation.*;
+import com.cenedu.backend.ai.problem.adapter.semantic.SemanticAuthoringProperties;
 import org.springframework.stereotype.Component;
 
 /** semantic generation 직전에 ORIGIN 참고 문항의 lazy extraction을 수행한다. */
 @Component
 public class ProblemSemanticReferenceEnricher {
     private final ProblemSemanticExtractionService extractionService;
+    private final SemanticAuthoringProperties properties;
 
     public ProblemSemanticReferenceEnricher(ProblemSemanticExtractionService extractionService) {
+        this(extractionService, new SemanticAuthoringProperties(true));
+    }
+
+    public ProblemSemanticReferenceEnricher(ProblemSemanticExtractionService extractionService,
+                                            SemanticAuthoringProperties properties) {
         this.extractionService = extractionService;
+        this.properties = properties;
     }
 
     /** ORIGIN만 즉시 보강하고 EXAMPLE은 snapshot-only로 유지한다. */
@@ -20,6 +28,9 @@ public class ProblemSemanticReferenceEnricher {
 
     /** ORIGIN 실패를 fallback 조정기가 식별할 수 있도록 상태를 함께 반환한다. */
     public SemanticReferenceEnrichmentResult enrichWithStatus(ProblemGenerationCommand command) {
+        if (!properties.enabled()) {
+            return new SemanticReferenceEnrichmentResult(command, false);
+        }
         var references = new ArrayList<GenerationReference>();
         int extractedExamples = 0;
         boolean extractExamples = command.specification().requiresSolutionStructure();
