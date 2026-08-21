@@ -22,6 +22,15 @@ import org.springframework.stereotype.Repository;
 @RequiredArgsConstructor
 public class DashboardQueryRepository {
 
+    /*
+     * 배정 조회는 반 배정과 학생 개별 배정을 함께 본다.
+     *
+     * worksheet_assignment 는 반과 학생 중 하나만 대상으로 갖는다(ck_worksheet_assignment_target_xor).
+     * 맞춤 학습은 학생마다 취약점이 달라 개별 배정으로 나가는데, class_id 만 보면 그 배정이
+     * 대시보드에서 통째로 빠져 담임이 맞춤 학습 진행을 볼 수 없다. 그래서 그 반에 속한 학생에게
+     * 나간 개별 배정도 이 반의 학습으로 센다.
+     */
+
     private static final String RESULT_CTE = """
             WITH selected_assignment AS (
                 SELECT wa.id AS assignment_id,
@@ -33,7 +42,14 @@ public class DashboardQueryRepository {
                        w.origin AS worksheet_origin
                 FROM worksheet_assignment wa
                 JOIN worksheet w ON w.id = wa.worksheet_id
-                WHERE wa.class_id = :classId
+                WHERE (
+                          wa.class_id = :classId
+                          OR wa.student_id IN (
+                              SELECT enrollment.student_id
+                              FROM member_class_enrollment enrollment
+                              WHERE enrollment.class_id = :classId
+                          )
+                      )
                   AND w.deleted_at IS NULL
                   AND (w.semester = :semester OR w.semester = 'COMMON')
             ),
@@ -241,7 +257,14 @@ public class DashboardQueryRepository {
                                wa.due_at
                         FROM worksheet_assignment wa
                         JOIN worksheet w ON w.id = wa.worksheet_id
-                        WHERE wa.class_id = :classId
+                        WHERE (
+                                  wa.class_id = :classId
+                                  OR wa.student_id IN (
+                                      SELECT enrollment.student_id
+                                      FROM member_class_enrollment enrollment
+                                      WHERE enrollment.class_id = :classId
+                                  )
+                              )
                           AND w.deleted_at IS NULL
                           AND (w.semester = :semester OR w.semester = 'COMMON')
                         ORDER BY wa.assigned_at ASC, wa.id ASC
@@ -353,7 +376,14 @@ public class DashboardQueryRepository {
                         SELECT COUNT(*)
                         FROM worksheet_assignment wa
                         JOIN worksheet w ON w.id = wa.worksheet_id
-                        WHERE wa.class_id = :classId
+                        WHERE (
+                                  wa.class_id = :classId
+                                  OR wa.student_id IN (
+                                      SELECT enrollment.student_id
+                                      FROM member_class_enrollment enrollment
+                                      WHERE enrollment.class_id = :classId
+                                  )
+                              )
                           AND w.deleted_at IS NULL
                           AND (w.semester = :semester OR w.semester = 'COMMON')
                         """)
@@ -393,7 +423,14 @@ public class DashboardQueryRepository {
                         JOIN worksheet w ON w.id = wa.worksheet_id
                         LEFT JOIN worksheet_assignment_student was
                           ON was.assignment_id = wa.id
-                        WHERE wa.class_id = :classId
+                        WHERE (
+                                  wa.class_id = :classId
+                                  OR wa.student_id IN (
+                                      SELECT enrollment.student_id
+                                      FROM member_class_enrollment enrollment
+                                      WHERE enrollment.class_id = :classId
+                                  )
+                              )
                           AND w.deleted_at IS NULL
                           AND (w.semester = :semester OR w.semester = 'COMMON')
                         GROUP BY wa.id, w.title, w.type, w.origin, w.source_assignment_id,
