@@ -103,6 +103,19 @@ class OpenAiLlmClientTest {
         verify(chatModel, times(2)).call(any(Prompt.class));
     }
 
+    @Test
+    @DisplayName("문항 Scope 예산이 소진되면 API를 호출하지 않는다")
+    void stopsWhenBudgetIsExhausted() {
+        LlmCallBudgetManager manager = new LlmCallBudgetManager();
+        LlmCallBudgetManager.Scope scope = manager.open("op", "item", "session", "GENERATION", 0);
+        OpenAiLlmClient budgeted = new OpenAiLlmClient(chatModel, PROPERTIES, manager);
+        assertThatThrownBy(() -> budgeted.complete(null, List.of(ChatMessage.user("질문"))))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.AI_CLIENT_CALL_BUDGET_EXHAUSTED);
+        verify(chatModel, times(0)).call(any(Prompt.class));
+        scope.close();
+    }
+
     private void stubResponse(ChatResponse response) {
         when(chatModel.call(any(Prompt.class))).thenReturn(response);
     }
