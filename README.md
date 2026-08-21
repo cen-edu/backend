@@ -129,6 +129,12 @@ H2 테스트 데이터베이스를 사용하지 않습니다. 테스트도 애�
 docker compose stop
 ```
 
+## 6. 배포
+
+AWS EC2 배포(이미지 빌드 → Docker Hub → EC2 compose)는
+[docs/deploy/aws-architecture.md](docs/deploy/aws-architecture.md)를 따릅니다. 구성 파일은
+`Dockerfile`과 `deploy/` 아래에 있습니다.
+
 ## 설정 원칙
 
 - 개발과 테스트는 동일한 Docker PostgreSQL을 사용합니다.
