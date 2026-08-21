@@ -57,6 +57,7 @@ public class DashboardQueryRepository {
                 SELECT was.id AS assignment_student_id,
                        was.student_id,
                        selected.assignment_id,
+                       selected.worksheet_origin,
                        wi.id AS worksheet_item_id,
                        COUNT(pau.id) AS expected_unit_count,
                        COUNT(answer.id) FILTER (
@@ -92,6 +93,7 @@ public class DashboardQueryRepository {
                  AND answer.answer_unit_id = pau.id
                 WHERE question.deleted_at IS NULL
                 GROUP BY was.id, was.student_id, selected.assignment_id,
+                         selected.worksheet_origin,
                          wi.id, wi.max_score
             )
             """;
@@ -116,6 +118,7 @@ public class DashboardQueryRepository {
         String sql = RESULT_CTE + """
                 , assignment_progress AS (
                     SELECT selected.assignment_id,
+                           selected.worksheet_origin,
                            COUNT(was.id) AS student_count,
                            COUNT(was.id) FILTER (
                                WHERE was.status = 'GRADED'
@@ -123,9 +126,11 @@ public class DashboardQueryRepository {
                     FROM selected_assignment selected
                     LEFT JOIN worksheet_assignment_student was
                       ON was.assignment_id = selected.assignment_id
-                    GROUP BY selected.assignment_id
+                    GROUP BY selected.assignment_id, selected.worksheet_origin
                 ),
                 student_accuracy AS (
+                    -- 반 성취도는 원본 학습지로만 잰다. 맞춤은 취약 학생만 푸는 보강이라
+                    -- 함께 섞으면 반 평균이 '진단 + 하위권 재시험' 이 되어 뜻이 흐려진다.
                     SELECT ir.student_id,
                            COUNT(ir.worksheet_item_id) FILTER (
                                WHERE ir.graded_unit_count = ir.expected_unit_count
@@ -138,15 +143,33 @@ public class DashboardQueryRepository {
                     JOIN member_class_enrollment enrollment
                       ON enrollment.student_id = ir.student_id
                      AND enrollment.class_id = :classId
+                    WHERE ir.worksheet_origin = 'STANDARD'
                     GROUP BY ir.student_id
                 )
-                SELECT (SELECT COUNT(*) FROM selected_assignment) AS assignment_count,
+                SELECT (
+                           SELECT COUNT(*)
+                           FROM selected_assignment
+                           WHERE worksheet_origin = 'STANDARD'
+                       ) AS assignment_count,
                        (
                            SELECT COUNT(*)
                            FROM assignment_progress
-                           WHERE student_count > 0
+                           WHERE worksheet_origin = 'STANDARD'
+                             AND student_count > 0
                              AND graded_student_count < student_count
                        ) AS in_progress_assignment_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM selected_assignment
+                           WHERE worksheet_origin = 'CUSTOM'
+                       ) AS custom_assignment_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM assignment_progress
+                           WHERE worksheet_origin = 'CUSTOM'
+                             AND student_count > 0
+                             AND graded_student_count = student_count
+                       ) AS custom_completed_assignment_count,
                        (
                            SELECT ROUND(
                                100.0 * SUM(correct_item_count)
@@ -160,11 +183,14 @@ public class DashboardQueryRepository {
                            WHERE graded_item_count > 0
                        ) AS aggregated_student_count,
                        (
+                           -- 미완료 제출도 원본만 센다. 맞춤 미제출은 '보강을 아직 안 함' 이라
+                           -- 성격이 달라 같은 칸에 섞지 않는다.
                            SELECT COUNT(*)
                            FROM selected_assignment selected
                            JOIN worksheet_assignment_student was
                              ON was.assignment_id = selected.assignment_id
                            WHERE was.status IN ('NOT_STARTED', 'NOT_SUBMITTED')
+                             AND selected.worksheet_origin = 'STANDARD'
                        ) AS incomplete_submission_count,
                        (
                            SELECT COUNT(*)
@@ -173,6 +199,7 @@ public class DashboardQueryRepository {
                              ON was.assignment_id = selected.assignment_id
                            WHERE was.status IN ('NOT_STARTED', 'NOT_SUBMITTED')
                              AND selected.due_at < now()
+                             AND selected.worksheet_origin = 'STANDARD'
                        ) AS overdue_submission_count,
                        (
                            SELECT COUNT(*)
@@ -187,6 +214,8 @@ public class DashboardQueryRepository {
                 .query((rs, rowNum) -> new DashboardSummaryRow(
                         rs.getInt("assignment_count"),
                         rs.getInt("in_progress_assignment_count"),
+                        rs.getInt("custom_assignment_count"),
+                        rs.getInt("custom_completed_assignment_count"),
                         rs.getObject("class_accuracy_rate", BigDecimal.class),
                         rs.getInt("aggregated_student_count"),
                         rs.getInt("incomplete_submission_count"),

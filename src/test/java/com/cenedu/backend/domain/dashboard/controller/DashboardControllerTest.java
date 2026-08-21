@@ -74,7 +74,7 @@ class DashboardControllerTest {
                 .thenReturn(new DashboardSummaryResponse(
                         OffsetDateTime.now(),
                         new DashboardSummaryResponse.LearningSummary(
-                                6, 4, new BigDecimal("74.0"), 8, 10, 1, 1,
+                                6, 4, 2, 1, new BigDecimal("74.0"), 8, 10, 1, 1,
                                 new BigDecimal("60.0")),
                         new DashboardSummaryResponse.StudentStatusCounts(1, 1, 6, 0)));
 

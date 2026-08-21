@@ -56,7 +56,7 @@ class DashboardQueryServiceTest {
     void createsSummary() {
         allowClassAccess();
         when(repository.findSummary(3L, 2)).thenReturn(new DashboardSummaryRow(
-                6, 4, new BigDecimal("74.0"), 8, 10, 1, 1));
+                6, 4, 2, 1, new BigDecimal("74.0"), 8, 10, 1, 1));
         when(repository.findStudentStatuses(3L, 2)).thenReturn(List.of(
                 new DashboardStudentStatusRow(11L, true, 2, new BigDecimal("90.0")),
                 new DashboardStudentStatusRow(12L, false, 2, new BigDecimal("50.0")),
