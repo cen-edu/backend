@@ -101,21 +101,18 @@ class ProblemGenerationWorkerTest {
                 candidate(invocation.getArgument(0, ProblemGenerationCommand.class).requestId()));
         when(candidateService.process(any()))
                 .thenReturn(result(VerificationOverallStatus.FAILED, false))
-                .thenReturn(result(VerificationOverallStatus.FAILED, false))
                 .thenReturn(result(VerificationOverallStatus.PASSED, true));
         when(jobService.prepareRetry(any(), any()))
                 .thenReturn(true, true);
 
         worker.execute(1L);
 
-        verify(generationPort, times(3)).generate(any());
+        verify(generationPort, times(2)).generate(any());
         verify(jobService).succeed(workItem);
         ArgumentCaptor<ProblemGenerationCommand> commands = ArgumentCaptor.forClass(ProblemGenerationCommand.class);
-        verify(generationPort, times(3)).generate(commands.capture());
+        verify(generationPort, times(2)).generate(commands.capture());
         assertThat(commands.getAllValues().get(1).requestId()).isEqualTo(UUID.nameUUIDFromBytes(
                 (workItem.command().requestId() + ":attempt:1").getBytes(StandardCharsets.UTF_8)));
-        assertThat(commands.getAllValues().get(2).requestId()).isEqualTo(UUID.nameUUIDFromBytes(
-                (workItem.command().requestId() + ":attempt:2").getBytes(StandardCharsets.UTF_8)));
         assertThat(commands.getAllValues())
                 .extracting(ProblemGenerationCommand::personalizedEvidence)
                 .containsOnly(workItem.command().personalizedEvidence());
@@ -142,11 +139,11 @@ class ProblemGenerationWorkerTest {
 
         worker.execute(1L);
 
-        verify(generationPort, times(3)).generate(any());
+        verify(generationPort, times(2)).generate(any());
         verify(jobService).fail(workItem, "GENERATION_FAILED");
         assertThat(logMessages()).anyMatch(message -> message.contains("stage=GENERATION")
                 && message.contains("outcome=ERROR")
-                && message.contains("candidateAttempt=3")
+                && message.contains("candidateAttempt=2")
                 && message.contains("errorType=IllegalStateException"));
     }
 

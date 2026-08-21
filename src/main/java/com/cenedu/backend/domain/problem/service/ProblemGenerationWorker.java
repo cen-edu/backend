@@ -92,7 +92,7 @@ public class ProblemGenerationWorker {
                         Long.toString(workItem.sessionId()), "GENERATION");
         try {
             int attempt = 0;
-            while (true) {
+            while (attempt < 2) {
                 MDC.put("candidateAttempt", Integer.toString(attempt + 1));
                 if (budget != null) budget.stage(ProblemAiExecutionBudgetPort.Stage.GENERATION, attempt + 1);
                 ProblemGenerationCommand attemptCommand = commandForAttempt(workItem.command(), attempt);
@@ -120,7 +120,7 @@ public class ProblemGenerationWorker {
                 } catch (RuntimeException exception) {
                     log.warn("event=problem_authoring_stage operation=GENERATION outcome=ERROR itemId={} attempt={} errorType={}",
                             workItem.itemId(), attempt + 1, exception.getClass().getSimpleName());
-                    if (jobService.prepareRetry(workItem, "GENERATION_FAILED")) {
+                    if (attempt < 1 && jobService.prepareRetry(workItem, "GENERATION_FAILED")) {
                         attempt++;
                         continue;
                     }
@@ -137,7 +137,7 @@ public class ProblemGenerationWorker {
                 } catch (RuntimeException exception) {
                     log.warn("event=problem_authoring_stage operation=GENERATION stage=VERIFICATION outcome=ERROR itemId={} attempt={} errorType={}",
                             workItem.itemId(), attempt + 1, exception.getClass().getSimpleName());
-                    if (jobService.prepareRetry(workItem, "CANDIDATE_INVALID")) {
+                    if (attempt < 1 && jobService.prepareRetry(workItem, "CANDIDATE_INVALID")) {
                         attempt++;
                         continue;
                     }
@@ -160,7 +160,7 @@ public class ProblemGenerationWorker {
                     logItemOutcome(workItem, "FAILED", "VERIFICATION_ERROR");
                     return;
                 }
-                if (!jobService.prepareRetry(workItem, result.status().name())) {
+                if (attempt >= 1 || !jobService.prepareRetry(workItem, result.status().name())) {
                     jobService.fail(workItem, result.status().name());
                     logItemOutcome(workItem, "FAILED", result.status().name());
                     return;
