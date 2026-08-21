@@ -53,13 +53,6 @@ function Write-Step($message) {
     Write-Host "==> $message" -ForegroundColor Cyan
 }
 
-function Invoke-Checked($what, [scriptblock]$block) {
-    & $block
-    if ($LASTEXITCODE -ne 0) {
-        throw "$what 실패 (exit $LASTEXITCODE)"
-    }
-}
-
 # 이미 Docker Hub 에 있는 태그인지 본다. manifest inspect 는 없으면 0 이 아닌 코드를 준다.
 function Test-TagExists($image) {
     docker manifest inspect $image *> $null
@@ -95,16 +88,25 @@ function Publish-Image($repoPath, $imageName, $label, [string[]]$buildArgs) {
     Write-Step "$label 빌드 — $image"
     Push-Location $repoPath
     try {
-        $args = @('build', '-t', $image)
-        foreach ($a in $buildArgs) { $args += @('--build-arg', $a) }
-        $args += '.'
-        Invoke-Checked "$label 빌드" { docker @args }
+        # $args 라는 이름을 쓰지 않는다. PowerShell 예약 변수라 스크립트블록 안에서는
+        # 그 블록의 인자(빈 배열)로 덮여, docker 가 인자 없이 실행되고도 0 을 준다.
+        $dockerArgs = @('build', '-t', $image)
+        foreach ($a in $buildArgs) { $dockerArgs += @('--build-arg', $a) }
+        $dockerArgs += '.'
+
+        docker @dockerArgs
+        if ($LASTEXITCODE -ne 0) { throw "$label 빌드 실패 (exit $LASTEXITCODE)" }
     } finally {
         Pop-Location
     }
 
+    # 빌드가 0 을 줬어도 이미지가 실제로 있는지 확인한다. 위와 같은 사고를 두 번 겪지 않는다.
+    docker image inspect $image *> $null
+    if ($LASTEXITCODE -ne 0) { throw "빌드가 끝났는데 이미지가 없다: $image" }
+
     Write-Step "$label push"
-    Invoke-Checked "$label push" { docker push $image }
+    docker push $image
+    if ($LASTEXITCODE -ne 0) { throw "$label push 실패 (exit $LASTEXITCODE)" }
 }
 
 # --- 빌드와 push -------------------------------------------------------------
@@ -148,9 +150,8 @@ $backendArg  = if ($FrontendOnly) { '-' } else { $Tag }
 $frontendArg = if ($Frontend -or $FrontendOnly) { $Tag } else { '' }
 
 Write-Step "EC2 배포 — $RemoteHost"
-Invoke-Checked 'EC2 배포' {
-    & $Plink -batch -i $KeyPath $RemoteHost "cd ~/app && ./deploy.sh $backendArg $frontendArg"
-}
+& $Plink -batch -i $KeyPath $RemoteHost "cd ~/app && ./deploy.sh $backendArg $frontendArg"
+if ($LASTEXITCODE -ne 0) { throw "EC2 배포 실패 (exit $LASTEXITCODE)" }
 
 # --- 확인 -------------------------------------------------------------------
 
