@@ -42,7 +42,18 @@ public final class ProblemSemanticGenerationPromptFactory {
     }
 
     private Object originVisual(com.cenedu.backend.domain.problem.authoring.generation.GenerationReference origin) {
-        if (origin.visualReference() != null) return origin.visualReference();
+        if (origin.visualReference() != null) {
+            var descriptor = origin.visualReference();
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("visualKind", descriptor.kind().name());
+            result.put("visualAssetKey", descriptor.assetKey());
+            result.put("altText", descriptor.altText());
+            result.put("diagram", descriptor.diagramSpec());
+            result.put("directCopyForbidden", true);
+            result.put("preserveKind", true);
+            result.put("changeValuesForSimilarOrIncreaseReasoningForApplication", true);
+            return result;
+        }
         if (origin.semanticModel() == null) return Map.of("visualKind", "UNKNOWN_FIGURE", "directCopyForbidden", true);
         return Map.of("visualKind", origin.semanticModel().diagrams().isEmpty() ? "NONE" : origin.semanticModel().diagrams().get(0).kind().name(),
                 "semanticModel", origin.semanticModel(), "directCopyForbidden", true);
