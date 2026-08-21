@@ -44,6 +44,8 @@ import com.cenedu.backend.domain.problem.authoring.semantic.materialization.Sema
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.DefaultProblemSemanticMaterializer;
 import com.cenedu.backend.ai.problem.adapter.semantic.SemanticAuthoringProperties;
 import com.cenedu.backend.domain.problem.authoring.diagram.DiagramSpecValidator;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationPolicy;
+import com.cenedu.backend.domain.problem.config.ProblemVisualAuthoringProperties;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringSession;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
@@ -79,6 +81,8 @@ public class ProblemCandidateProcessingService {
     private final ProblemSemanticDocumentCodec semanticDocumentCodec =
             new ProblemSemanticDocumentCodec(new tools.jackson.databind.ObjectMapper());
     private final SemanticAuthoringProperties semanticProperties;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ProblemVisualAuthoringProperties visualProperties;
 
     public ProblemCandidateProcessingService(
             ProblemAuthoringSessionRepository sessionRepository,
@@ -500,6 +504,19 @@ public class ProblemCandidateProcessingService {
             return;
         }
         MaterializedProblem materialized = semanticMaterializer.materialize(candidate.semanticModel());
+        ProblemVisualAuthoringProperties properties = visualProperties == null
+                ? new ProblemVisualAuthoringProperties(true,
+                java.util.Set.of(com.cenedu.backend.domain.problem.authoring.diagram.DiagramKind.values()),
+                java.util.Set.of(com.cenedu.backend.global.common.enums.QuestionType.MULTIPLE_CHOICE,
+                        com.cenedu.backend.global.common.enums.QuestionType.SHORT_INPUT), 1)
+                : visualProperties;
+        new VisualGenerationPolicy(properties).validate(
+                candidate.semanticModel().intent().visualRequired()
+                        ? new com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement(
+                        com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode.AUTO,
+                        com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.UNKNOWN_FIGURE)
+                        : com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement.none(),
+                candidate.semanticModel());
         if (!Objects.equals(materialized.snapshot(), candidate.snapshot())
                 || !Objects.equals(materialized.assetPlans(), candidate.assetPlans())) {
             throw new IllegalArgumentException("의미 모델과 materialized 후보가 일치하지 않습니다.");
