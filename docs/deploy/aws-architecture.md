@@ -372,9 +372,9 @@ Flyway 가 기동할 때 스키마를 올린다(`vector` 확장 생성 포함 �
 
 ```powershell
 git fetch origin; git merge origin/main     # 팀원 코드 먼저 받는다
-.\scriptselease.ps1 1.0.3                 # 백엔드만
-.\scriptselease.ps1 1.0.3 -Frontend       # 백엔드 + 프론트
-.\scriptselease.ps1 1.0.3 -FrontendOnly   # 프론트만
+.\scripts\release.ps1 1.0.3                 # 백엔드만
+.\scripts\release.ps1 1.0.3 -Frontend       # 백엔드 + 프론트
+.\scripts\release.ps1 1.0.3 -FrontendOnly   # 프론트만
 ```
 
 주소나 경로가 바뀌면 스크립트를 고치지 않고 환경 변수로 덮는다 — `CEN_EDU_HOST`,
