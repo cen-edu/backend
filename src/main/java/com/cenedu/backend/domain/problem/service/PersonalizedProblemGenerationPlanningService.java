@@ -230,11 +230,13 @@ public class PersonalizedProblemGenerationPlanningService {
             java.util.Set<Long> alreadyReusedIds, UUID retrievalRequestId) {
         ProblemReferenceRetrievalPort port = ragProperties != null && ragProperties.enabled()
                 && retrievalProvider != null ? retrievalProvider.getIfAvailable() : null;
-        ProblemReferenceQuery query = new ProblemReferenceQuery(retrievalRequestId,
+        VisualReferenceKind requiredVisualKind = visualReferenceQueryService == null ? null
+                : visualReferenceQueryService.get(originId).kind();
+        ProblemReferenceQuery query = ProblemReferenceQuery.withVisualKind(retrievalRequestId,
                 GenerationPurpose.PERSONALIZED_SIMILAR_SHORTAGE, curriculum, QuestionType.STEP_FILL,
                 similar.difficulty(), originId, originSnapshot,
                 ragProperties == null ? 40 : ragProperties.candidateLimit(),
-                Math.min(4, requestedCount), excludedIds(similar, alreadyReusedIds));
+                Math.min(4, requestedCount), excludedIds(similar, alreadyReusedIds), requiredVisualKind);
         if (port == null) {
             log.info("event=problem_retrieval stage=RAG outcome=FALLBACK requestId={} fallbackReason={} candidateReferenceCount=0",
                     retrievalRequestId, RetrievalFallbackReason.PORT_UNAVAILABLE);

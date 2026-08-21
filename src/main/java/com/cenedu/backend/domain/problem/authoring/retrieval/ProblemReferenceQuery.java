@@ -20,6 +20,14 @@ public record ProblemReferenceQuery(
         this(retrievalRequestId, purpose, curriculum, questionType, difficulty, originQuestionId, originSnapshot,
                 candidateLimit, selectionLimit, excludedQuestionIds, visualKind(originSnapshot));
     }
+    public static ProblemReferenceQuery withVisualKind(UUID retrievalRequestId, GenerationPurpose purpose,
+            CurriculumScope curriculum, QuestionType questionType, String difficulty, Long originQuestionId,
+            QuestionSnapshotV1 originSnapshot, int candidateLimit, int selectionLimit,
+            Set<Long> excludedQuestionIds, VisualReferenceKind requiredVisualKind) {
+        return new ProblemReferenceQuery(retrievalRequestId, purpose, curriculum, questionType, difficulty,
+                originQuestionId, originSnapshot, candidateLimit, selectionLimit, excludedQuestionIds,
+                requiredVisualKind);
+    }
     public ProblemReferenceQuery {
         if (retrievalRequestId == null || purpose == null || curriculum == null || questionType == null
                 || difficulty == null || difficulty.isBlank()) {
