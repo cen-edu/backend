@@ -37,10 +37,13 @@ import com.cenedu.backend.global.common.enums.QuestionType;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** 최신 재출제 제안과 교사 수량을 실행 가능한 맞춤 생성 계획으로 변환한다. */
 @Service
 public class PersonalizedProblemGenerationPlanningService {
+    private static final Logger log = LoggerFactory.getLogger(PersonalizedProblemGenerationPlanningService.class);
     private final ProblemBankSnapshotQueryService snapshotQueryService;
     private final ObjectProvider<ProblemReferenceRetrievalPort> retrievalProvider;
     private final ObjectProvider<ProblemRetrievalTracePort> traceProvider;
@@ -77,7 +80,19 @@ public class PersonalizedProblemGenerationPlanningService {
                 slots.stream().map(ProblemGenerationSlotPlan::sourceQuestionId)
                         .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet()));
         appendAdvancedSlots(slots, proposal, requests, curriculumPaths);
-        return new ProblemGenerationPlan(clientRequestId, GenerationJobType.PERSONALIZED, reindex(slots));
+        List<ProblemGenerationSlotPlan> planned = reindex(slots);
+        log.info("event=problem_authoring_plan stage=PLANNING outcome=SUCCESS clientRequestId={} jobType={} "
+                        + "slotCount={} reviewCount={} similarReuseCount={} similarAiCount={} advancedAiCount={} ragEnabled={}",
+                clientRequestId, GenerationJobType.PERSONALIZED, planned.size(),
+                planned.stream().filter(slot -> slot.customStage() == CustomStage.REVIEW).count(),
+                planned.stream().filter(slot -> slot.customStage() == CustomStage.SIMILAR
+                        && slot.source() == GenerationSlotSource.BANK_REUSE).count(),
+                planned.stream().filter(slot -> slot.customStage() == CustomStage.SIMILAR
+                        && slot.source() == GenerationSlotSource.AI_GENERATION).count(),
+                planned.stream().filter(slot -> slot.customStage() == CustomStage.ADVANCED
+                        && slot.source() == GenerationSlotSource.AI_GENERATION).count(),
+                ragProperties != null && ragProperties.enabled());
+        return new ProblemGenerationPlan(clientRequestId, GenerationJobType.PERSONALIZED, planned);
     }
 
     /** 요청을 수량 조회용 Map으로 만들고 중복 소단원을 거절한다. */
@@ -209,12 +224,20 @@ public class PersonalizedProblemGenerationPlanningService {
                 ragProperties == null ? 40 : ragProperties.candidateLimit(),
                 Math.min(4, requestedCount), excludedIds(similar, alreadyReusedIds));
         if (port == null) {
+            log.info("event=problem_retrieval stage=RAG outcome=FALLBACK requestId={} fallbackReason={} candidateReferenceCount=0",
+                    retrievalRequestId, RetrievalFallbackReason.PORT_UNAVAILABLE);
             recordFallback(query, RetrievalFallbackReason.PORT_UNAVAILABLE);
             return List.of();
         }
+        long startedAt = System.nanoTime();
         try {
-            return port.retrieve(query);
+            List<RetrievedProblemReference> retrieved = port.retrieve(query);
+            log.info("event=problem_retrieval stage=RAG outcome=SUCCESS requestId={} purpose={} candidateReferenceCount={} elapsedMs={}",
+                    retrievalRequestId, query.purpose(), retrieved.size(), elapsedMs(startedAt));
+            return retrieved;
         } catch (RuntimeException exception) {
+            log.warn("event=problem_retrieval stage=RAG outcome=FALLBACK requestId={} purpose={} elapsedMs={} exceptionType={}",
+                    retrievalRequestId, query.purpose(), elapsedMs(startedAt), exception.getClass().getSimpleName());
             recordFallback(query, RetrievalFallbackReason.PROVIDER_FAILURE);
             return List.of();
         }
@@ -301,10 +324,16 @@ public class PersonalizedProblemGenerationPlanningService {
                 "high", originId, originSnapshot, ragProperties.candidateLimit(),
                 Math.min(4, ragProperties.candidateLimit()), java.util.Set.of());
         try {
-            return retrievalProvider.getIfAvailable().retrieve(query).stream()
+            long startedAt = System.nanoTime();
+            List<RetrievedProblemReference> retrieved = retrievalProvider.getIfAvailable().retrieve(query);
+            log.info("event=problem_retrieval stage=RAG outcome=SUCCESS requestId={} purpose={} candidateReferenceCount={} elapsedMs={}",
+                    requestId, query.purpose(), retrieved.size(), elapsedMs(startedAt));
+            return retrieved.stream()
                     .map(reference -> new GenerationReference(GenerationReferenceRole.EXAMPLE,
                             reference.questionId(), reference.snapshot())).toList();
         } catch (RuntimeException exception) {
+            log.warn("event=problem_retrieval stage=RAG outcome=FALLBACK requestId={} purpose={} exceptionType={}",
+                    requestId, query.purpose(), exception.getClass().getSimpleName());
             recordFallback(query, RetrievalFallbackReason.PROVIDER_FAILURE);
             return List.of();
         }
@@ -325,6 +354,10 @@ public class PersonalizedProblemGenerationPlanningService {
                 .toList();
         return new PersonalizedGenerationEvidence(advanced.historicalIncorrectItemCount(),
                 advanced.incorrectSessionCount(), areaEvidence, diagnosticEvidence);
+    }
+
+    private long elapsedMs(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
     }
 
     /** 기준 문항과 교육과정 경로를 보존하는 맞춤 AI 슬롯을 만든다. */

@@ -43,7 +43,7 @@ public class OpenAiClientConfig {
         return OpenAIOkHttpClient.builder()
                 .apiKey(properties.apiKey())
                 .timeout(properties.timeout())
-                .maxRetries(properties.maxRetries())
+                .maxRetries(0)
                 .build();
     }
 
@@ -62,7 +62,7 @@ public class OpenAiClientConfig {
                 .maxCompletionTokens(Math.toIntExact(properties.maxCompletionTokens()))
                 .apiKey(properties.apiKey())
                 .timeout(properties.timeout())
-                .maxRetries(properties.maxRetries());
+                .maxRetries(0);
         if (supportsReasoningEffort(properties.model())) {
             builder.reasoningEffort(properties.reasoningEffort());
         }

@@ -159,6 +159,21 @@ class ProblemVerificationAdapterTest {
     }
 
     @Test
+    @DisplayName("검증 Solver가 Unicode 수식으로 답해도 LaTeX 정답과 같으면 PASSED다")
+    void unicodeMathAnswerMatchesLatexAnswer() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", "2²×3²×7"),
+                VerificationFixtures.CONTENT_CHECK_CLEAN);
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(statusOf(report, VerificationCheckType.CORRECTNESS))
+                .isEqualTo(VerificationFindingStatus.PASS);
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.PASSED);
+    }
+
+    @Test
     @DisplayName("Solver 가 다른 보기를 고르면 FAILED + ANSWER_INCORRECT 다")
     void wrongChoiceFails() {
         QuestionSnapshotV1 snapshot = VerificationFixtures.multipleChoiceSnapshot();
@@ -173,6 +188,22 @@ class ProblemVerificationAdapterTest {
         assertThat(correctness.code()).isEqualTo(VerificationIssueCode.ANSWER_INCORRECT);
         assertThat(correctness.evidence()).contains("C3").doesNotContain("C1");
         assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("Solver 불일치와 원본 검사가 저작 정답 오류에 합의하면 확인 Finding을 남긴다")
+    void confirmsAuthoringAnswerErrorWithTwoSignals() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", "999"),
+                "{\"answerMismatchCause\":\"AUTHORING_ANSWER_WRONG\",\"findings\":[]}");
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(report.findings()).extracting(VerificationFinding::code)
+                .contains(VerificationIssueCode.ANSWER_INCORRECT,
+                        VerificationIssueCode.AUTHORING_ANSWER_WRONG_CONFIRMED);
+        assertThat(fake.userPrompts).hasSize(2);
     }
 
     @Test
@@ -664,6 +695,24 @@ class ProblemVerificationAdapterTest {
                 .extracting(VerificationFinding::message)
                 .noneMatch(message -> message.contains("해설") || message.contains("개념 안내"));
         assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.PASSED);
+    }
+
+    @Test
+    @DisplayName("해설 부분 수정 재검증은 Solver를 생략하고 원본 검사만 한 번 호출한다")
+    void originalOnlyProfileSkipsSolver() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(VerificationFixtures.CONTENT_CHECK_CLEAN);
+        ProblemVerificationRequest full = contentRequest(snapshot);
+        ProblemVerificationRequest request = new ProblemVerificationRequest(
+                full.verificationRequestId(), full.scope(), full.operationType(), full.candidate(),
+                full.assetManifest(), full.expectation(), full.context(), full.semanticReport(),
+                com.cenedu.backend.domain.problem.authoring.verification.VerificationProfile.ORIGINAL_ONLY);
+
+        ProblemVerificationReport report = adapter.verify(request);
+
+        assertThat(fake.userPrompts).hasSize(1);
+        assertThat(statusOf(report, VerificationCheckType.CORRECTNESS))
+                .isEqualTo(VerificationFindingStatus.NOT_APPLICABLE);
     }
 
     @Test

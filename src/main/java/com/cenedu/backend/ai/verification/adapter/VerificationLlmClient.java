@@ -46,7 +46,8 @@ public class VerificationLlmClient {
         String blindJson = writeBlind(blind);
         JsonNode root = call(
                 VerificationPrompts.solverSystemPrompt(),
-                VerificationPrompts.solverUserPrompt(blindJson));
+                VerificationPrompts.solverUserPrompt(blindJson),
+                VerificationStructuredOutputSchemas.SOLVER);
 
         boolean solved = root.path("solved").asBoolean(false);
         String reason = root.path("reason").asString("");
@@ -78,14 +79,16 @@ public class VerificationLlmClient {
      * @param includeRubric ESSAY 일 때 true. 루브릭 절을 요구한다
      * @return 결함 목록. 비어 있으면 결함 없음이다
      */
-    public List<OriginalDefect> inspectOriginal(
+    public OriginalInspectionResult inspectOriginal(
             QuestionSnapshotV1 snapshot,
             boolean includeRubric,
-            CurriculumScope expectedCurriculum
+            CurriculumScope expectedCurriculum,
+            AnswerMismatchContext mismatchContext
     ) {
         JsonNode root = call(
                 VerificationPrompts.contentIntegritySystemPrompt(includeRubric),
-                VerificationPrompts.contentIntegrityUserPrompt(snapshot, expectedCurriculum));
+                VerificationPrompts.contentIntegrityUserPrompt(snapshot, expectedCurriculum, mismatchContext),
+                VerificationStructuredOutputSchemas.ORIGINAL);
 
         JsonNode findings = root.path("findings");
         if (findings.isMissingNode() || findings.isNull()) {
@@ -107,14 +110,21 @@ public class VerificationLlmClient {
                     finding.path("location").asString("").trim(),
                     finding.path("detail").asString("").trim()));
         }
-        return defects;
+        AnswerMismatchCause cause;
+        try {
+            cause = AnswerMismatchCause.valueOf(root.path("answerMismatchCause").asString("NONE"));
+        } catch (IllegalArgumentException exception) {
+            throw new SolverResponseParseException("원본 검사 응답의 answerMismatchCause를 알 수 없습니다.", exception);
+        }
+        return new OriginalInspectionResult(defects, cause);
     }
 
     /** 서술형 채점 기준의 의미를 심사한다. 구조 검사는 저작측 Validator 가 이미 했다. */
     public RubricJudgement judgeRubric(QuestionSnapshotV1 snapshot) {
         JsonNode root = call(
                 VerificationPrompts.rubricSystemPrompt(),
-                VerificationPrompts.rubricUserPrompt(snapshot));
+                VerificationPrompts.rubricUserPrompt(snapshot),
+                VerificationStructuredOutputSchemas.RUBRIC);
         return new RubricJudgement(
                 root.path("axis").asString("").trim(),
                 root.path("detail").asString("").trim());
@@ -124,18 +134,21 @@ public class VerificationLlmClient {
     public AssetJudgement judgeAsset(QuestionSnapshotV1 snapshot) {
         JsonNode root = call(
                 VerificationPrompts.assetSystemPrompt(),
-                VerificationPrompts.assetUserPrompt(snapshot));
+                VerificationPrompts.assetUserPrompt(snapshot),
+                VerificationStructuredOutputSchemas.ASSET);
         return new AssetJudgement(
                 root.path("issue").asString("").trim(),
                 root.path("detail").asString("").trim());
     }
 
     private JsonNode call(String systemPrompt, String userPrompt) {
-        String text = llmClient.complete(
-                systemPrompt,
-                List.of(ChatMessage.user(userPrompt)),
-                VERIFICATION_SEED,
-                LlmUseCase.VERIFICATION).text();
+        return call(systemPrompt, userPrompt, null);
+    }
+
+    private JsonNode call(String systemPrompt, String userPrompt, String schema) {
+        String text = llmClient.completeStructured(
+                systemPrompt, List.of(ChatMessage.user(userPrompt)), VERIFICATION_SEED,
+                LlmUseCase.VERIFICATION, schema).text();
         return parse(text);
     }
 

@@ -55,6 +55,7 @@ public class AnswerNormalizer {
 
     /** 표 구분자 {@code &}. 표에서 잘라 온 흔적이다({@code 105^{\circ} &}). */
     private static final Pattern TABLE_SEPARATOR = Pattern.compile("&");
+    private static final Pattern MATH_DELIMITER = Pattern.compile("^\\$\\$(.*)\\$\\$|^\\$(.*)\\$|^\\\\\\((.*)\\\\\\)$");
 
     /** 리터럴 중괄호 {@code \{…\}}. 감싸는 껍데기라 벗긴다. */
     private static final Pattern LITERAL_BRACES = Pattern.compile("\\\\\\{|\\\\\\}");
@@ -94,6 +95,7 @@ public class AnswerNormalizer {
             return null;
         }
         String value = raw.trim();
+        value = stripMathDelimiters(value);
         value = stripDisplayUnit(value, displayUnit);
         value = CHOICE_MARKER_PREFIX.matcher(value).replaceAll("");
         value = ARRAY_ENVIRONMENT.matcher(value).replaceAll("");
@@ -112,10 +114,53 @@ public class AnswerNormalizer {
         value = LITERAL_BRACES.matcher(value).replaceAll("");
         value = value.replace("\\pi", "pi").replace("π", "pi");
         value = value.replace("\\times", "*").replace("\\cdot", "*").replace("\\div", "/");
+        value = value.replace('×', '*').replace('÷', '/').replace('·', '*').replace("∠", "")
+                .replace('−', '-').replace('–', '-').replace('—', '-');
+        value = replaceUnicodeSuperscripts(value);
         value = value.replaceAll("\\s+", "");
         value = stripAngleBracketWrapper(value);
         value = insertImplicitProducts(value);
         return value.isEmpty() ? null : value;
+    }
+
+    private String stripMathDelimiters(String value) {
+        Matcher matcher = MATH_DELIMITER.matcher(value);
+        if (!matcher.matches()) return value;
+        for (int i = 1; i <= matcher.groupCount(); i++) {
+            if (matcher.group(i) != null) return matcher.group(i).trim();
+        }
+        return value;
+    }
+
+    private String replaceUnicodeSuperscripts(String value) {
+        StringBuilder result = new StringBuilder(value.length());
+        for (int index = 0; index < value.length();) {
+            char current = value.charAt(index);
+            if (!isUnicodeSuperscript(current)) {
+                result.append(current);
+                index++;
+                continue;
+            }
+            StringBuilder exponent = new StringBuilder();
+            while (index < value.length() && isUnicodeSuperscript(value.charAt(index))) {
+                exponent.append(unicodeSuperscriptValue(value.charAt(index++)));
+            }
+            result.append('^').append(exponent);
+        }
+        return result.toString();
+    }
+
+    private boolean isUnicodeSuperscript(char value) {
+        return "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻".indexOf(value) >= 0;
+    }
+
+    private char unicodeSuperscriptValue(char value) {
+        return switch (value) {
+            case '⁰' -> '0'; case '¹' -> '1'; case '²' -> '2'; case '³' -> '3';
+            case '⁴' -> '4'; case '⁵' -> '5'; case '⁶' -> '6'; case '⁷' -> '7';
+            case '⁸' -> '8'; case '⁹' -> '9'; case '⁺' -> '+'; case '⁻' -> '-';
+            default -> throw new IllegalArgumentException("지원하지 않는 위첨자: " + value);
+        };
     }
 
     /**

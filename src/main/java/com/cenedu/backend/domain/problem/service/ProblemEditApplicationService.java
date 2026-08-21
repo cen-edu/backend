@@ -58,6 +58,30 @@ public class ProblemEditApplicationService {
         QuestionSnapshotV1 baseSnapshot = jsonCodec.read(version.getSnapshot(), QuestionSnapshotV1.class);
         ProblemSemanticModelV1 semanticModel = version.getSemanticModel() == null ? null
                 : jsonCodec.read(version.getSemanticModel(), ProblemSemanticModelV1.class);
+        // 확인 상태가 명시되면 자유 문장을 다시 LLM으로 해석하지 않고 저장된 명령만 실행한다.
+        if (request.confirmed() != null) {
+            if (!request.confirmed()) {
+                conversationService.cancel(teacherId, sessionId);
+                return new ProblemEditTurnResponse(EditConversationAction.CANCEL, List.of(), "수정을 취소했습니다.");
+            }
+            if (session.getPendingInstructions() == null) {
+                throw new BusinessException(ErrorCode.PROBLEM_EDIT_COMMAND_STALE);
+            }
+            PendingProblemEditCommand pending = jsonCodec.read(
+                    session.getPendingInstructions(), PendingProblemEditCommand.class);
+            ProblemEditExecutionPlan plan = conversationService.confirm(teacherId,
+                    new ConfirmedProblemEditCommand(pending.requestId(), UUID.randomUUID(),
+                            pending.sessionId(), pending.baseVersionId(), pending.instructions(),
+                            pending.semanticPatch(), pending.requestedSpecification(), pending.restoreReference(),
+                            pending.replacementSourcePolicy()));
+            ProblemModificationExecutionResult confirmedExecutionResult = null;
+            if (plan.action() != EditAction.RESTORE) {
+                Object execution = executionCoordinator.execute(teacherId, plan, baseSnapshot);
+                if (execution instanceof ProblemModificationExecutionResult typed) confirmedExecutionResult = typed;
+            }
+            return ProblemEditTurnResponse.from(new ProblemEditConversationResult(
+                    EditConversationAction.CONFIRM_EXECUTION, List.of(), "수정 요청을 실행했습니다."), confirmedExecutionResult);
+        }
         ProblemEditAgentPayload payload = new ProblemEditAgentPayload(2, UUID.randomUUID(), sessionId, baseVersionId,
                 session.getInteractionStatus(), request.selectedTarget(),
                 baseSnapshot, semanticModel, accumulated);

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import java.time.Duration;
 import java.util.Map;
@@ -87,6 +89,31 @@ class OpenAiLlmClientTest {
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.AI_CLIENT_CALL_FAILED)
                 .hasMessageContaining("429 rate limit");
+    }
+
+    @Test
+    @DisplayName("일시 오류는 실제 API 시도 2회까지만 허용한다")
+    void retriesTransientFailureOnce() {
+        when(chatModel.call(any(Prompt.class)))
+                .thenThrow(new OpenAIException("503 temporarily unavailable"))
+                .thenReturn(chatResponse("stop", "재시도 성공", 1, 1, 0));
+
+        assertThat(llmClient.complete(null, List.of(ChatMessage.user("질문"))).text())
+                .isEqualTo("재시도 성공");
+        verify(chatModel, times(2)).call(any(Prompt.class));
+    }
+
+    @Test
+    @DisplayName("문항 Scope 예산이 소진되면 API를 호출하지 않는다")
+    void stopsWhenBudgetIsExhausted() {
+        LlmCallBudgetManager manager = new LlmCallBudgetManager();
+        LlmCallBudgetManager.Scope scope = manager.open("op", "item", "session", "GENERATION", 0);
+        OpenAiLlmClient budgeted = new OpenAiLlmClient(chatModel, PROPERTIES, manager);
+        assertThatThrownBy(() -> budgeted.complete(null, List.of(ChatMessage.user("질문"))))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.AI_CLIENT_CALL_BUDGET_EXHAUSTED);
+        verify(chatModel, times(0)).call(any(Prompt.class));
+        scope.close();
     }
 
     private void stubResponse(ChatResponse response) {
