@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.ObjectProvider;
 import com.cenedu.backend.domain.problem.config.ProblemVisualAuthoringProperties;
 import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationPolicy;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator;
 
 @Component
 public final class ProblemSemanticGenerationPipeline {
@@ -24,6 +25,7 @@ public final class ProblemSemanticGenerationPipeline {
     private final ProblemSemanticMaterializer materializer;
     private final ObjectMapper mapper;
     private final VisualGenerationPolicy visualPolicy;
+    private final VisualSnapshotConsistencyValidator visualConsistencyValidator = new VisualSnapshotConsistencyValidator();
 
     public ProblemSemanticGenerationPipeline(LlmClient client, ProblemSemanticGenerationPromptFactory prompts, ProblemSemanticOutputParser parser, ProblemSemanticMaterializer materializer, ObjectProvider<ObjectMapper> mapper) {
         this(client, prompts, parser, materializer, mapper, null);
@@ -52,6 +54,7 @@ public final class ProblemSemanticGenerationPipeline {
                 var normalizedComputations = serverOwned.computations().stream().map(c -> new SemanticComputation(c.key(), c.operation(), c.operands(), c.literal(), c.unit(), evaluated.report().resolvedValues().get(c.key()))).toList();
                 ProblemSemanticModelV1 normalized = new ProblemSemanticModelV1(1, command.curriculum(), serverOwned.intent(), serverOwned.parameters(), normalizedComputations, serverOwned.constraints(), serverOwned.presentation(), serverOwned.diagrams(), serverOwned.assertions());
                 MaterializedProblem materialized = materializer.materialize(normalized);
+                visualConsistencyValidator.validate(normalized, materialized.snapshot(), materialized.assetPlans());
                 return new ProblemCandidateDraft(command.requestId(), materialized.snapshot(), materialized.assetPlans(), normalized, new CandidateProvenance(CandidateSourceType.AI_GENERATE, null, command.references().stream().map(x -> x.sourceQuestionId()).toList()));
             } catch (RuntimeException e) {
                 findings = violationMessages(e);
