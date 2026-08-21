@@ -5,8 +5,10 @@ import java.util.List;
 import com.cenedu.backend.ai.agent.ChatMessage;
 import com.cenedu.backend.domain.problem.authoring.repair.ProblemRepairCommand;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.stereotype.Component;
 
 /** 검증 Finding을 한 번의 묶음 필드 수정 요청으로 변환한다. */
+@Component
 public class ProblemRepairPromptFactory {
     private final ObjectMapper objectMapper = new ObjectMapper();
 

@@ -3,6 +3,7 @@ package com.cenedu.backend.domain.problem.service;
 import java.util.ArrayList;
 import com.cenedu.backend.domain.problem.authoring.generation.*;
 import com.cenedu.backend.ai.problem.adapter.semantic.SemanticAuthoringProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /** semantic generation 직전에 ORIGIN 참고 문항의 lazy extraction을 수행한다. */
@@ -15,6 +16,7 @@ public class ProblemSemanticReferenceEnricher {
         this(extractionService, new SemanticAuthoringProperties(true));
     }
 
+    @Autowired
     public ProblemSemanticReferenceEnricher(ProblemSemanticExtractionService extractionService,
                                             SemanticAuthoringProperties properties) {
         this.extractionService = extractionService;
