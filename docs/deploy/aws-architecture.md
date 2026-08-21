@@ -37,10 +37,15 @@
   OOM 으로 죽는다. 빌드는 로컬(또는 CI), EC2 는 `pull` 만 한다.
 - **프론트 컨테이너의 nginx 가 입구를 겸한다**(교안의 `reactedu` 와 같은 형태). 정적 파일을
   서빙하면서 `/api` 를 백엔드로 넘긴다. 프론트의 `VITE_API_BASE_URL` 기본값이 `/api`
-  라 브라우저가 보는 오리진이 하나로 합쳐지고, **CORS 설정이 아예 필요 없어진다**
-  (`CORS_ALLOWED_ORIGINS` 를 비워 둔다). 프론트 저장소에 `vercel.json` 이 있어 Vercel 배포도
-  가능하지만, 그 경우 오리진이 갈라져 CORS 허용 목록과 HTTPS↔HTTP 혼합 콘텐츠 문제를
+  라 브라우저가 보는 오리진이 하나로 합쳐진다. 프론트 저장소에 `vercel.json` 이 있어 Vercel
+  배포도 가능하지만, 그 경우 오리진이 갈라져 허용 목록과 HTTPS↔HTTP 혼합 콘텐츠 문제를
   따로 처리해야 한다.
+
+  **오리진이 하나여도 `CORS_ALLOWED_ORIGINS` 는 채워야 한다.** 브라우저는 같은 오리진이라도
+  POST/PUT/DELETE 에는 `Origin` 헤더를 붙이고, 스프링의 CORS 필터가 그 헤더를 허용 목록과
+  대조해 비어 있으면 403 `Invalid CORS request` 로 막는다. GET 은 `Origin` 이 없어 통과하므로
+  **화면과 헬스체크는 멀쩡한데 로그인·회원가입만 실패하는** 형태로 드러난다. 실제로 이 배포에서
+  한 번 겪었고, curl 로만 확인하면 재현되지 않는다(`Origin` 헤더가 없기 때문이다).
 
 - **HTTPS 는 CloudFront 로 붙인다.** 도메인 없이 `*.cloudfront.net` 기본 인증서로 즉시
   HTTPS 가 되고, 프론트가 `/api` 상대 경로를 쓰므로 이미지 재빌드가 필요 없다. 다만
@@ -516,6 +521,8 @@ docker exec cen-edu-postgres pg_dump -U cen cen_edu | gzip > ~/backup/demo_$(dat
   느리다 — 시연 중 첫 클릭에서 기다리는 그림이 나오지 않게 한다.
 - LLM 을 쓰는 화면(문항 생성, 서술형 채점)은 **미리 한 번 돌려 둔다.** OpenAI 키 만료나
   잔액 부족은 그 자리에서 알 수 있는 게 아니다.
+- **로그인을 한 번 해 본다.** POST 경로가 막히는 문제(CORS)는 화면 로딩만으로는 드러나지 않는다.
+  주소가 바뀌었다면 `.env` 의 `CORS_ALLOWED_ORIGINS` 에 새 주소가 들어 있는지 먼저 확인한다.
 - `docker stats --no-stream` 으로 메모리를 한 번 본다. backend 가 상한(512m)에 계속
   붙어 있으면 그날 시연에서 무거운 화면을 여는 순간 느려진다.
 
