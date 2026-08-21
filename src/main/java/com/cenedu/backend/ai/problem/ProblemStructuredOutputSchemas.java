@@ -109,6 +109,24 @@ public final class ProblemStructuredOutputSchemas {
             }}
             """;
 
+    /** 수정 계획에 포함된 대상만 모델 출력 필드로 허용한다. */
+    public static String modificationDeltaFor(java.util.Set<com.cenedu.backend.domain.problem.authoring.edit.EditTargetType> targets) {
+        java.util.Set<String> fields = new java.util.LinkedHashSet<>();
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.QUESTION_BODY)
+                || targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.CONTENT_BLOCK)) {
+            fields.add("question"); fields.add("contentBlocks");
+        }
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.CHOICE)) fields.add("choices");
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.STEP)) fields.add("steps");
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.ANSWER_UNIT)) fields.add("answerUnits");
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.EXPLANATION)) fields.add("explanation");
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.LEARNING_GUIDE)) fields.add("learningGuide");
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.RUBRIC_ITEM)) fields.add("rubricItems");
+        String props = fields.stream().map(field -> "\"" + field + "\":{\"type\":[\"object\",\"array\",\"string\",\"null\"]}")
+                .collect(java.util.stream.Collectors.joining(","));
+        return "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{" + props + "}}";
+    }
+
     /** 사용자 수정 대화 한 턴의 분류·지시 추출 계약이다. */
     public static final String EDIT_TURN = """
             {
