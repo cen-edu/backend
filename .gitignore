@@ -45,6 +45,8 @@ out/
 .env
 .env.*
 !.env.example
+# 배포용 예시 파일. 실제 값은 EC2 의 ~/app/.env 에만 둔다.
+!.env.prod.example
 
 # Claude Code
 CLAUDE.md
@@ -56,3 +58,8 @@ CLAUDE.local.md
 
 ### Git worktrees ###
 /.worktrees/
+
+### 발표 자료 ###
+# 저장소 루트에서 만든 발표용 산출물. 소스가 아니라 산출물이고 용량도 커서 추적하지 않는다.
+*.pptx
+*.pptx.inspect.ndjson
