@@ -32,10 +32,26 @@ public class ProblemVisualReferenceQueryService {
             return new VisualReferenceDescriptor(null, VisualReferenceKind.NONE, null, "", null);
         if (values.size() != 1) return unknown(values.get(0));
         var asset = values.get(0);
+        var semantic = semanticDiagram(question.getSemanticModel());
+        if (semantic != null) {
+            VisualReferenceKind semanticKind = VisualReferenceKind.valueOf(semantic.kind().name());
+            VisualReferenceKind assetKind = kindFromRenderSpec(asset.getRenderSpec());
+            if (assetKind != VisualReferenceKind.UNKNOWN_FIGURE && assetKind != semanticKind)
+                return unknown(asset);
+            return new VisualReferenceDescriptor(asset.getAssetKey(), semanticKind, asset.getRole(), asset.getAltText(), semantic);
+        }
         if (asset.getRole() == AssetRole.TABLE || question.getPresentation() == QuestionPresentation.WITH_TABLE)
             return new VisualReferenceDescriptor(asset.getAssetKey(), VisualReferenceKind.DATA_TABLE, asset.getRole(), asset.getAltText(), null);
         VisualReferenceKind kind = kindFromRenderSpec(asset.getRenderSpec());
         return new VisualReferenceDescriptor(asset.getAssetKey(), kind, asset.getRole(), asset.getAltText(), null);
+    }
+
+    private com.cenedu.backend.domain.problem.authoring.diagram.DiagramSpecV1 semanticDiagram(String json) {
+        if (json == null) return null;
+        try {
+            var diagrams = codec.readSemanticModel(json).diagrams();
+            return diagrams.size() == 1 ? diagrams.getFirst() : null;
+        } catch (RuntimeException ignored) { return null; }
     }
 
     private VisualReferenceKind kindFromRenderSpec(String renderSpec) {
