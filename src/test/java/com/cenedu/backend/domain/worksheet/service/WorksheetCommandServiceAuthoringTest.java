@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.cenedu.backend.domain.member.service.SchoolClassService;
+import com.cenedu.backend.domain.member.service.StudentListQueryService;
 import com.cenedu.backend.domain.problem.dto.response.FinalizedProblemReferenceResponse;
 import com.cenedu.backend.domain.problem.dto.response.ProblemDeploymentStatus;
 import com.cenedu.backend.domain.problem.service.ProblemAuthoringFinalizationService;
@@ -41,6 +42,7 @@ class WorksheetCommandServiceAuthoringTest {
     @Mock private ProblemQuestionDetailService problemQuestionDetailService;
     @Mock private ProblemAuthoringFinalizationService problemAuthoringFinalizationService;
     @Mock private SchoolClassService schoolClassService;
+    @Mock private StudentListQueryService studentListQueryService;
 
     private WorksheetCommandService service;
 
@@ -49,7 +51,7 @@ class WorksheetCommandServiceAuthoringTest {
         service = new WorksheetCommandService(worksheetRepository, worksheetGenSpecRepository,
                 worksheetItemRepository, worksheetAssignmentRepository,
                 worksheetAssignmentStudentRepository, problemQuestionDetailService,
-                problemAuthoringFinalizationService, schoolClassService);
+                problemAuthoringFinalizationService, schoolClassService, studentListQueryService);
     }
 
     @Test

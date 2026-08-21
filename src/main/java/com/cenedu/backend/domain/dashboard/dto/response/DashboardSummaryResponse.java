@@ -12,6 +12,8 @@ public record DashboardSummaryResponse(
     public record LearningSummary(
             int assignmentCount,
             int inProgressAssignmentCount,
+            int customAssignmentCount,
+            int customCompletedAssignmentCount,
             BigDecimal classAccuracyRate,
             int aggregatedStudentCount,
             int incompleteSubmissionCount,

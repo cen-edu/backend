@@ -59,6 +59,8 @@ public class DashboardQueryService {
                 new DashboardSummaryResponse.LearningSummary(
                         summary.assignmentCount(),
                         summary.inProgressAssignmentCount(),
+                        summary.customAssignmentCount(),
+                        summary.customCompletedAssignmentCount(),
                         summary.classAccuracyRate(),
                         summary.aggregatedStudentCount(),
                         summary.incompleteSubmissionCount(),

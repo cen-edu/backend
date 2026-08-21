@@ -158,6 +158,37 @@ class DashboardQueryRepositoryTest {
         assertThat(secondPage.getFirst().studentCount()).isEqualTo(3);
     }
 
+    @Test
+    @DisplayName("반 학생에게 나간 개별 배정도 목록에 포함한다")
+    void findsAssignments_includesStudentTargetedAssignment() {
+        long customWorksheetId = jdbcTemplate.queryForObject("""
+                        INSERT INTO worksheet(
+                            title, type, origin, owner_teacher_id, grade, semester, total_score
+                        ) VALUES (?, 'GENERAL_LEARNING', 'CUSTOM', ?, 1, '2', NULL)
+                        RETURNING id
+                        """, Long.class, "[맞춤] 개별 배정", teacherId);
+        long customAssignmentId = jdbcTemplate.queryForObject("""
+                        INSERT INTO worksheet_assignment(
+                            worksheet_id, student_id, assigned_at, due_at
+                        ) VALUES (?, ?, now(), now() + interval '7 day')
+                        RETURNING id
+                        """, Long.class, customWorksheetId, firstStudentId);
+        insertAssignmentStudent(customAssignmentId, firstStudentId, "SUBMITTED", 1, null);
+
+        List<DashboardAssignmentItemRow> assignments =
+                repository.findAssignments(classId, 2, 0, 10);
+
+        assertThat(repository.countAssignments(classId, 2)).isEqualTo(3);
+        assertThat(assignments)
+                .extracting(DashboardAssignmentItemRow::assignmentId)
+                .contains(customAssignmentId);
+        assertThat(assignments.stream()
+                .filter(row -> row.assignmentId() == customAssignmentId)
+                .findFirst()
+                .orElseThrow()
+                .studentCount()).isEqualTo(1);
+    }
+
     private DashboardStudentStatusRow findStatus(
             List<DashboardStudentStatusRow> rows,
             long studentId
