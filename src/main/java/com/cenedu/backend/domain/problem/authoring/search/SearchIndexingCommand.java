@@ -18,6 +18,12 @@ public record SearchIndexingCommand(
         this(idempotencyKey, questionId, authoringVersionId, curriculum, sourceRef, snapshot,
                 conceptKeys, assetStorageKeys, (short) 2, visualKind(snapshot));
     }
+    public SearchIndexingCommand(UUID idempotencyKey, Long questionId, Long authoringVersionId,
+            CurriculumScope curriculum, String sourceRef, QuestionSnapshotV1 snapshot,
+            Set<String> conceptKeys) {
+        this(idempotencyKey, questionId, authoringVersionId, curriculum, sourceRef, snapshot,
+                conceptKeys, Map.of());
+    }
     public SearchIndexingCommand {
         if (idempotencyKey == null || questionId == null || curriculum == null || snapshot == null) {
             throw new IllegalArgumentException("검색 인덱싱 명령의 필수 값이 없습니다.");
