@@ -4,6 +4,9 @@ import com.cenedu.backend.domain.problem.authoring.visual.*;
 import com.cenedu.backend.domain.problem.entity.enums.AssetRole;
 import com.cenedu.backend.domain.problem.entity.enums.QuestionPresentation;
 import com.cenedu.backend.domain.problem.repository.*;
+import com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemSemanticDocumentCodec;
+import com.cenedu.backend.domain.problem.authoring.diagram.DiagramKind;
+import tools.jackson.databind.ObjectMapper;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -13,9 +16,11 @@ import org.springframework.stereotype.Service;
 public class ProblemVisualReferenceQueryService {
     private final ProblemQuestionRepository questions;
     private final ProblemAssetRepository assets;
+    private final ProblemSemanticDocumentCodec codec;
 
-    public ProblemVisualReferenceQueryService(ProblemQuestionRepository questions, ProblemAssetRepository assets) {
-        this.questions = questions; this.assets = assets;
+    public ProblemVisualReferenceQueryService(ProblemQuestionRepository questions, ProblemAssetRepository assets,
+                                              ObjectMapper objectMapper) {
+        this.questions = questions; this.assets = assets; this.codec = new ProblemSemanticDocumentCodec(objectMapper);
     }
 
     /** 문제의 시각 유형을 충돌 시 UNKNOWN으로 보수적으로 판정한다. */
@@ -35,10 +40,10 @@ public class ProblemVisualReferenceQueryService {
 
     private VisualReferenceKind kindFromRenderSpec(String renderSpec) {
         if (renderSpec == null) return VisualReferenceKind.UNKNOWN_FIGURE;
-        for (VisualReferenceKind kind : VisualReferenceKind.values()) {
-            if (kind == VisualReferenceKind.NONE || kind == VisualReferenceKind.UNKNOWN_FIGURE) continue;
-            if (renderSpec.contains("\"kind\":\"" + kind.name() + "\"")) return kind;
-        }
+        try {
+            DiagramKind kind = codec.readRenderSpec(renderSpec).kind();
+            return VisualReferenceKind.valueOf(kind.name());
+        } catch (RuntimeException ignored) { }
         return VisualReferenceKind.UNKNOWN_FIGURE;
     }
 
