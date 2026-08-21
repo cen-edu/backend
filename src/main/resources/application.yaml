@@ -54,7 +54,9 @@ app:
         max-attempts: 3
         retry-delay: 30s
         worker-delay: 5s
-        backfill-delay: 60s
+        backfill-initial-delay: 10m
+        backfill-delay: 1h
+        backfill-batch-size: 50
   storage:
     s3:
       enabled: ${S3_ENABLED:false}
