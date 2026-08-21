@@ -14,17 +14,38 @@ import com.cenedu.backend.global.common.enums.QuestionType;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotNormalizedValidator;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.enums.UserRole;
 import org.springframework.beans.factory.ObjectProvider;
 import com.cenedu.backend.ai.problem.adapter.semantic.*;
 import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
 
 class SpringAiProblemGenerationAdapterTest {
     @Test
+    void preserveOriginWithoutSemanticReferenceFailsInsteadOfLegacyFallback() {
+        var semantic = mock(ProblemSemanticGenerationPipeline.class);
+        var legacy = mock(LegacyProblemGenerationPipeline.class);
+        var command = new ProblemGenerationCommand(UUID.randomUUID(), null, GenerationPurpose.PERSONALIZED_SIMILAR_SHORTAGE,
+                new GenerationSpecification(QuestionType.SHORT_INPUT, "mid", null, List.of(), false,
+                        new com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement(
+                                com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode.PRESERVE_ORIGIN,
+                                com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.COORDINATE_GRAPH)),
+                new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "대", "중", "소"),
+                List.of(new GenerationReference(GenerationReferenceRole.ORIGIN, 41L, null)), List.of());
+        assertThrows(BusinessException.class, () -> new SpringAiProblemGenerationAdapter(
+                new SemanticAuthoringProperties(true), semantic, legacy).generate(command));
+        verifyNoInteractions(semantic, legacy);
+    }
+    @Test
     void enabledFlagRoutesToSemanticPipeline() {
         var semantic = mock(ProblemSemanticGenerationPipeline.class);
         var legacy = mock(LegacyProblemGenerationPipeline.class);
         var command = new ProblemGenerationCommand(UUID.randomUUID(), null, GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
-                new GenerationSpecification(QuestionType.SHORT_INPUT, "mid", null, List.of()),
+                new GenerationSpecification(QuestionType.SHORT_INPUT, "mid", null, List.of(), false,
+                        new com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement(
+                                com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode.AUTO,
+                                com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.UNKNOWN_FIGURE)),
                 new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "대", "중", "소"), List.of(), List.of());
         var expected = mock(ProblemCandidateDraft.class);
         when(semantic.generate(command)).thenReturn(expected);
