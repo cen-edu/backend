@@ -14,22 +14,30 @@ class ProblemAuthoringModelComparisonLiveTest {
     String generatorFilter=System.getProperty("task7.generator", "");
     String verifierFilter=System.getProperty("task7.verifier", "");
     String pathFilter=System.getProperty("task7.path", "");
-    StringBuilder out=new StringBuilder();
-    if(!Files.exists(file) || Files.size(file)==0) out.append("generator\\tverifier\\tcaseId\\tgenMs\\tverifyMs\\tgenPrompt\\tgenCompletion\\tverifyPrompt\\tverifyCompletion\\n");
+    List<String> generators=selected(List.of("gpt-4o-mini","gpt-5.6-luna"), generatorFilter);
+    List<String> verifiers=selected(List.of("gpt-4o-mini","gpt-5.6-luna"), verifierFilter);
+    List<String> paths=selected(PATHS, pathFilter);
+    if(!Files.exists(file) || Files.size(file)==0) Files.writeString(file,
+            "generator\tverifier\tcaseId\tgenMs\tverifyMs\tgenPrompt\tgenCompletion\tverifyPrompt\tverifyCompletion\n",
+            StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     Map<String, ModelClient> clients=new HashMap<>();
-    for(String model:List.of("gpt-4o-mini","gpt-5.6-luna")) clients.put(model, open(model));
+    java.util.stream.Stream.concat(generators.stream(), verifiers.stream()).distinct()
+            .forEach(model -> clients.put(model, open(model)));
+    int completed=0;
     try {
-    for(String g:List.of("gpt-4o-mini","gpt-5.6-luna")) if(generatorFilter.isBlank() || generatorFilter.equals(g))
-      for(String v:List.of("gpt-4o-mini","gpt-5.6-luna")) if(verifierFilter.isBlank() || verifierFilter.equals(v))
-        for(String path:PATHS) if(pathFilter.isBlank() || pathFilter.equals(path)) for(int i=start;i<=end;i++){
+    for(String g:generators) for(String v:verifiers) for(String path:paths) for(int i=start;i<=end;i++){
       String caseId=path+"-"+i; String prompt="중학교 1학년 수학의 "+path+" 출제 경로 표본 "+i+"번 문제를 생성하라. 정수와 일차방정식을 활용하라.";
+      String row;
       try { Timed a=clients.get(g).call("문제를 생성한다.",prompt); Timed b=clients.get(v).call("문제의 수학 오류를 점검한다.",a.text());
-        out.append(g).append('\t').append(v).append('\t').append(caseId).append('\t').append(a.ms).append('\t').append(b.ms).append('\t').append(a.r.promptTokens()).append('\t').append(a.r.completionTokens()).append('\t').append(b.r.promptTokens()).append('\t').append(b.r.completionTokens()).append('\n');
-      } catch (RuntimeException failure) { String message=String.valueOf(failure.getMessage()).replaceAll("\\s+", " "); out.append(g).append('\t').append(v).append('\t').append(caseId).append("\tERROR\t").append(classify(message)).append('\t').append(message).append('\n'); }
+        row=g+'\t'+v+'\t'+caseId+'\t'+a.ms+'\t'+b.ms+'\t'+a.r.promptTokens()+'\t'+a.r.completionTokens()+'\t'+b.r.promptTokens()+'\t'+b.r.completionTokens()+'\n';
+      } catch (RuntimeException failure) { String message=String.valueOf(failure.getMessage()).replaceAll("\\s+", " "); row=g+'\t'+v+'\t'+caseId+"\tERROR\t"+classify(message)+'\t'+message+'\n'; }
+      Files.writeString(file,row,StandardOpenOption.CREATE,StandardOpenOption.APPEND);
+      completed++;
     }
     } finally { clients.values().forEach(ModelClient::close); }
-    Files.writeString(file,out.toString(), StandardOpenOption.CREATE, StandardOpenOption.APPEND); assertThat(out).contains("gpt-4o-mini\tgpt-5.6-luna");
+    assertThat(completed).isEqualTo(generators.size()*verifiers.size()*paths.size()*(end-start+1));
   }
+  private List<String> selected(List<String> allowed,String filter){ if(filter.isBlank()) return allowed; assertThat(allowed).contains(filter); return List.of(filter); }
   private ModelClient open(String model){ String effort=model.startsWith("gpt-5")?"medium":"minimal"; OpenAiProperties p=new OpenAiProperties(System.getenv("OPENAI_API_KEY"),model,effort,1200,Duration.ofSeconds(30),0,Map.of()); OpenAiClientConfig c=new OpenAiClientConfig(); OpenAIClient raw=c.openAIClient(p); return new ModelClient(raw,new OpenAiLlmClient(c.openAiChatModel(raw,c.openAiChatOptions(p)),p)); }
   private String classify(String message){ String m=message.toLowerCase(Locale.ROOT); if(m.contains("timeout")||m.contains("timed out")) return "TIMEOUT"; if(m.contains("429")||m.contains("rate limit")) return "RATE_LIMIT"; if(m.contains("connection")||m.contains("connect")) return "CONNECTION"; if(m.contains("400")||m.contains("bad request")) return "BAD_REQUEST"; return "UNKNOWN"; }
   private record Timed(LlmResponse r,long ms){String text(){return r.text();}}
