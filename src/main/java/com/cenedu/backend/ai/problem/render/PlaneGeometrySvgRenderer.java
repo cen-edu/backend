@@ -71,7 +71,11 @@ public final class PlaneGeometrySvgRenderer {
     }
 
     private static String text(Map<String, SemanticResolvedValue> v, String k, String d) {
-        return k != null && v.containsKey(k) ? v.get(k).canonicalValue() : d;
+        if (k == null || !v.containsKey(k) || v.get(k) == null) {
+            return d == null ? "" : d;
+        }
+        String value = v.get(k).canonicalValue();
+        return d == null || d.isBlank() ? value : d + " " + value;
     }
 
     private static int coord(int p, Map<String, SemanticResolvedValue> v, String k) {

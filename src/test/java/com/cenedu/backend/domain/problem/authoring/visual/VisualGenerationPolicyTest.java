@@ -20,4 +20,15 @@ class VisualGenerationPolicyTest {
         assertThatThrownBy(() -> new VisualGenerationPolicy(VisualPolicyFixtures.properties()).validate(requirement, model))
                 .isInstanceOf(VisualPolicyViolationException.class);
     }
+    @Test void autoAllowsOneConfiguredDiagram() {
+        var model = VisualPolicyFixtures.model(QuestionType.MULTIPLE_CHOICE, true, Set.of(DiagramKind.DATA_TABLE));
+        new VisualGenerationPolicy(VisualPolicyFixtures.properties()).validate(
+                new VisualGenerationRequirement(VisualGenerationMode.AUTO, VisualReferenceKind.DATA_TABLE), model);
+    }
+    @Test void stepFillVisualRequirementIsRejected() {
+        var model = VisualPolicyFixtures.model(QuestionType.STEP_FILL, true, Set.of(DiagramKind.DATA_TABLE));
+        assertThatThrownBy(() -> new VisualGenerationPolicy(VisualPolicyFixtures.properties()).validate(
+                new VisualGenerationRequirement(VisualGenerationMode.AUTO, VisualReferenceKind.DATA_TABLE), model))
+                .isInstanceOf(VisualPolicyViolationException.class);
+    }
 }

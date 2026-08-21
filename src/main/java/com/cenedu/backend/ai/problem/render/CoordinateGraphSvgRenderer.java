@@ -64,7 +64,8 @@ public final class CoordinateGraphSvgRenderer {
     }
 
     private double num(Map<String, SemanticResolvedValue> v, String k, double d) {
-        if (k == null || !v.containsKey(k) || v.get(k) == null) throw new IllegalArgumentException("coordinate graph resolved value가 없습니다.");
+        if (k == null) return d;
+        if (!v.containsKey(k) || v.get(k) == null) throw new IllegalArgumentException("coordinate graph resolved value가 없습니다.");
         try {
             return Double.parseDouble(v.get(k).canonicalValue());
         } catch (Exception e) {
