@@ -413,7 +413,7 @@ Repair 대상을 고르기 위한 LLM은 호출하지 않고 Java 규칙으로 F
 
 **Files:**
 - Modify: `src/main/java/com/cenedu/backend/domain/problem/service/ProblemSemanticReferenceEnricher.java`
-- Modify: `src/main/java/com/cenedu/backend/domain/problem/service/ProblemGenerationWorker.java`
+- Verify: `src/main/java/com/cenedu/backend/domain/problem/service/ProblemGenerationWorker.java` (Enricher 호출 경계를 유지하고 semantic 비활성 판단은 Enricher가 담당)
 - Test: `src/test/java/com/cenedu/backend/domain/problem/service/ProblemSemanticReferenceEnricherTest.java`
 - Test: `src/test/java/com/cenedu/backend/domain/problem/service/ProblemGenerationWorkerTest.java`
 
