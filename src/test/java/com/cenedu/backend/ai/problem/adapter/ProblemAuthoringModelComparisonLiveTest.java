@@ -15,10 +15,10 @@ class ProblemAuthoringModelComparisonLiveTest {
       String[] p=item.split(":",2);
       try { Timed a=call(g,"문제를 생성한다.",p[1]); Timed b=call(v,"문제의 수학 오류를 점검한다.",a.text());
         out.append(g).append('\t').append(v).append('\t').append(p[0]).append('\t').append(a.ms).append('\t').append(b.ms).append('\t').append(a.r.promptTokens()).append('\t').append(a.r.completionTokens()).append('\t').append(b.r.promptTokens()).append('\t').append(b.r.completionTokens()).append('\n');
-      } catch (RuntimeException failure) { out.append(g).append('\t').append(v).append('\t').append(p[0]).append("\tERROR\t").append(failure.getClass().getSimpleName()).append('\n'); }
+      } catch (RuntimeException failure) { out.append(g).append('\t').append(v).append('\t').append(p[0]).append("\tERROR\t").append(failure.getClass().getSimpleName()).append('\t').append(String.valueOf(failure.getMessage()).replaceAll("\\s+", " ")).append('\n'); }
     }
     Files.writeString(file,out.toString()); assertThat(out).contains("gpt-4o-mini\tgpt-5.6-luna");
   }
-  private Timed call(String model,String system,String user){ OpenAiProperties p=new OpenAiProperties(System.getenv("OPENAI_API_KEY"),model,"minimal",1200,Duration.ofSeconds(60),0,Map.of()); OpenAiClientConfig c=new OpenAiClientConfig(); OpenAIClient raw=c.openAIClient(p); try { OpenAiChatModel m=c.openAiChatModel(raw,c.openAiChatOptions(p)); long s=System.nanoTime(); LlmResponse r=new OpenAiLlmClient(m,p).complete(system,List.of(ChatMessage.user(user))); return new Timed(r,(System.nanoTime()-s)/1_000_000); } finally { raw.close(); } }
+  private Timed call(String model,String system,String user){ String effort=model.startsWith("gpt-5")?"medium":"minimal"; OpenAiProperties p=new OpenAiProperties(System.getenv("OPENAI_API_KEY"),model,effort,1200,Duration.ofSeconds(60),0,Map.of()); OpenAiClientConfig c=new OpenAiClientConfig(); OpenAIClient raw=c.openAIClient(p); try { OpenAiChatModel m=c.openAiChatModel(raw,c.openAiChatOptions(p)); long s=System.nanoTime(); LlmResponse r=new OpenAiLlmClient(m,p).complete(system,List.of(ChatMessage.user(user))); return new Timed(r,(System.nanoTime()-s)/1_000_000); } finally { raw.close(); } }
   private record Timed(LlmResponse r,long ms){String text(){return r.text();}}
 }

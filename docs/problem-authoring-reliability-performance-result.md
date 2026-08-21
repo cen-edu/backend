@@ -22,9 +22,18 @@ Task7 파일럿 비교 하니스를 추가했다. `OPENAI_API_KEY`가 있는 환
 
 실행 명령은 `bash gradlew test --tests '*ProblemAuthoringModelComparisonLiveTest'`이며, 결과 파일은
 `build/measurements/task7-model-comparison-pilot.tsv`이다. `gpt-4o-mini → gpt-4o-mini` 조합의
-4건은 모두 응답과 토큰·latency가 기록됐다. `gpt-5.6-luna`가 포함된 세 조합은 현재 공급자 호출에서
-`BusinessException(AI_CLIENT_CALL_FAILED)`가 발생해 정상 표본으로 집계하지 않았다. 따라서 이 파일럿은
-모델 우열이나 최종 설정을 결정할 수 없으며, 해당 모델의 실제 배포 식별자·접근 권한을 확인한 뒤 재실행해야 한다.
+처음 실행에서는 `gpt-5.6-luna`에 `reasoning-effort=minimal`을 전달해 `BadRequestException`이 발생했다.
+실제 `.env` 운영 설정(`OPENAI_REASONING_EFFORT=medium`)과 실험 설정이 달랐던 것이 원인이었다.
+하니스를 모델별 운영 설정과 동일하게 수정한 뒤 네 조합 16건 모두 정상 응답과 토큰·latency를 기록했다.
+
+파일럿 평균 latency는 다음과 같다.
+
+| 생성 → 검증 | 생성 평균 | 검증 평균 |
+|---|---:|---:|
+| 4o-mini → 4o-mini | 1,871ms | 2,792ms |
+| 4o-mini → 5.6-luna | 1,597ms | 2,173ms |
+| 5.6-luna → 4o-mini | 1,845ms | 2,078ms |
+| 5.6-luna → 5.6-luna | 1,809ms | 1,726ms |
 
 이번 실행은 조합별 4건 파일럿으로, 계획서의 경로별 20문항·수정 20건 본 측정 및 전후 통과율 비교를
 완료한 것으로 간주하지 않는다. 최종 빌드(`bash gradlew build`)는 실행하지 않았다.
