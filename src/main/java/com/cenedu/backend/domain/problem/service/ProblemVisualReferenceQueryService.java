@@ -29,7 +29,17 @@ public class ProblemVisualReferenceQueryService {
         var asset = values.get(0);
         if (asset.getRole() == AssetRole.TABLE || question.getPresentation() == QuestionPresentation.WITH_TABLE)
             return new VisualReferenceDescriptor(asset.getAssetKey(), VisualReferenceKind.DATA_TABLE, asset.getRole(), asset.getAltText(), null);
-        return unknown(asset);
+        VisualReferenceKind kind = kindFromRenderSpec(asset.getRenderSpec());
+        return new VisualReferenceDescriptor(asset.getAssetKey(), kind, asset.getRole(), asset.getAltText(), null);
+    }
+
+    private VisualReferenceKind kindFromRenderSpec(String renderSpec) {
+        if (renderSpec == null) return VisualReferenceKind.UNKNOWN_FIGURE;
+        for (VisualReferenceKind kind : VisualReferenceKind.values()) {
+            if (kind == VisualReferenceKind.NONE || kind == VisualReferenceKind.UNKNOWN_FIGURE) continue;
+            if (renderSpec.contains("\"kind\":\"" + kind.name() + "\"")) return kind;
+        }
+        return VisualReferenceKind.UNKNOWN_FIGURE;
     }
 
     private VisualReferenceDescriptor unknown(com.cenedu.backend.domain.problem.entity.ProblemAsset asset) {
