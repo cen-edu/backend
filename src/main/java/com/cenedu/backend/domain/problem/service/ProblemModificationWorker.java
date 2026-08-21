@@ -54,6 +54,7 @@ public class ProblemModificationWorker {
                 : executionBudgetPort.open(command.requestId().toString(), Long.toString(plan.baseVersionId()),
                         Long.toString(plan.sessionId()), "MODIFICATION");
         CandidateProcessingResult lastResult = null;
+        RuntimeException lastFailure = null;
         try {
         for (int attempt = 0; attempt < 2; attempt++) {
             if (budget != null) budget.stage(ProblemAiExecutionBudgetPort.Stage.MODIFICATION, attempt + 1);
@@ -62,7 +63,8 @@ public class ProblemModificationWorker {
             try {
                 candidate = port.modify(attemptCommand);
             } catch (RuntimeException exception) {
-                if (attempt < 2) continue;
+                lastFailure = exception;
+                if (attempt < 1) continue;
                 stateService.failOperation(teacherId, plan.sessionId(), "MODIFICATION_FAILED");
                 throw exception;
             }
@@ -75,6 +77,10 @@ public class ProblemModificationWorker {
             }
             stateService.prepareModificationRetry(
                     teacherId, plan.sessionId(), lastResult.status().name());
+        }
+        if (lastFailure != null) {
+            stateService.failOperation(teacherId, plan.sessionId(), "MODIFICATION_FAILED");
+            throw lastFailure;
         }
         return lastResult;
         } finally {
