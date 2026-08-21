@@ -62,8 +62,8 @@ public class ProblemSearchIndexJdbcRepository {
 
     /** 현재 READY 문서의 해시를 반환한다. */
     public Optional<ReadySearchIndexMetadata> findReadyMetadata(long questionId) {
-        List<ReadySearchIndexMetadata> result = jdbc.query("SELECT document_hash FROM problem_search_index WHERE question_id=:id AND index_status='READY'",
-                new MapSqlParameterSource("id", questionId), (rs, row) -> new ReadySearchIndexMetadata(rs.getString(1)));
+        List<ReadySearchIndexMetadata> result = jdbc.query("SELECT document_hash, index_schema_version FROM problem_search_index WHERE question_id=:id AND index_status='READY' ORDER BY index_schema_version DESC",
+                new MapSqlParameterSource("id", questionId), (rs, row) -> new ReadySearchIndexMetadata(rs.getString(1), rs.getShort(2)));
         return result.stream().findFirst();
     }
 
@@ -113,5 +113,5 @@ public class ProblemSearchIndexJdbcRepository {
     private String write(Object value) { try { return objectMapper.writeValueAsString(value); } catch (Exception e) { throw new IllegalStateException(e); } }
 
     public record ClaimedSearchIndexTask(long taskId, long questionId, SearchIndexingCommand command, int attemptCount) {}
-    public record ReadySearchIndexMetadata(String documentHash) {}
+    public record ReadySearchIndexMetadata(String documentHash, short indexSchemaVersion) {}
 }

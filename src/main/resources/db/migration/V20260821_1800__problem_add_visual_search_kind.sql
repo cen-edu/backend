@@ -5,6 +5,12 @@ ALTER TABLE problem_search_index
 ALTER TABLE problem_search_index_task
     ADD COLUMN index_schema_version SMALLINT NOT NULL DEFAULT 1;
 
+UPDATE problem_search_index_task
+SET command = jsonb_set(
+        jsonb_set(command, '{indexSchemaVersion}', '1'::jsonb, true),
+        '{visualKind}', '"NONE"'::jsonb, true)
+WHERE NOT (command ? 'indexSchemaVersion') OR NOT (command ? 'visualKind');
+
 ALTER TABLE problem_search_index_task
     DROP CONSTRAINT IF EXISTS problem_search_index_task_question_id_key;
 

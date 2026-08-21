@@ -56,6 +56,10 @@ public class ProblemSearchIndexWorker {
             if (eligibility == SearchCorpusEligibility.REJECTED) { repository.markFailed(task.taskId(), task.attemptCount(), "CORPUS_REJECTED"); return; }
             ProblemSearchDocument document = documentFactory.create(task.command());
             var ready = repository.findReadyMetadata(task.questionId());
+            if (ready.isPresent() && ready.get().indexSchemaVersion() > task.command().indexSchemaVersion()) {
+                repository.markSkipped(task.taskId());
+                return;
+            }
             if (ready.isPresent() && ready.get().documentHash().equals(document.documentHash())) {
                 repository.markSkipped(task.taskId()); return;
             }
