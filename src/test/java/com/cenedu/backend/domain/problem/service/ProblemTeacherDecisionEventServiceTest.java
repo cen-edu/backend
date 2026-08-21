@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 class ProblemTeacherDecisionEventServiceTest {
     @Test
@@ -29,5 +31,15 @@ class ProblemTeacherDecisionEventServiceTest {
         assertThat(event.getChangeNaturesJson()).isEqualTo("[\"SEMANTIC\"]");
         assertThat(event.getTargetTypesJson()).isEqualTo("[\"CHOICE\"]");
         assertThat(event.getChangeNaturesJson() + event.getTargetTypesJson()).doesNotContain("TEACHER_PROMPT_SENTINEL");
+    }
+
+    @Test
+    void jsonb_event_fields_use_hibernate_json_jdbc_type() throws Exception {
+        var eventType = ProblemTeacherDecisionEvent.class;
+        var changeNatures = eventType.getDeclaredField("changeNaturesJson");
+        var targetTypes = eventType.getDeclaredField("targetTypesJson");
+
+        assertThat(changeNatures.getAnnotation(JdbcTypeCode.class).value()).isEqualTo(SqlTypes.JSON);
+        assertThat(targetTypes.getAnnotation(JdbcTypeCode.class).value()).isEqualTo(SqlTypes.JSON);
     }
 }

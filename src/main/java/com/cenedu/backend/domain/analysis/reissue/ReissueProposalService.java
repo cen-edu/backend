@@ -289,9 +289,11 @@ public class ReissueProposalService {
                 .map(QuestionOwnershipRow::questionId)
                 .toList();
 
+        int proposedCount = references.isEmpty() ? 0 : DEFAULT_SIMILAR_COUNT;
+        int maxCount = references.isEmpty() ? 0 : MAX_PROPOSED_COUNT;
         return new ReissueProposalResponse.SimilarProposal(
-                DEFAULT_SIMILAR_COUNT,
-                MAX_PROPOSED_COUNT,
+                proposedCount,
+                maxCount,
                 DifficultyLadder.code(difficulty),
                 references,
                 excluded);

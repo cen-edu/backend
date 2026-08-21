@@ -54,6 +54,9 @@ public class ProblemGenerationPromptFactory {
             LinkedHashMap<String, Object> request = new LinkedHashMap<>();
             request.put("purpose", command.purpose().name()); request.put("specification", command.specification());
             request.put("curriculum", command.curriculum());
+            if (command.personalizedEvidence() != null) {
+                request.put("personalizedEvidence", command.personalizedEvidence());
+            }
             request.put("instruction", "참고 문제의 구조와 전략만 참고하고 수치·문장·정답을 복사하지 마라.");
             return new ObjectMapper().writeValueAsString(request);
         } catch (Exception exception) { throw new IllegalStateException("현재 생성 요청 JSON을 만들 수 없습니다.", exception); }

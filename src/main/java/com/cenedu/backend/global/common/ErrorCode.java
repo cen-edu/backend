@@ -128,6 +128,13 @@ public enum ErrorCode {
     PROBLEM_SEMANTIC_MODEL_UNSUPPORTED(HttpStatus.CONFLICT, "현재 문항의 의미 모델을 사용할 수 없습니다."),
     PROBLEM_SEMANTIC_MODEL_INVALID(HttpStatus.UNPROCESSABLE_ENTITY, "문항 의미 모델이 올바르지 않습니다."),
     PROBLEM_DIAGRAM_RENDER_FAILED(HttpStatus.UNPROCESSABLE_ENTITY, "문항 도형을 렌더링하지 못했습니다."),
+    CUSTOM_PROBLEM_EMPTY_SELECTION(HttpStatus.BAD_REQUEST, "생성할 맞춤 문항을 하나 이상 선택해야 합니다."),
+    CUSTOM_PROBLEM_TOTAL_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "맞춤 문항은 한 번에 최대 20개까지 생성할 수 있습니다."),
+    CUSTOM_PROBLEM_SUB_UNIT_DUPLICATED(HttpStatus.BAD_REQUEST, "같은 소단원을 여러 번 선택할 수 없습니다."),
+    CUSTOM_PROBLEM_SUB_UNIT_NOT_PROPOSED(HttpStatus.BAD_REQUEST, "취약점 분석 제안에 없는 소단원입니다."),
+    CUSTOM_PROBLEM_COUNT_EXCEEDS_PROPOSAL(HttpStatus.BAD_REQUEST, "요청한 문항 수가 취약점 분석 제안의 상한을 초과했습니다."),
+    CUSTOM_PROBLEM_SIMILAR_REFERENCE_MISSING(HttpStatus.BAD_REQUEST, "유사 문항을 만들 수 있는 오답 기준 문항이 없습니다."),
+    CUSTOM_PROBLEM_ADVANCED_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "응용 문항을 생성할 수 없는 소단원입니다."),
     // ===== analysis (모수환) =====
     ASSESSMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "평가를 찾을 수 없습니다."),
     STUDENT_ATTEMPT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 풀이를 찾을 수 없습니다."),

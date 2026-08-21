@@ -73,9 +73,10 @@ public class ContentIntegrityChecker {
             switch (defect.type()) {
                 case OriginalDefect.TYPE_EXPLANATION -> findings.add(explanationDefect(defect));
                 case OriginalDefect.TYPE_LEAKAGE -> findings.add(leakageDefect(defect));
-                // 구조 불변식은 코드가 판정한다. 모델이 STRUCTURE 로 분류한 것도 버리지 않고
-                // 같은 접두어로 낸다 — 판정을 임의로 좁히면 무엇을 봤는지 알 수 없게 된다.
-                case OriginalDefect.TYPE_STRUCTURE -> findings.add(structureDefect(defect));
+                // 구조 불변식은 후보 등록 전 Java Validator가 단일 기준으로 판정한다.
+                // 같은 후보를 모델의 비결정적 STRUCTURE 지적으로 다시 탈락시키지 않는다.
+                case OriginalDefect.TYPE_STRUCTURE -> {
+                }
                 case OriginalDefect.TYPE_CURRICULUM -> findings.add(curriculumDefect(defect));
                 case OriginalDefect.TYPE_RUBRIC -> {
                     // 루브릭은 아래에서 한 건으로 접는다.
@@ -122,14 +123,6 @@ public class ContentIntegrityChecker {
                 message,
                 EvidencePrefix.of(EvidencePrefix.LEAKAGE, defect.describe()),
                 severity);
-    }
-
-    private VerificationFinding structureDefect(OriginalDefect defect) {
-        return Findings.fail(
-                VerificationCheckType.ANSWER_CONSISTENCY,
-                VerificationIssueCode.ANSWER_INCONSISTENT,
-                "원본 검사가 구조 결함을 지적했습니다.",
-                EvidencePrefix.of(EvidencePrefix.STRUCTURE, defect.describe()));
     }
 
     /** 메타데이터 ID가 아니라 실제 발문에서 확인된 교육과정 범위 이탈이다. */

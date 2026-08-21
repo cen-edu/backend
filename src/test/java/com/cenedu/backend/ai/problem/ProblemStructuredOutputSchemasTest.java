@@ -6,6 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 class ProblemStructuredOutputSchemasTest {
+    @Test void editTurnRequiresSemanticPatchFieldForStrictStructuredOutputs() throws Exception {
+        JsonNode root = new ObjectMapper().readTree(ProblemStructuredOutputSchemas.EDIT_TURN);
+        JsonNode result = root.path("properties").path("problemEditResult");
+
+        assertThat(result.path("required").toString()).contains("semanticPatch");
+    }
+
     @Test void semanticSchemaIsStrictAtEveryObjectNode() throws Exception {
         JsonNode root = new ObjectMapper().readTree(ProblemStructuredOutputSchemas.SEMANTIC_MODEL);
         assertThat(root.path("additionalProperties").asBoolean()).isFalse();

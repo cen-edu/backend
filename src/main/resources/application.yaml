@@ -86,7 +86,7 @@ app:
         # 둘 다 틀려도 대조가 통과해 검증기가 통과 도장 기계가 된다.
         # minimal 을 쓰지 않는 이유: 검증기는 문항을 실제로 풀어야 한다.
         verification:
-          model: ${OPENAI_VERIFICATION_MODEL:gpt-5}
+          model: ${OPENAI_VERIFICATION_MODEL:gpt-5.6-luna}
           reasoning-effort: ${OPENAI_VERIFICATION_REASONING_EFFORT:medium}
           max-completion-tokens: ${OPENAI_VERIFICATION_MAX_COMPLETION_TOKENS:6000}
         # 분석 문장은 문항마다 문장 세 개를 한 번에 받아 출력이 길다. 실측으로 문항당

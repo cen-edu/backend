@@ -48,8 +48,10 @@ public class ProblemEditApplicationService {
         if (baseVersionId == null) throw new BusinessException(ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_VERIFIED);
         ProblemAuthoringVersion version = versionRepository.findByIdAndSessionId(baseVersionId, sessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
+        boolean conversationStartedByThisTurn = false;
         if (session.getInteractionStatus() == AuthoringInteractionStatus.IDLE) {
             conversationService.start(teacherId, sessionId);
+            conversationStartedByThisTurn = true;
             session = sessionRepository.findByIdAndOwnerTeacherId(sessionId, teacherId).orElseThrow();
         }
         List<ProblemEditInstruction> accumulated = accumulated(session);
@@ -59,8 +61,20 @@ public class ProblemEditApplicationService {
         ProblemEditAgentPayload payload = new ProblemEditAgentPayload(2, UUID.randomUUID(), sessionId, baseVersionId,
                 session.getInteractionStatus(), request.selectedTarget(),
                 baseSnapshot, semanticModel, accumulated);
-        ProblemEditConversationResult result = gateway.handle(teacherId, request.userInput(),
-                request.history() == null ? List.of() : request.history(), payload);
+        ProblemEditConversationResult result;
+        try {
+            result = gateway.handle(teacherId, request.userInput(),
+                    request.history() == null ? List.of() : request.history(), payload);
+        } catch (RuntimeException failure) {
+            if (conversationStartedByThisTurn) {
+                try {
+                    conversationService.cancel(teacherId, sessionId);
+                } catch (RuntimeException cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+            throw failure;
+        }
         if (result.action() == EditConversationAction.REQUEST_CONFIRMATION) {
             List<ProblemEditInstruction> merged = new ArrayList<>(accumulated);
             if (result.instructionDeltas() != null) merged.addAll(result.instructionDeltas());

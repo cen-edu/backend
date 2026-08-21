@@ -366,6 +366,9 @@ class ProblemVerificationAdapterTest {
 
         ProblemVerificationReport report = adapter(failing, true).verify(contentRequest(snapshot));
 
+        assertThat(failing.userPrompts)
+                .as("Solver 공급자 오류 뒤에는 같은 공급자를 다시 호출하지 않는다")
+                .hasSize(1);
         assertThat(statusOf(report, VerificationCheckType.CORRECTNESS))
                 .isEqualTo(VerificationFindingStatus.ERROR);
         assertThat(statusOf(report, VerificationCheckType.ANSWER_CONSISTENCY))
@@ -375,6 +378,22 @@ class ProblemVerificationAdapterTest {
                 .as("CheckType 10종이 모두 덮여야 한다")
                 .extracting(VerificationFinding::checkType)
                 .containsAll(List.of(VerificationCheckType.values()));
+    }
+
+    @Test
+    @DisplayName("Solver 응답을 파싱하지 못하면 후속 원본 검사를 호출하지 않는다")
+    void malformedSolverResponseStopsFurtherLlmChecks() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        FakeLlmClient malformed = new FakeLlmClient().respondWith(
+                "JSON이 아닌 응답", VerificationFixtures.CONTENT_CHECK_CLEAN);
+
+        ProblemVerificationReport report =
+                adapter(malformed, true).verify(contentRequest(snapshot));
+
+        assertThat(malformed.userPrompts).hasSize(1);
+        assertThat(statusOf(report, VerificationCheckType.CORRECTNESS))
+                .isEqualTo(VerificationFindingStatus.ERROR);
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.ERROR);
     }
 
     @Test
@@ -682,6 +701,23 @@ class ProblemVerificationAdapterTest {
         assertThat(statusOf(report, VerificationCheckType.RUBRIC_QUALITY))
                 .isEqualTo(VerificationFindingStatus.ERROR);
         assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.ERROR);
+    }
+
+    @Test
+    @DisplayName("코드 구조 검사를 통과한 후보는 LLM의 STRUCTURE 지적으로 탈락시키지 않는다")
+    void ignoresLlmStructureDefectAfterDeterministicValidation() {
+        QuestionSnapshotV1 snapshot = VerificationFixtures.shortInputSnapshot();
+        fake.respondWith(
+                VerificationFixtures.solverResponse("MAIN", VerificationFixtures.SHORT_INPUT_ANSWER),
+                VerificationFixtures.contentCheckResponse(
+                        "STRUCTURE", "", "answerUnits", "구조가 잘못되었습니다."));
+
+        ProblemVerificationReport report = adapter.verify(contentRequest(snapshot));
+
+        assertThat(consistencyFindings(report))
+                .noneMatch(finding -> finding.evidence() != null
+                        && finding.evidence().startsWith("STRUCTURE:"));
+        assertThat(report.overallStatus()).isEqualTo(VerificationOverallStatus.PASSED);
     }
 
     @Test

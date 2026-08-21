@@ -20,10 +20,12 @@ public class ModificationPromptStrategy {
         var plan = command.plan();
         return """
                 기존 문제 Snapshot을 교사의 확정 지시에 따라 수정하라.
-                반드시 JSON 객체만 반환하고 schemaVersion 1을 유지하라.
+                반드시 JSON 객체만 반환하고 제공된 출력 스키마의 모든 필수 필드를 포함하라.
                 protectedTargets에 포함된 영역은 원문과 의미를 바꾸지 마라.
                 requestedTargets와 instructions에 해당하는 변경만 적용하라.
-                정답, requestId, DB ID, storageKey는 새로 생성하지 말고 문제 내용 JSON에 포함하지 마라.
+                schemaVersion, requestId, DB ID, storageKey는 출력하지 마라.
+                answerUnits가 requestedTargets 또는 dependentTargets일 때만 정답을 변경하라.
+                그 외 answerUnits는 빈 배열로 반환해도 서버가 기준 Snapshot의 값을 보존한다.
                 action=%s, requestedTargets=%s, dependentTargets=%s, protectedTargets=%s, instructions=%s
                 editableContext=%s
                 """.formatted(plan.action(), plan.requestedTargets(), plan.dependentTargets(),

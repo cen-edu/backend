@@ -2,7 +2,7 @@ package com.cenedu.backend.domain.worksheet.entity;
 
 import java.math.BigDecimal;
 
-import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.domain.worksheet.entity.enums.SupportMode;
 
 import jakarta.persistence.Column;

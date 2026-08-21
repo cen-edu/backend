@@ -5,11 +5,21 @@ public record ProblemGenerationSlotResponse(
         int slotIndex,
         Long itemId,
         Long sessionId,
+        String customStage,
+        Long sourceQuestionId,
+        Long originQuestionId,
         AuthoringSlotDisplayStatus status,
         AuthoringProblemSnapshotResponse preview,
         String errorCode,
         boolean retryable
 ) {
+
+    public ProblemGenerationSlotResponse(int slotIndex, Long itemId, Long sessionId,
+                                         AuthoringSlotDisplayStatus status,
+                                         AuthoringProblemSnapshotResponse preview,
+                                         String errorCode, boolean retryable) {
+        this(slotIndex, itemId, sessionId, null, null, null, status, preview, errorCode, retryable);
+    }
 
     public ProblemGenerationSlotResponse {
         if (slotIndex < 1) {

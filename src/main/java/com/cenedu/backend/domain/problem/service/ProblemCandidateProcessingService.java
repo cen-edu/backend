@@ -53,8 +53,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** 생성·수정 후보를 S1 검증, Version 보관, 의미·자산 검증, current 승격 순서로 조율한다. */
 @Service
 public class ProblemCandidateProcessingService {
-    private static final int MAX_VERIFICATION_ERROR_RETRIES = 2;
-
     private final ProblemAuthoringSessionRepository sessionRepository;
     private final ProblemAuthoringVersionRepository versionRepository;
     private final SnapshotStructuralValidator structuralValidator;
@@ -122,12 +120,6 @@ public class ProblemCandidateProcessingService {
                 registered, manifest, verificationRequestId));
 
         ProblemVerificationBundle bundle = verify(request, manifest, verificationRequestId);
-        int errorRetries = 0;
-        while (bundle.overallStatus() == VerificationOverallStatus.ERROR
-                && errorRetries < MAX_VERIFICATION_ERROR_RETRIES) {
-            errorRetries++;
-            bundle = verify(request, manifest, verificationRequestId);
-        }
         ProblemVerificationBundle completedBundle = bundle;
         transactionTemplate.executeWithoutResult(status -> completeVerification(
                 request, registered, completedBundle));

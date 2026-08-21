@@ -13,7 +13,7 @@ import com.cenedu.backend.domain.analysis.entity.enums.CustomResolutionStatus;
 import com.cenedu.backend.domain.analysis.entity.enums.DifficultyBand;
 import com.cenedu.backend.domain.analysis.repository.CustomLearningQueryRepository;
 import com.cenedu.backend.domain.analysis.repository.row.CustomLearningSessionRow;
-import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.domain.worksheet.service.CustomSessionNumbering;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;

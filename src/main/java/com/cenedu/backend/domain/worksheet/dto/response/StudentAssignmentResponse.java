@@ -3,7 +3,7 @@ package com.cenedu.backend.domain.worksheet.dto.response;
 import java.time.OffsetDateTime;
 import java.util.List;
 
-import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.domain.worksheet.repository.row.StudentAssignmentRow;
 
 import io.swagger.v3.oas.annotations.media.Schema;

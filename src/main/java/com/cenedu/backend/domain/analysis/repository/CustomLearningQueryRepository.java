@@ -5,7 +5,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 import com.cenedu.backend.domain.analysis.repository.row.CustomLearningSessionRow;
-import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;

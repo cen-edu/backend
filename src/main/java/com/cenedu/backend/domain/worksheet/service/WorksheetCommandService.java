@@ -27,7 +27,7 @@ import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignment;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetAssignmentStudent;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetGenSpec;
 import com.cenedu.backend.domain.worksheet.entity.WorksheetItem;
-import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.global.common.enums.CustomStage;
 import com.cenedu.backend.domain.worksheet.entity.enums.SupportMode;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetOrigin;
 import com.cenedu.backend.domain.worksheet.entity.enums.WorksheetType;

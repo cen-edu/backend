@@ -1,3 +1,20 @@
 package com.cenedu.backend.domain.problem.authoring.semantic.validation;
-import com.cenedu.backend.domain.problem.authoring.semantic.model.*; import com.cenedu.backend.domain.problem.authoring.semantic.evaluation.SemanticResolvedValue; import java.util.*;
-public final class SemanticConstraintValidator { public void appendDefinitionViolations(ProblemSemanticModelV1 m,List<String> v){for(int i=0;i<m.constraints().size();i++){var c=m.constraints().get(i);int n=c.operands().size();if((c.type()==SemanticConstraintType.DISTINCT||c.type()==SemanticConstraintType.SUM_EQUALS||c.type()==SemanticConstraintType.TRIANGLE_INEQUALITY)&&n<2)v.add("constraints["+i+"].operands: 피연산자가 부족합니다.");}} public void validateResolved(List<SemanticConstraint> c,Map<String,SemanticResolvedValue> values){} }
+
+import com.cenedu.backend.domain.problem.authoring.semantic.model.*;
+import com.cenedu.backend.domain.problem.authoring.semantic.evaluation.SemanticResolvedValue;
+
+import java.util.*;
+
+public final class SemanticConstraintValidator {
+    public void appendDefinitionViolations(ProblemSemanticModelV1 m, List<String> v) {
+        for (int i = 0; i < m.constraints().size(); i++) {
+            var c = m.constraints().get(i);
+            int n = c.operands().size();
+            if ((c.type() == SemanticConstraintType.DISTINCT || c.type() == SemanticConstraintType.SUM_EQUALS || c.type() == SemanticConstraintType.TRIANGLE_INEQUALITY) && n < 2)
+                v.add("constraints[" + i + "].operands: 피연산자가 부족합니다.");
+        }
+    }
+
+    public void validateResolved(List<SemanticConstraint> c, Map<String, SemanticResolvedValue> values) {
+    }
+}

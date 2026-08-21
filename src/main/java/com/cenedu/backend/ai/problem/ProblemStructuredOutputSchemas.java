@@ -136,7 +136,7 @@ public final class ProblemStructuredOutputSchemas {
                     },
                     "assistantMessage":{"type":"string"}
                   },
-                  "required":["action","instructionDeltas","assistantMessage"]
+                  "required":["action","instructionDeltas","semanticPatch","assistantMessage"]
                 }
               },
               "required":["schemaVersion","problemEditResult"]

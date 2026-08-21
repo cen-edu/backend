@@ -6,7 +6,7 @@ import java.util.List;
 
 import com.cenedu.backend.domain.analysis.entity.enums.CustomResolutionStatus;
 import com.cenedu.backend.domain.analysis.entity.enums.DifficultyBand;
-import com.cenedu.backend.domain.worksheet.entity.enums.CustomStage;
+import com.cenedu.backend.global.common.enums.CustomStage;
 
 /** 학생 상세 화면의 맞춤 학습 회차별 결과. */
 public record CustomLearningSessionListResponse(
