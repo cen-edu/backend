@@ -1,11 +1,24 @@
 package com.cenedu.backend.ai.problem.agent;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditAgentPayload;
+import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /** PROBLEM_EDIT 한 턴의 구조화 결과를 만들기 위한 프롬프트를 조립한다. */
 @Component
 public class ProblemEditPromptFactory {
+    private final ObjectMapper objectMapper;
+
+    public ProblemEditPromptFactory(ObjectProvider<ObjectMapper> objectMapper) {
+        this.objectMapper = objectMapper.getIfAvailable(ObjectMapper::new);
+    }
+
     /** 정답을 응답 메시지에 노출하지 않고 수정 delta만 반환하도록 지시한다. */
     public String create(ProblemEditAgentPayload payload) {
         var snapshot = payload.currentSnapshot();
@@ -17,8 +30,12 @@ public class ProblemEditPromptFactory {
                 semanticPatch의 mode는 PRESENTATIONAL_PATCH, PARAMETRIC_PATCH, STRUCTURAL_REGENERATION,
                 RESTORE, REJECTED 중 하나이며 operations는 허용된 semantic path만 사용한다.
                 semanticPatch에는 requestId, baseVersionId, schemaVersion을 넣지 않는다.
-                반지름을 3cm에서 5cm로 => PARAMETRIC_PATCH, /parameters/RADIUS/value, expectedOldValue=3, newValue=5.
-                말을 더 간결하게 => PRESENTATIONAL_PATCH와 placeholder를 유지하는 정확한 template path.
+                operation의 expectedOldValue는 아래 currentSemanticValues에서 해당 path의 값을 그대로 복사한 것이어야 한다.
+                사용자 문장에 등장한 숫자나 추측값을 expectedOldValue로 쓰지 않는다. 반드시 currentSemanticValues를 조회해서 채운다.
+                반지름을 3cm에서 5cm로 => PARAMETRIC_PATCH, /parameters/RADIUS/value,
+                  expectedOldValue=currentSemanticValues.parameters의 RADIUS.value, newValue=5.
+                말을 더 간결하게 => PRESENTATIONAL_PATCH와 placeholder를 유지하는 정확한 template path,
+                  expectedOldValue=currentSemanticValues.presentation의 해당 template 전체 텍스트.
                 문항 유형·도형 종류 변경 => STRUCTURAL_REGENERATION, 빈 operations.
                 지난 버전으로 => RESTORE, 빈 operations. 지원하지 않는 요청 => REJECTED, 빈 operations.
                 semantic model이 없으면 기존 instructionDeltas를 사용한다.
@@ -40,6 +57,9 @@ public class ProblemEditPromptFactory {
                 sessionId=%d, baseVersionId=%d, interactionStatus=%s, selectedTarget=%s, semanticModelPresent=%s
                 questionType=%s, contentBlockKeys=%s, choiceKeys=%s, stepKeys=%s,
                 answerUnitKeys=%s, rubricKeys=%s, accumulatedInstructions=%s
+
+                currentSemanticValues(patch 대상 필드의 실제 현재 값. expectedOldValue는 여기서 그대로 가져온다):
+                %s
                 """.formatted(payload.sessionId(), payload.baseVersionId(), payload.interactionStatus(),
                 payload.selectedTarget(), payload.currentSemanticModel() != null, snapshot.metadata().questionType(),
                 snapshot.contentBlocks().stream().map(block -> block.blockKey()).toList(),
@@ -47,6 +67,23 @@ public class ProblemEditPromptFactory {
                 snapshot.steps().stream().map(step -> step.stepKey()).toList(),
                 snapshot.answerUnits().stream().map(unit -> unit.unitKey()).toList(),
                 snapshot.rubricItems().stream().map(rubric -> rubric.rubricKey()).toList(),
-                payload.accumulatedInstructions());
+                payload.accumulatedInstructions(),
+                currentSemanticValuesJson(payload.currentSemanticModel()));
+    }
+
+    /** patch expectedOldValue가 참조할 수 있는 실제 값(파라미터·템플릿·도형 스타일)만 직렬화한다. */
+    private String currentSemanticValuesJson(ProblemSemanticModelV1 model) {
+        if (model == null) {
+            return "{}";
+        }
+        Map<String, Object> surface = new LinkedHashMap<>();
+        surface.put("parameters", model.parameters());
+        surface.put("presentation", model.presentation());
+        surface.put("diagrams", model.diagrams());
+        try {
+            return objectMapper.writeValueAsString(surface);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("semantic model을 프롬프트로 직렬화할 수 없습니다.", exception);
+        }
     }
 }

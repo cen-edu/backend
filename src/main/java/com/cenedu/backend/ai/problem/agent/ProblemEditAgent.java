@@ -1,5 +1,6 @@
 package com.cenedu.backend.ai.problem.agent;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -43,8 +44,10 @@ public class ProblemEditAgent implements Agent {
         try {
             ProblemEditAgentPayload payload = objectMapper.convertValue(
                     request.payload().get(REQUEST_KEY), ProblemEditAgentPayload.class);
+            List<ChatMessage> messages = new ArrayList<>(request.history());
+            messages.add(ChatMessage.user(request.userInput()));
             String response = llmClient.completeStructured(promptFactory.create(payload),
-                    List.of(ChatMessage.user(request.userInput())),
+                    messages,
                     ProblemStructuredOutputSchemas.EDIT_TURN).text();
             ProblemEditAgentResultEnvelope envelope = objectMapper.readValue(
                     response, ProblemEditAgentResultEnvelope.class);

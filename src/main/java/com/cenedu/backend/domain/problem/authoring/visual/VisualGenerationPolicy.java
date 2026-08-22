@@ -47,6 +47,9 @@ public final class VisualGenerationPolicy {
         if (mode == VisualGenerationMode.AUTO && visualRequired && diagramCount != 1) {
             violations.add("AUTO visualRequired=true requires exactly one diagram");
         }
+        if (mode == VisualGenerationMode.REQUIRED && (!visualRequired || diagramCount != 1)) {
+            violations.add("REQUIRED mode requires visualRequired=true and exactly one diagram");
+        }
         if (mode == VisualGenerationMode.PRESERVE_ORIGIN && !visualRequired) {
             violations.add("PRESERVE_ORIGIN requires visualRequired=true");
         }

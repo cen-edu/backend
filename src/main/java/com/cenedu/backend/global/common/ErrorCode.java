@@ -140,6 +140,8 @@ public enum ErrorCode {
     CUSTOM_PROBLEM_COUNT_EXCEEDS_PROPOSAL(HttpStatus.BAD_REQUEST, "요청한 문항 수가 취약점 분석 제안의 상한을 초과했습니다."),
     CUSTOM_PROBLEM_SIMILAR_REFERENCE_MISSING(HttpStatus.BAD_REQUEST, "유사 문항을 만들 수 있는 오답 기준 문항이 없습니다."),
     CUSTOM_PROBLEM_ADVANCED_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "응용 문항을 생성할 수 없는 소단원입니다."),
+    PROBLEM_GENERATION_RETRY_EXHAUSTED(HttpStatus.INTERNAL_SERVER_ERROR,
+            "문항 생성 재시도 한도를 초과했습니다. 다시 시도해 주세요."),
     // ===== analysis (모수환) =====
     ASSESSMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "평가를 찾을 수 없습니다."),
     STUDENT_ATTEMPT_NOT_FOUND(HttpStatus.NOT_FOUND, "학생 풀이를 찾을 수 없습니다."),

@@ -29,7 +29,7 @@ import org.springframework.stereotype.Component;
 public class AssetChecks {
 
     /** 프롬프트가 낼 수 있는 문제 유형. */
-    private static final Set<String> ISSUES = Set.of("LEAK", "MISMATCH");
+    private static final Set<String> ISSUES = Set.of("LEAK", "MISMATCH", "UNNECESSARY", "TEXT_DUPLICATION", "GENERIC_REFERENCE");
 
     private final VerificationLlmClient llmClient;
 
@@ -113,6 +113,16 @@ public class AssetChecks {
                     "문항에 그림이 없습니다.");
         }
 
+        for (var asset : snapshot.assets()) {
+            if (asset == null || asset.altText() == null || asset.altText().isBlank()
+                    || asset.altText().strip().equalsIgnoreCase(asset.assetKey())) {
+                return Findings.fail(VerificationCheckType.ASSET_CONSISTENCY,
+                        VerificationIssueCode.ASSET_INCONSISTENT,
+                        "그림 설명에 학생이 확인할 수 있는 구체적인 정보가 없습니다.",
+                        EvidencePrefix.of(EvidencePrefix.ALTTEXT, "GENERIC_OR_BLANK"));
+            }
+        }
+
         VerificationLlmClient.AssetJudgement judgement = llmClient.judgeAsset(snapshot);
         if (!judgement.hasIssue()) {
             return Findings.pass(VerificationCheckType.ASSET_CONSISTENCY,
@@ -129,7 +139,9 @@ public class AssetChecks {
                 VerificationIssueCode.ASSET_INCONSISTENT,
                 issue.equals("LEAK")
                         ? "그림 설명에 그림에 보이지 않는 정보가 있습니다."
-                        : "그림 설명이 발문과 어긋납니다.",
+                        : issue.equals("MISMATCH")
+                        ? "그림 설명이 발문과 어긋납니다."
+                        : "그림 설명이 불필요하거나 본문을 반복하거나 일반적인 표현만 포함합니다.",
                 EvidencePrefix.of(EvidencePrefix.ALTTEXT, issue, judgement.detail()));
     }
 }

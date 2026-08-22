@@ -45,7 +45,14 @@ public class ProblemSemanticModificationService {
         if (baseVersion.getSemanticModel() == null)
             throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
         ProblemSemanticModelV1 baseModel = semanticCodec.readSemanticModel(baseVersion.getSemanticModel());
-        ProblemSemanticModelV1 changed = applier.apply(baseModel, patch);
+        ProblemSemanticModelV1 changed;
+        try {
+            changed = applier.apply(baseModel, patch);
+        } catch (SemanticPatchConflictException e) {
+            throw new BusinessException(ErrorCode.PROBLEM_EDIT_COMMAND_STALE,
+                    "현재 문항의 값이 patch가 기대한 값과 다릅니다: " + e.path()
+                            + " (기대값=" + e.expected() + ", 실제값=" + e.actual() + ")");
+        }
         MaterializedProblem baseMaterialized = materializer.materialize(baseModel);
         MaterializedProblem materialized = materializer.materialize(changed);
         if (patch.mode() == SemanticEditMode.PRESENTATIONAL_PATCH) {

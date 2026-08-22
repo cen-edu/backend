@@ -69,11 +69,11 @@ public class ProblemSemanticPatchApplier {
     private String[] parts(String p){return p.substring(1).split("/");}
     private String placeholders(JsonNode node){
         java.util.Set<String> values=new java.util.TreeSet<>();
-        java.util.regex.Matcher m=java.util.regex.Pattern.compile("\\$\\{[A-Z][A-Z0-9_]*}").matcher(node.toString());
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("\\{\\{[A-Z][A-Z0-9_]*(?:_UNIT)?\\}\\}").matcher(node.toString());
         while(m.find()) values.add(m.group()); return String.join("|", values);
     }
     private java.util.Set<String> placeholderSet(String value){
         java.util.Set<String> result=new java.util.TreeSet<>(); if(value==null)return result;
-        java.util.regex.Matcher m=java.util.regex.Pattern.compile("\\$\\{[A-Z][A-Z0-9_]*}").matcher(value); while(m.find())result.add(m.group()); return result;
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("\\{\\{[A-Z][A-Z0-9_]*(?:_UNIT)?\\}\\}").matcher(value); while(m.find())result.add(m.group()); return result;
     }
 }

@@ -11,8 +11,138 @@ public final class ProblemStructuredOutputSchemas {
     private static String loadSemanticSchema() {
         try (var stream = ProblemStructuredOutputSchemas.class.getResourceAsStream("/ai/problem/problem-semantic-model-v1.schema.json")) {
             if (stream == null) throw new IllegalStateException("semantic model schema resource가 없습니다.");
-            return new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var root = mapper.readTree(stream);
+            flattenAllOf(root, root);
+            addTypesForConst(root);
+            normalizeOneOf(root);
+            constrainEvaluationArea(root, mapper);
+            constrainSemanticRequiredFields(root);
+            validateOpenAiSubset(root);
+            return mapper.writeValueAsString(root);
         } catch (java.io.IOException e) { throw new IllegalStateException("semantic model schema를 읽을 수 없습니다.", e); }
+    }
+
+    /** Java enum으로 역직렬화되는 평가 영역을 자유 문자열이 아닌 공통 코드로 제한한다. */
+    private static void constrainEvaluationArea(com.fasterxml.jackson.databind.JsonNode root,
+                                                com.fasterxml.jackson.databind.ObjectMapper mapper) {
+        var intent = root.path("$defs").path("intent").path("properties");
+        if (intent.isObject() && intent.has("evaluationArea")) {
+            var schema = (com.fasterxml.jackson.databind.node.ObjectNode) intent.get("evaluationArea");
+            schema.remove("type");
+            var anyOf = mapper.createArrayNode();
+            anyOf.addObject().put("type", "string").set("enum", mapper.createArrayNode()
+                    .add("UNDERSTANDING").add("CALCULATION").add("REASONING").add("PROBLEM_SOLVING"));
+            anyOf.addObject().put("type", "null");
+            schema.set("anyOf", anyOf);
+        }
+    }
+
+    /** snapshot 검증에서 반드시 필요한 guide와 asset 논리 키를 출력 스키마에 반영한다. */
+    private static void constrainSemanticRequiredFields(com.fasterxml.jackson.databind.JsonNode root) {
+        var defs = root.path("$defs");
+        if (defs.isObject()) {
+            var presentation = (com.fasterxml.jackson.databind.node.ObjectNode) defs.path("presentation");
+            var presentationProperties = (com.fasterxml.jackson.databind.node.ObjectNode) presentation.path("properties");
+            presentationProperties.set("learningGuide", defs.path("guide").deepCopy());
+            var base = (com.fasterxml.jackson.databind.node.ObjectNode) defs.path("base");
+            var baseProperties = (com.fasterxml.jackson.databind.node.ObjectNode) base.path("properties");
+            var assetKey = (com.fasterxml.jackson.databind.node.ObjectNode) baseProperties.path("assetKey");
+            assetKey.put("pattern", "^F[1-9][0-9]*$");
+            var choiceProperties = (com.fasterxml.jackson.databind.node.ObjectNode) defs.path("choice").path("properties");
+            var valueKey = (com.fasterxml.jackson.databind.node.ObjectNode) choiceProperties.path("valueKey");
+            valueKey.remove("type");
+            valueKey.put("type", "string");
+            valueKey.put("pattern", "^[A-Z][A-Z0-9_]{0,63}$");
+        }
+    }
+
+    /** OpenAI strict JSON Schema가 지원하지 않는 allOf를 참조 스키마의 object로 병합한다. */
+    private static void flattenAllOf(com.fasterxml.jackson.databind.JsonNode node,
+                                     com.fasterxml.jackson.databind.JsonNode root) {
+        if (node.isObject()) {
+            var object = (com.fasterxml.jackson.databind.node.ObjectNode) node;
+            var allOf = object.get("allOf");
+            if (allOf != null && allOf.isArray()) {
+                var factory = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance;
+                var mergedProperties = factory.objectNode();
+                var mergedRequired = factory.arrayNode();
+                allOf.forEach(part -> {
+                    var resolved = part;
+                    if (part.isObject() && part.has("$ref")) {
+                        resolved = resolveRef(root, part.get("$ref").asText());
+                    }
+                    flattenAllOf(resolved, root);
+                    if (resolved.isObject()) {
+                        resolved.fields().forEachRemaining(entry -> {
+                            if (!"allOf".equals(entry.getKey()) && !"$ref".equals(entry.getKey())
+                                    && !object.has(entry.getKey())) {
+                                object.set(entry.getKey(), entry.getValue().deepCopy());
+                            }
+                        });
+                    }
+                    if (resolved.has("properties")) mergedProperties.setAll((com.fasterxml.jackson.databind.node.ObjectNode) resolved.get("properties"));
+                    if (resolved.has("required")) {
+                        resolved.get("required").forEach(required -> {
+                            if (!containsRequired(mergedRequired, required.asText())) mergedRequired.add(required);
+                        });
+                    }
+                });
+                object.remove("allOf");
+                if (!mergedProperties.isEmpty()) object.set("properties", mergedProperties);
+                if (!mergedRequired.isEmpty()) object.set("required", mergedRequired);
+            }
+            object.fields().forEachRemaining(entry -> flattenAllOf(entry.getValue(), root));
+        } else if (node.isArray()) {
+            node.forEach(child -> flattenAllOf(child, root));
+        }
+    }
+
+    /** OpenAI Structured Outputs에서는 oneOf 대신 anyOf를 사용한다. */
+    private static void normalizeOneOf(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node.isObject()) {
+            var object = (com.fasterxml.jackson.databind.node.ObjectNode) node;
+            if (object.has("oneOf") && !object.has("anyOf")) object.set("anyOf", object.remove("oneOf"));
+            object.fields().forEachRemaining(entry -> normalizeOneOf(entry.getValue()));
+        } else if (node.isArray()) node.forEach(ProblemStructuredOutputSchemas::normalizeOneOf);
+    }
+
+    /** 지원하지 않는 composition과 열린 object를 API 호출 전에 즉시 검출한다. */
+    private static void validateOpenAiSubset(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node.isObject()) {
+            if (node.has("allOf") || node.has("not") || node.has("dependentRequired")
+                    || node.has("dependentSchemas") || node.has("if") || node.has("then") || node.has("else")) {
+                throw new IllegalStateException("OpenAI Structured Outputs 호환 스키마에 지원하지 않는 키워드가 있습니다.");
+            }
+            if ("object".equals(node.path("type").asText()) && !node.has("additionalProperties")) {
+                throw new IllegalStateException("OpenAI Structured Outputs object에는 additionalProperties가 필요합니다.");
+            }
+            node.fields().forEachRemaining(entry -> validateOpenAiSubset(entry.getValue()));
+        } else if (node.isArray()) node.forEach(ProblemStructuredOutputSchemas::validateOpenAiSubset);
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode resolveRef(com.fasterxml.jackson.databind.JsonNode root, String ref) {
+        if (ref != null && ref.startsWith("#/$defs/")) return root.path("$defs").path(ref.substring("#/$defs/".length()));
+        return root;
+    }
+
+    private static boolean containsRequired(com.fasterxml.jackson.databind.node.ArrayNode required, String value) {
+        for (var existing : required) if (existing.asText().equals(value)) return true;
+        return false;
+    }
+
+    /** OpenAI strict JSON Schema가 const와 함께 요구하는 primitive type을 보완한다. */
+    private static void addTypesForConst(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node.isObject()) {
+            var object = (com.fasterxml.jackson.databind.node.ObjectNode) node;
+            var constant = object.get("const");
+            if (constant != null && object.get("type") == null) {
+                object.put("type", constant.isIntegralNumber() ? "integer" : "string");
+            }
+            object.fields().forEachRemaining(entry -> addTypesForConst(entry.getValue()));
+        } else if (node.isArray()) {
+            node.forEach(ProblemStructuredOutputSchemas::addTypesForConst);
+        }
     }
 
     /** 생성 후보와 확정 수정 후보가 공유하는 교육 내용 출력 계약이다. */

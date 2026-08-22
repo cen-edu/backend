@@ -124,14 +124,19 @@ public class ProblemGenerationWorker {
                     }
                     jobService.startVerification(workItem.itemId());
                 } catch (RuntimeException exception) {
-                    log.warn("event=problem_authoring_stage operation=GENERATION outcome=ERROR itemId={} attempt={} errorType={}",
-                            workItem.itemId(), attempt + 1, exception.getClass().getSimpleName());
-                    if (attempt < 1 && jobService.prepareRetry(workItem, "GENERATION_FAILED")) {
+                    log.warn("event=problem_authoring_stage operation=GENERATION outcome=ERROR itemId={} attempt={} errorType={} message={}",
+                            workItem.itemId(), attempt + 1, exception.getClass().getSimpleName(), exception.getMessage(), exception);
+                    // semantic pipeline이 findings를 실어 이미 3회 재시도한 뒤 던진 실패다.
+                    // 근거 없이 outer attempt를 한 번 더 돌려도 성공 확률이 낮으므로 여기서 멈춘다.
+                    boolean retryExhaustedInsideStage = exception instanceof BusinessException businessException
+                            && businessException.getErrorCode() == ErrorCode.PROBLEM_GENERATION_RETRY_EXHAUSTED;
+                    if (!retryExhaustedInsideStage && attempt < 1 && jobService.prepareRetry(workItem, "GENERATION_FAILED")) {
                         attempt++;
                         continue;
                     }
-                    jobService.fail(workItem, "GENERATION_FAILED");
-                    logItemOutcome(workItem, "FAILED", "GENERATION_FAILED");
+                    String reason = retryExhaustedInsideStage ? "GENERATION_RETRY_EXHAUSTED" : "GENERATION_FAILED";
+                    jobService.fail(workItem, reason);
+                    logItemOutcome(workItem, "FAILED", reason);
                     return;
                 }
 
@@ -141,8 +146,8 @@ public class ProblemGenerationWorker {
                     result = runStage("VERIFICATION", () -> candidateProcessingService.process(
                             processingRequest(workItem, candidate)));
                 } catch (RuntimeException exception) {
-                    log.warn("event=problem_authoring_stage operation=GENERATION stage=VERIFICATION outcome=ERROR itemId={} attempt={} errorType={}",
-                            workItem.itemId(), attempt + 1, exception.getClass().getSimpleName());
+                    log.warn("event=problem_authoring_stage operation=GENERATION stage=VERIFICATION outcome=ERROR itemId={} attempt={} errorType={} message={}",
+                            workItem.itemId(), attempt + 1, exception.getClass().getSimpleName(), exception.getMessage(), exception);
                     if (attempt < 1 && jobService.prepareRetry(workItem, "CANDIDATE_INVALID")) {
                         attempt++;
                         continue;

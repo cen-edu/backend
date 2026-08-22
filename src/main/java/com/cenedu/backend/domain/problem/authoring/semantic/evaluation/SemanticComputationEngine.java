@@ -18,7 +18,22 @@ public final class SemanticComputationEngine {
     }
 
     private SemanticNumber calc(SemanticComputation c, Map<String, SemanticResolvedValue> v) {
-        var a = c.operands().stream().map(k -> SemanticNumber.parse(v.get(k).canonicalValue())).toList();
+        var operands = c.operands() == null ? List.<String>of() : c.operands();
+        var a = operands.stream().map(k -> {
+            var value = v.get(k);
+            if (value == null) throw new SemanticEvaluationException(
+                    "계산 key=" + c.key() + "의 operand=" + k + " resolved value가 없습니다.");
+            return SemanticNumber.parse(value.canonicalValue());
+        }).toList();
+        int required = switch (c.operation()) {
+            case IDENTITY, NEGATE, ABS -> 1;
+            case ADD, SUBTRACT, MULTIPLY, DIRECT_PROPORTION, DIVIDE, INVERSE_PROPORTION -> 2;
+            default -> 0;
+        };
+        if (a.size() < required) {
+            throw new SemanticEvaluationException("계산 key=" + c.key() + " operation=" + c.operation()
+                    + "에 필요한 operand 수=" + required + ", 실제=" + a.size());
+        }
         return switch (c.operation()) {
             case IDENTITY -> a.get(0);
             case ADD -> a.get(0).add(a.get(1));

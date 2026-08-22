@@ -14,7 +14,10 @@ public final class SemanticSnapshotFactory {
         var e = m.intent();
         var p = m.presentation();
         var type = e.questionType();
-        var choices = p.choices().stream().map(x -> new SnapshotChoice(x.choiceKey(), x.displayOrder(), render(x.contentTemplate(), v))).toList();
+        var choices = java.util.stream.IntStream.range(0, p.choices().size())
+                .mapToObj(index -> new SnapshotChoice("C" + (index + 1), index,
+                        render(p.choices().get(index).contentTemplate(), v)))
+                .toList();
         var answers = new ArrayList<SnapshotAnswerUnit>();
         if (type == QuestionType.MULTIPLE_CHOICE) {
             var target = requireValue(v, e.targetKey(), "객관식 target");
@@ -24,8 +27,9 @@ public final class SemanticSnapshotFactory {
             if (matches.size() != 1) {
                 throw new SemanticMaterializationException("객관식 target과 일치하는 choice는 정확히 1개여야 합니다.");
             }
-            var matched = matches.get(0);
-            answers.add(new SnapshotAnswerUnit("MAIN", null, 0, matched.choiceKey(), matched.choiceKey(),
+            int matchedIndex = p.choices().indexOf(matches.get(0));
+            String matchedChoiceKey = "C" + (matchedIndex + 1);
+            answers.add(new SnapshotAnswerUnit("MAIN", null, 0, matchedChoiceKey, null,
                     CompareMethod.CHOICE, null, null));
         } else if (type == QuestionType.SHORT_INPUT) {
             var x = v.get(e.targetKey());
@@ -37,7 +41,14 @@ public final class SemanticSnapshotFactory {
                 : m.diagrams().stream().anyMatch(d -> d.kind() == com.cenedu.backend.domain.problem.authoring.diagram.DiagramKind.DATA_TABLE)
                 ? QuestionPresentation.WITH_TABLE : QuestionPresentation.WITH_FIGURE;
         var meta = new SnapshotMetadata(type, presentation, e.difficulty(), m.curriculum().subUnitId(), null, e.evaluationArea(), null);
-        return new QuestionSnapshotV1(1, meta, List.of(new SnapshotContentBlock("CB1", SnapshotBlockKind.TEXT, 0, render(p.questionTemplate(), v), null, null)), List.of(), choices, List.of(), answers, render(p.explanationTemplate(), v), null, List.of());
+        SnapshotLearningGuide guide = p.learningGuide() == null
+                ? new SnapshotLearningGuide(m.curriculum().subUnitName(),
+                m.curriculum().subUnitName() + "의 핵심 개념을 확인하고 문제의 조건과 관계를 해석한다.",
+                List.of("문제에서 주어진 양과 조건을 확인한다."))
+                : new SnapshotLearningGuide(render(p.learningGuide().conceptTitleTemplate(), v),
+                render(p.learningGuide().summaryTemplate(), v),
+                p.learningGuide().keyPointTemplates().stream().map(x -> render(x, v)).toList());
+        return new QuestionSnapshotV1(1, meta, List.of(new SnapshotContentBlock("CB1", SnapshotBlockKind.TEXT, 0, render(p.questionTemplate(), v), null, null)), List.of(), choices, List.of(), answers, render(p.explanationTemplate(), v), guide, List.of());
     }
 
     private SemanticResolvedValue requireValue(Map<String, SemanticResolvedValue> values, String key, String label) {

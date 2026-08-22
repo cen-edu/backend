@@ -73,9 +73,10 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
                                 command.baseSnapshot().metadata().subUnitId(), "대단원", "중단원", "소단원"),
                             List.of(), List.of()), output);
             var mergedSnapshot = snapshotMerger.merge(command.plan(), command.baseSnapshot(), mapped.snapshot());
-            ProblemCandidateDraft candidate = ProblemCandidateDraft.legacy(command.requestId(), mergedSnapshot,
-                    mapped.assetPlans(), new CandidateProvenance(CandidateSourceType.AI_MODIFY,
-                    null, List.of()));
+            ProblemCandidateDraft candidate = new ProblemCandidateDraft(
+                    command.requestId(), mergedSnapshot, mapped.assetPlans(),
+                    command.baseSemanticModel(),
+                    new CandidateProvenance(CandidateSourceType.AI_MODIFY, null, List.of()));
             structuralValidator.validate(candidate.snapshot());
             normalizedValidator.validate(candidate.snapshot());
             return candidate;
@@ -117,7 +118,7 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
                         ? output.learningGuide() : learningGuide(base),
                 editable(plan, EditTargetType.RUBRIC_ITEM)
                         ? output.rubricItems() : rubrics(base),
-                output.assets());
+                editable(plan, EditTargetType.ASSET) ? output.assets() : assets(base));
     }
 
     private boolean editable(ProblemEditExecutionPlan plan, EditTargetType type) {
@@ -173,6 +174,18 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
         return base.rubricItems().stream().map(rubric ->
                 new ProblemGenerationOutput.RubricOutput(
                         rubric.criterion(), rubric.weightPercent())).toList();
+    }
+
+    /** 자산을 수정하지 않는 편집에서는 기존 이미지 자산을 LLM 응답에 다시 포함한다. */
+    private List<ProblemGenerationOutput.AssetOutput> assets(QuestionSnapshotV1 base) {
+        return base.assets().stream()
+                .map(asset -> new ProblemGenerationOutput.AssetOutput(
+                        "FIGURE", "SVG", asset.altText(),
+                        asset.altText() == null || asset.altText().isBlank()
+                                ? "기존 이미지 자산을 그대로 유지한다."
+                                : asset.altText(),
+                        List.of(), List.of(), null))
+                .toList();
     }
 
     /** B1/ST1 형태의 1부터 시작하는 키를 모델 계약의 0부터 인덱스로 되돌린다. */

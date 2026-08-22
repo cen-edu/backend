@@ -118,7 +118,7 @@ class ProblemSemanticExtractionServiceTest {
         var p = new SemanticParameter("A", SemanticValueType.INTEGER, "1", null, false, null);
         var c = new SemanticComputation("C", SemanticOperation.IDENTITY, List.of("A"), null, null, "1");
         var i = new SemanticProblemIntent(QuestionType.SHORT_INPUT, "mid", null, "identity", "C", 1, false);
-        var presentation = new SemanticPresentationPlan("${A}", List.of(), List.of(), "${C}", null, List.of());
+        var presentation = new SemanticPresentationPlan("{{A}}", List.of(), List.of(), "{{C}}", null, List.of());
         return new ProblemSemanticModelV1(1, scope(), i, List.of(p), List.of(c), List.of(), presentation, List.of(), List.of());
     }
 

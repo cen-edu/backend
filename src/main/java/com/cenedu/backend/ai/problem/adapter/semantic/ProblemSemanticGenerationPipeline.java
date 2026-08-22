@@ -7,6 +7,8 @@ import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationC
 import com.cenedu.backend.domain.problem.authoring.port.ProblemSemanticMaterializer;
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.MaterializedProblem;
 import com.cenedu.backend.domain.problem.authoring.semantic.model.*;
+import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.*;
@@ -73,9 +75,15 @@ public final class ProblemSemanticGenerationPipeline {
         return s.length() > 200 ? s.substring(0, 200) : s;
     }
 
-    public static final class SemanticGenerationException extends RuntimeException {
+    /**
+     * 내부 3회 재시도(오류 findings를 프롬프트에 실어 재호출)를 모두 소진했다는 뜻이다.
+     * {@link ErrorCode#PROBLEM_GENERATION_RETRY_EXHAUSTED}로 던져, 호출부(worker)가 같은 실패를
+     * 근거 없이 다시 반복하지 않고 여기서 멈추게 한다.
+     */
+    public static final class SemanticGenerationException extends BusinessException {
         public SemanticGenerationException(List<String> findings) {
-            super("semantic generation retry exhausted: " + findings);
+            super(ErrorCode.PROBLEM_GENERATION_RETRY_EXHAUSTED,
+                    "semantic generation retry exhausted: " + findings);
         }
     }
 }

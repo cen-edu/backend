@@ -28,7 +28,9 @@ class ProblemRagPropertiesTest {
             assertThat(properties.indexing().maxAttempts()).isEqualTo(3);
             assertThat(properties.indexing().retryDelay()).isEqualTo(Duration.ofSeconds(30));
             assertThat(properties.indexing().workerDelay()).isEqualTo(Duration.ofSeconds(5));
-            assertThat(properties.indexing().backfillDelay()).isEqualTo(Duration.ofSeconds(60));
+            assertThat(properties.indexing().backfillInitialDelay()).isEqualTo(Duration.ofMinutes(10));
+            assertThat(properties.indexing().backfillDelay()).isEqualTo(Duration.ofHours(1));
+            assertThat(properties.indexing().backfillBatchSize()).isEqualTo(50);
         });
     }
 }

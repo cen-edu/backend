@@ -13,8 +13,13 @@ public final class DiagramSpecValidator {
         if (s.viewport() == null || s.viewport().width() < 240 || s.viewport().width() > 1200 || s.viewport().height() < 120 || s.viewport().height() > 900 || s.viewport().padding() < 8 || s.viewport().padding() > 96)
             throw new DiagramValidationException("viewport");
         var st = s.style();
-        if (st == null || !color(st.strokeColor()) || !color(st.fillColor()) || !color(st.accentColor()) || st.strokeWidth() < 1 || st.strokeWidth() > 8 || !"sans-serif".equals(st.fontFamily()) || st.fontSize() < 10 || st.fontSize() > 32)
-            throw new DiagramValidationException("style");
+        if (st == null) throw new DiagramValidationException("style is missing");
+        if (!color(st.strokeColor())) throw new DiagramValidationException("style.strokeColor must be #RRGGBB");
+        if (!color(st.fillColor())) throw new DiagramValidationException("style.fillColor must be #RRGGBB");
+        if (!color(st.accentColor())) throw new DiagramValidationException("style.accentColor must be #RRGGBB");
+        if (st.strokeWidth() < 1 || st.strokeWidth() > 8) throw new DiagramValidationException("style.strokeWidth must be 1..8");
+        if (!"sans-serif".equals(st.fontFamily())) throw new DiagramValidationException("style.fontFamily must be sans-serif");
+        if (st.fontSize() < 10 || st.fontSize() > 32) throw new DiagramValidationException("style.fontSize must be 10..32");
         if (s instanceof NumberLineDiagramSpecV1 n) validateNumberLine(n, v);
         if (s instanceof CoordinateGraphDiagramSpecV1 n) validateCoordinateGraph(n, v);
         if (s instanceof DataTableDiagramSpecV1 t) validateTable(t, v);
@@ -44,7 +49,7 @@ public final class DiagramSpecValidator {
     private void validateCoordinateGraph(CoordinateGraphDiagramSpecV1 n, Map<String, SemanticResolvedValue> v) {
         double xMin = number(v, n.xMinKey()), xMax = number(v, n.xMaxKey());
         double yMin = number(v, n.yMinKey()), yMax = number(v, n.yMaxKey());
-        if (!(xMin < xMax) || !(yMin < yMax) || !(number(v, n.xTickKey()) > 0) || !(number(v, n.yTickKey()) > 0)) {
+        if (!(xMin < xMax) || !(yMin < yMax) || !(optionalPositive(v, n.xTickKey())) || !(optionalPositive(v, n.yTickKey()))) {
             throw new DiagramValidationException("coordinate graph range");
         }
         var points = new HashSet<String>();
@@ -142,6 +147,10 @@ public final class DiagramSpecValidator {
         if (!(number(v, key) > 0)) throw new DiagramValidationException("positive resolved value");
     }
 
+    private boolean optionalPositive(Map<String, SemanticResolvedValue> v, String key) {
+        return key == null || number(v, key) > 0;
+    }
+
     private void require(Map<String, SemanticResolvedValue> v, String key) {
         if (key == null || !v.containsKey(key) || v.get(key) == null) throw new DiagramValidationException("missing resolved value");
     }
@@ -153,7 +162,7 @@ public final class DiagramSpecValidator {
     }
 
     private boolean color(String s) {
-        return s != null && s.matches("#[0-9A-F]{6}");
+        return s != null && s.matches("#[0-9A-Fa-f]{6}");
     }
 
     private void labels(DiagramSpecV1 s) {

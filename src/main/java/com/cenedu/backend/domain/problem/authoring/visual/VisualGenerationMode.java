@@ -4,5 +4,7 @@ package com.cenedu.backend.domain.problem.authoring.visual;
 public enum VisualGenerationMode {
     NONE,
     AUTO,
+    /** 로컬 검증 등에서 시각 자료 생성을 반드시 요구한다. */
+    REQUIRED,
     PRESERVE_ORIGIN
 }
