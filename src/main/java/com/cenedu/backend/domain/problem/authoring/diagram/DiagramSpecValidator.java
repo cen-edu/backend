@@ -169,7 +169,13 @@ public final class DiagramSpecValidator {
         var all = new ArrayList<String>();
         if (s instanceof NumberLineDiagramSpecV1 n) n.points().forEach(x -> all.add(x.labelTemplate()));
         if (s instanceof CoordinateGraphDiagramSpecV1 n) n.points().forEach(x -> all.add(x.labelTemplate()));
-        if (s instanceof PlaneGeometryDiagramSpecV1 n) n.points().forEach(x -> all.add(x.labelTemplate()));
+        if (s instanceof PlaneGeometryDiagramSpecV1 n) {
+            n.points().forEach(x -> all.add(x.labelTemplate()));
+            n.polygons().forEach(x -> all.add(x.labelTemplate()));
+            n.angles().forEach(x -> all.add(x.labelTemplate()));
+            n.measurements().forEach(x -> all.add(x.labelTemplate()));
+        }
+        if (s instanceof SolidGeometryDiagramSpecV1 n) n.labels().forEach(x -> all.add(x.labelTemplate()));
         if (s instanceof DataTableDiagramSpecV1 n) {
             all.addAll(n.rowHeaderTemplates());
             all.addAll(n.columnHeaderTemplates());

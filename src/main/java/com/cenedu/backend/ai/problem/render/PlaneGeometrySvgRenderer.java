@@ -67,7 +67,11 @@ public final class PlaneGeometrySvgRenderer {
 
     private static void label(StringBuilder b, int x, int y, String t) {
         if (t != null && !t.isBlank())
-            b.append("<text x=\"").append(x).append("\" y=\"").append(y).append("\">").append(t).append("</text>");
+            b.append("<text x=\"").append(x).append("\" y=\"").append(y).append("\">").append(escape(t)).append("</text>");
+    }
+
+    private static String escape(String s) {
+        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private static String text(Map<String, SemanticResolvedValue> v, String k, String d) {
