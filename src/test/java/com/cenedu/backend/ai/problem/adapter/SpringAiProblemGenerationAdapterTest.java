@@ -23,9 +23,9 @@ import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDra
 
 class SpringAiProblemGenerationAdapterTest {
     @Test
-    void preserveOriginWithoutSemanticReferenceFailsInsteadOfLegacyFallback() {
+    void preserveOriginWithoutSemanticReferenceFailsInsteadOfNonSemanticFallback() {
         var semantic = mock(ProblemSemanticGenerationPipeline.class);
-        var legacy = mock(LegacyProblemGenerationPipeline.class);
+        var nonSemantic = mock(NonSemanticProblemGenerationPipeline.class);
         var command = new ProblemGenerationCommand(UUID.randomUUID(), null, GenerationPurpose.PERSONALIZED_SIMILAR_SHORTAGE,
                 new GenerationSpecification(QuestionType.SHORT_INPUT, "mid", null, List.of(), false,
                         new com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement(
@@ -34,13 +34,13 @@ class SpringAiProblemGenerationAdapterTest {
                 new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "대", "중", "소"),
                 List.of(new GenerationReference(GenerationReferenceRole.ORIGIN, 41L, null)), List.of());
         assertThrows(BusinessException.class, () -> new SpringAiProblemGenerationAdapter(
-                new SemanticAuthoringProperties(true), semantic, legacy).generate(command));
-        verifyNoInteractions(semantic, legacy);
+                new SemanticAuthoringProperties(true), semantic, nonSemantic).generate(command));
+        verifyNoInteractions(semantic, nonSemantic);
     }
     @Test
     void enabledFlagRoutesToSemanticPipeline() {
         var semantic = mock(ProblemSemanticGenerationPipeline.class);
-        var legacy = mock(LegacyProblemGenerationPipeline.class);
+        var nonSemantic = mock(NonSemanticProblemGenerationPipeline.class);
         var command = new ProblemGenerationCommand(UUID.randomUUID(), null, GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
                 new GenerationSpecification(QuestionType.SHORT_INPUT, "mid", null, List.of(), false,
                         new com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement(
@@ -49,16 +49,16 @@ class SpringAiProblemGenerationAdapterTest {
                 new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "대", "중", "소"), List.of(), List.of());
         var expected = mock(ProblemCandidateDraft.class);
         when(semantic.generate(command)).thenReturn(expected);
-        var adapter = new SpringAiProblemGenerationAdapter(new SemanticAuthoringProperties(true), semantic, legacy);
+        var adapter = new SpringAiProblemGenerationAdapter(new SemanticAuthoringProperties(true), semantic, nonSemantic);
         assertEquals(expected, adapter.generate(command));
         verify(semantic).generate(command);
-        verifyNoInteractions(legacy);
+        verifyNoInteractions(nonSemantic);
     }
 
     @Test
-    void failedOriginExtractionFallsBackToLegacyPipeline() {
+    void failedOriginExtractionFallsBackToNonSemanticPipeline() {
         var semantic = mock(ProblemSemanticGenerationPipeline.class);
-        var legacy = mock(LegacyProblemGenerationPipeline.class);
+        var nonSemantic = mock(NonSemanticProblemGenerationPipeline.class);
         var origin = new GenerationReference(GenerationReferenceRole.ORIGIN, 41L,
                 com.cenedu.backend.domain.problem.support.ProblemSnapshotFixtures.shortInput());
         var command = new ProblemGenerationCommand(UUID.randomUUID(), null, GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
@@ -66,11 +66,11 @@ class SpringAiProblemGenerationAdapterTest {
                 new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "대", "중", "소"),
                 List.of(origin), List.of());
         var expected = mock(ProblemCandidateDraft.class);
-        when(legacy.generate(command)).thenReturn(expected);
+        when(nonSemantic.generate(command)).thenReturn(expected);
 
         assertEquals(expected, new SpringAiProblemGenerationAdapter(
-                new SemanticAuthoringProperties(true), semantic, legacy).generate(command));
-        verify(legacy).generate(command);
+                new SemanticAuthoringProperties(true), semantic, nonSemantic).generate(command));
+        verify(nonSemantic).generate(command);
         verifyNoInteractions(semantic);
     }
     @Test
