@@ -58,14 +58,18 @@ class SemanticAnswerExposureMaterializerTest {
         var graph = new CoordinateGraphDiagramSpecV1(1, "F1", DiagramKind.COORDINATE_GRAPH,
                 new DiagramViewport(400, 240, 16),
                 new DiagramStyle("#000000", "#FFFFFF", "#FF0000", 1, "sans-serif", 12),
-                null, null, null, null, null, null, List.of(), List.of(), List.of(),
+                "X_MIN", "X_MAX", "Y_MIN", "Y_MAX", null, null, List.of(), List.of(), List.of(),
                 List.of(new CoordinateFunctionSpec("FN1", CoordinateFunctionKind.DIRECT_PROPORTION, "K", labelTemplate)));
         return new ProblemSemanticModelV1(1,
                 new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "대", "중", "소"),
                 intent,
                 List.of(new SemanticParameter("K", SemanticValueType.INTEGER, "2", null, false, null),
                         new SemanticParameter("EQ1", SemanticValueType.TEXT, "y=2x", null, false, null),
-                        new SemanticParameter("EQ2", SemanticValueType.TEXT, "y=x+1", null, false, null)),
+                        new SemanticParameter("EQ2", SemanticValueType.TEXT, "y=x+1", null, false, null),
+                        new SemanticParameter("X_MIN", SemanticValueType.INTEGER, "-10", null, false, null),
+                        new SemanticParameter("X_MAX", SemanticValueType.INTEGER, "10", null, false, null),
+                        new SemanticParameter("Y_MIN", SemanticValueType.INTEGER, "-10", null, false, null),
+                        new SemanticParameter("Y_MAX", SemanticValueType.INTEGER, "10", null, false, null)),
                 List.of(), List.of(), presentation, List.of(graph), List.of());
     }
 }

@@ -13,12 +13,14 @@ import com.cenedu.backend.domain.problem.authoring.diagram.*;
 public final class DefaultProblemSemanticMaterializer implements ProblemSemanticMaterializer {
     private final ProblemSemanticModelValidator validator = new ProblemSemanticModelValidator(new SemanticUnitAndBoundsValidator(), new SemanticConstraintValidator(), new SemanticAssertionValidator());
     private final SemanticAnswerExposureValidator exposureValidator = new SemanticAnswerExposureValidator();
+    private final DiagramSpecValidator diagramValidator = new DiagramSpecValidator();
 
     public MaterializedProblem materialize(ProblemSemanticModelV1 m) {
         validator.validate(m);
         var e = new SemanticComputationEngine().evaluate(m);
         validator.validateResolved(m, e.values());
         exposureValidator.validate(m, e.values());
+        diagramValidator.validateAll(m.diagrams(), e.values());
         var snapshot = new SemanticSnapshotFactory().create(m, e.values());
         var descriptions = new SemanticVisualDescriptionFactory().create(m.diagrams(), e.values());
         var plans = new SemanticAssetPlanFactory().create(m.diagrams(), e.values(), descriptions);
