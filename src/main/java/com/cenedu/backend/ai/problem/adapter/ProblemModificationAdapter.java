@@ -100,32 +100,36 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
      * 모델이 수정 대상이 아닌 필드를 비워도 매퍼가 병합 전에 실패하지 않게 한다.
      * 보호 영역은 애초에 기준 Snapshot 값으로 대체하므로 모델의 변조가 병합기까지 전파되지 않는다.
      *
-     * <p>action이 REPLACE면 {@link ProblemModificationSnapshotMerger#merge}와 동일하게 보호를
-     * 걸지 않는다. REPLACE의 requestedTargets는 항상 WHOLE_QUESTION 하나뿐이라, 필드별
+     * <p>action이 REPLACE면 requestedTargets가 항상 WHOLE_QUESTION 하나뿐이라, 필드별
      * targetType 일치를 요구하는 {@link #editable} 검사로는 어떤 구체 필드도 editable로
-     * 판정되지 않아 모델이 만든 값이 전부 기준 Snapshot으로 되돌아가 버린다.
+     * 판정되지 않는다. {@link ProblemModificationSnapshotMerger#merge}가 REPLACE를
+     * 무조건 통과시키는 것과 같은 의도로, REPLACE일 때는 이 필드들도 모델 출력을 그대로 쓴다.
+     *
+     * <p>assets는 예외다. 이 경로가 쓰는 {@link ProblemStructuredOutputSchemas#CANDIDATE}는
+     * assets를 항상 빈 배열로 강제한다 — 레거시 경로는 이미지를 새로 만들 수 없다. action과
+     * 무관하게 항상 기준 Snapshot의 자산을 그대로 유지한다.
      */
     private ProblemGenerationOutput withProtectedBaseValues(
             ProblemModificationCommand command,
             ProblemGenerationOutput output
     ) {
-        if (command.plan().action() == EditAction.REPLACE) return output;
         QuestionSnapshotV1 base = command.baseSnapshot();
         ProblemEditExecutionPlan plan = command.plan();
-        boolean bodyEditable = editable(plan, EditTargetType.QUESTION_BODY)
+        boolean replace = plan.action() == EditAction.REPLACE;
+        boolean bodyEditable = replace || editable(plan, EditTargetType.QUESTION_BODY)
                 || editable(plan, EditTargetType.CONTENT_BLOCK);
         return new ProblemGenerationOutput(
                 bodyEditable ? output.question() : firstQuestionText(base),
                 bodyEditable ? output.contentBlocks() : contentBlocks(base),
-                editable(plan, EditTargetType.CHOICE) ? output.choices() : choices(base),
-                editable(plan, EditTargetType.STEP) ? output.steps() : steps(base),
-                editable(plan, EditTargetType.ANSWER_UNIT) ? output.answerUnits() : answers(base),
-                editable(plan, EditTargetType.EXPLANATION) ? output.explanation() : base.explanation(),
-                editable(plan, EditTargetType.LEARNING_GUIDE)
+                replace || editable(plan, EditTargetType.CHOICE) ? output.choices() : choices(base),
+                replace || editable(plan, EditTargetType.STEP) ? output.steps() : steps(base),
+                replace || editable(plan, EditTargetType.ANSWER_UNIT) ? output.answerUnits() : answers(base),
+                replace || editable(plan, EditTargetType.EXPLANATION) ? output.explanation() : base.explanation(),
+                replace || editable(plan, EditTargetType.LEARNING_GUIDE)
                         ? output.learningGuide() : learningGuide(base),
-                editable(plan, EditTargetType.RUBRIC_ITEM)
+                replace || editable(plan, EditTargetType.RUBRIC_ITEM)
                         ? output.rubricItems() : rubrics(base),
-                editable(plan, EditTargetType.ASSET) ? output.assets() : assets(base));
+                assets(base));
     }
 
     private boolean editable(ProblemEditExecutionPlan plan, EditTargetType type) {

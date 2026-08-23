@@ -239,8 +239,20 @@ public final class ProblemStructuredOutputSchemas {
             }}
             """;
 
-    /** 수정 계획에 포함된 대상만 모델 출력 필드로 허용한다. */
+    /**
+     * 수정 계획에 포함된 대상만 모델 출력 필드로 허용한다.
+     *
+     * <p>WHOLE_QUESTION·QUESTION_TYPE(action=REPLACE)은 개별 필드가 아니라 "전체를 다시
+     * 만들라"는 뜻이라, 아래 field 목록에 없다. 이 둘을 걸러내지 않으면 REPLACE의 targets는
+     * 항상 {WHOLE_QUESTION}뿐이라 어떤 if도 걸리지 않고 빈 properties 스키마
+     * ({"type":"object","properties":{}})가 나가— 모델이 사실상 아무 필드도 못 담는
+     * 스키마를 받는다. 이때는 생성과 같은 {@link #CANDIDATE} 전체 계약을 그대로 쓴다.
+     */
     public static String modificationDeltaFor(java.util.Set<com.cenedu.backend.domain.problem.authoring.edit.EditTargetType> targets) {
+        if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.WHOLE_QUESTION)
+                || targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.QUESTION_TYPE)) {
+            return CANDIDATE;
+        }
         java.util.Set<String> fields = new java.util.LinkedHashSet<>();
         if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.QUESTION_BODY)
                 || targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.CONTENT_BLOCK)) {
