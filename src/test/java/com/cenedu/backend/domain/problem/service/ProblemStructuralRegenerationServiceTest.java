@@ -13,6 +13,8 @@ import com.cenedu.backend.domain.problem.authoring.candidate.CandidateProcessing
 import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
 import com.cenedu.backend.domain.problem.authoring.diagram.*;
 import com.cenedu.backend.domain.problem.authoring.edit.*;
+import com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemSemanticPatch;
+import com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode;
 import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
@@ -59,8 +61,11 @@ class ProblemStructuralRegenerationServiceTest {
         var baseSnapshot = ProblemSnapshotFixtures.shortInput();
         when(jsonCodec.read("snapshot", QuestionSnapshotV1.class)).thenReturn(baseSnapshot);
 
-        var plan = new ProblemEditExecutionPlan(UUID.randomUUID(), 426L, 475L,
-                EditAction.REPLACE, ReplacementSourcePolicy.NONE, null, List.of(), null,
+        var requestId = UUID.randomUUID();
+        var semanticPatch = new ProblemSemanticPatch(1, requestId, 475L, SemanticEditMode.STRUCTURAL_REGENERATION,
+                List.of(), "그래프의 기울기를 2에서 3으로 변경하려면 문제 구조와 그래프 관련 값을 함께 재생성해야 합니다.");
+        var plan = new ProblemEditExecutionPlan(requestId, 426L, 475L,
+                EditAction.REPLACE, ReplacementSourcePolicy.NONE, null, List.of(), semanticPatch,
                 List.of(new ProblemEditTargetRef(EditTargetType.WHOLE_QUESTION, null)),
                 List.of(), List.of(), null);
         var baseModel = semanticModelWithCoordinateGraph();
@@ -80,6 +85,12 @@ class ProblemStructuralRegenerationServiceTest {
         var visualRequirement = captor.getValue().specification().visualRequirement();
         assertThat(visualRequirement.mode()).isEqualTo(VisualGenerationMode.PRESERVE_ORIGIN);
         assertThat(visualRequirement.requiredKind()).isEqualTo(VisualReferenceKind.COORDINATE_GRAPH);
+
+        // STRUCTURAL_REGENERATION은 operations·instructions가 항상 비어 있어야 해서, 교사의 실제
+        // 요청은 semanticPatch.assistantMessage에만 남아 있다. 이게 재생성 LLM에 전달되지 않으면
+        // origin과 거의 동일한 후보가 나온다(값 변경이 반영되지 않음).
+        assertThat(captor.getValue().editInstruction())
+                .isEqualTo("그래프의 기울기를 2에서 3으로 변경하려면 문제 구조와 그래프 관련 값을 함께 재생성해야 합니다.");
 
         // generation port는 항상 AI_GENERATE로 후보를 만들지만, 이 서비스는 AI_MODIFY Version으로
         // 등록하므로 processingService에 넘기기 전에 출처를 AI_MODIFY로 다시 붙여야 한다

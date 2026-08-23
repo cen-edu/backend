@@ -53,7 +53,8 @@ public class ProblemStructuralRegenerationService {
         var command = new ProblemGenerationCommand(plan.requestId(), java.util.UUID.randomUUID(),
                 GenerationPurpose.GENERAL_LEARNING_SHORTAGE, specification, baseModel.curriculum(),
                 java.util.List.of(new GenerationReference(GenerationReferenceRole.ORIGIN,
-                        baseVersion.getSourceQuestionId(), baseSnapshot, baseModel)), java.util.List.of());
+                        baseVersion.getSourceQuestionId(), baseSnapshot, baseModel)), java.util.List.of(),
+                null, editInstruction(plan));
         ProblemCandidateDraft candidate = port.generate(command);
         if (candidate == null || candidate.semanticModel() == null)
             throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID);
@@ -86,6 +87,20 @@ public class ProblemStructuralRegenerationService {
      * 있는 문항에서만 일어나므로, 그 결과가 다시 semantic model 없이 돌아오면 이후 검증에서
      * PROBLEM_SEMANTIC_MODEL_INVALID로 막힌다.
      */
+    /**
+     * 교사가 실제로 요청한 변경 내용을 재생성 LLM에 전달한다.
+     *
+     * <p>STRUCTURAL_REGENERATION은 semanticPatch.operations와 instructionDeltas가 항상 비어
+     * 있어야 하는 mode라(가드·분류기 규칙), 이 시점에는 교사의 원 요청을 담은 자유 텍스트가
+     * {@link com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemSemanticPatch#assistantMessage()}에만
+     * 남아 있다. 이걸 넘기지 않으면 재생성 프롬프트는 origin과 "비슷하거나 더 어려운" 문제를
+     * 만들라는 범용 지시만 받아서, 교사가 요청한 구체적인 값 변경을 반영하지 못하고 원본과
+     * 거의 동일한 후보를 다시 만들어낸다.
+     */
+    private String editInstruction(ProblemEditExecutionPlan plan) {
+        return plan.semanticPatch() == null ? null : plan.semanticPatch().assistantMessage();
+    }
+
     private VisualGenerationRequirement visualRequirement(ProblemSemanticModelV1 baseModel) {
         if (!baseModel.intent().visualRequired() || baseModel.diagrams().isEmpty()) {
             return VisualGenerationRequirement.none();

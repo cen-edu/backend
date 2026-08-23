@@ -24,6 +24,9 @@ public final class ProblemSemanticGenerationPromptFactory {
             }
             command.references().stream().filter(r -> r.role() == com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole.ORIGIN)
                     .findFirst().ifPresent(origin -> requestData.put("originVisual", originVisual(origin)));
+            if (command.editInstruction() != null && !command.editInstruction().isBlank()) {
+                requestData.put("editInstruction", command.editInstruction());
+            }
             request = mapper.writeValueAsString(requestData);
         }
         catch (Exception e) { throw new IllegalStateException("semantic generation request를 만들 수 없습니다.", e); }
@@ -65,6 +68,10 @@ public final class ProblemSemanticGenerationPromptFactory {
                 diagram을 정확히 하나 생성하고, 본문에 그림 정보를 전부 중복하지 마라. 조건을 만족하지 않으면
                 visualRequired=false와 diagrams=[]를 출력하라.
                 visualRequirement.mode가 PRESERVE_ORIGIN이면 originVisual의 visualKind와 diagram 구조를 유지하라.
+                CURRENT_REQUEST_JSON에 editInstruction이 있으면 이건 임의로 비슷한 문제를 만들라는 뜻이
+                아니라 교사가 origin 문제에 실제로 요청한 구체적인 변경이다. origin의 구조와 스타일은
+                유지하되 editInstruction이 요구하는 값·조건을 정확히 반영해서 다시 만들어라.
+                editInstruction이 없으면 origin과 비슷하거나 조금 더 어려운 변형을 만들어라.
                 최종적으로 학생에게 표시되는 문제·풀이·해설의 수식은 인라인 LaTeX $...$ 형식을 사용하고,
                 비교용 정답 값에는 $, $$, \\(, \\) 구분자를 넣지 마라.
                 CURRENT_REQUEST_JSON:\n%s%s
