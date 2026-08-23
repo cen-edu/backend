@@ -35,32 +35,51 @@ public class ProblemGenerationPlanningService {
     private final ObjectProvider<ProblemReferenceRetrievalPort> retrievalPort;
     private final ObjectProvider<ProblemRetrievalTracePort> tracePort;
     private final ProblemRagProperties ragProperties;
+    private final java.util.concurrent.ExecutorService planningExecutor;
 
     public ProblemGenerationPlanningService(ProblemQuestionSelector selector,
                                             ProblemBankSnapshotQueryService snapshotQueryService) {
-        this(selector, snapshotQueryService, null, null, null);
+        this(selector, snapshotQueryService, null, null, null, null);
     }
 
     /** 검색·추적 Port가 선택적으로 연결된 생성 계획 서비스를 구성한다. */
-    @Autowired
     public ProblemGenerationPlanningService(ProblemQuestionSelector selector,
                                             ProblemBankSnapshotQueryService snapshotQueryService,
                                             ObjectProvider<ProblemReferenceRetrievalPort> retrievalPort,
                                             ObjectProvider<ProblemRetrievalTracePort> tracePort,
                                             ProblemRagProperties ragProperties) {
+        this(selector, snapshotQueryService, retrievalPort, tracePort, ragProperties, null);
+    }
+
+    /** 부족분 RAG 검색을 요구(소단원) 간 병렬 실행할 fan-out 풀을 연결한다(null이면 순차 실행). */
+    @Autowired
+    public ProblemGenerationPlanningService(ProblemQuestionSelector selector,
+                                            ProblemBankSnapshotQueryService snapshotQueryService,
+                                            ObjectProvider<ProblemReferenceRetrievalPort> retrievalPort,
+                                            ObjectProvider<ProblemRetrievalTracePort> tracePort,
+                                            ProblemRagProperties ragProperties,
+                                            @org.springframework.beans.factory.annotation.Qualifier("problemPlanningRetrievalExecutor")
+                                            java.util.concurrent.ExecutorService planningExecutor) {
         this.selector = selector;
         this.snapshotQueryService = snapshotQueryService;
         this.retrievalPort = retrievalPort;
         this.tracePort = tracePort;
         this.ragProperties = ragProperties;
+        this.planningExecutor = planningExecutor;
     }
 
-    /** 요청 조건을 화면 순서가 보존된 실행 계획으로 변환한다. */
+    /** 요청 조건을 화면 순서가 보존된 실행 계획으로 변환한다.
+     *
+     * <p>Pass 1(순차): 은행 선택으로 재사용 슬롯과 부족분 수량을 확정한다. 전역 {@code selectedIds}를
+     * 순차로 쌓아 소단원 간 은행 문항 중복 재사용을 막는 정합성을 그대로 보존한다.
+     * <p>Pass 2(요구 간 병렬): 부족분 RAG 검색만 fan-out으로 병렬 실행한다. 요구 내부의 부족 슬롯
+     * 루프는 순차를 유지해 같은 소단원 안의 예시 다양성(누적 제외)을 보존한다. 검색은 few-shot 예시
+     * 제공용이라 정답·문항 수에 영향이 없고, 소단원 간 예시가 약간 더 겹칠 수 있는 것이 유일한 차이다.
+     * <p>Pass 3(순차): 요청 순서대로 재사용·AI 슬롯을 이어붙이고 화면 순서 인덱스를 매긴다. */
     public ProblemGenerationPlan plan(UUID clientRequestId, GenerationJobType jobType,
                                       List<ProblemGenerationRequirement> requirements) {
-        List<ProblemGenerationSlotPlan> slots = new ArrayList<>();
         Set<Long> selectedIds = new HashSet<>();
-        int index = 1;
+        List<RequirementStage> stages = new ArrayList<>(requirements.size());
         for (ProblemGenerationRequirement requirement : requirements) {
             List<ProblemQuestion> bank = selector.selectAvailable(requirement.subUnitId(),
                 requirement.difficulty(), requirement.questionType(), Integer.MAX_VALUE, selectedIds);
@@ -69,21 +88,34 @@ public class ProblemGenerationPlanningService {
             selectedIds.addAll(candidateIds);
             java.util.Map<Long, BankSnapshotResult> resultById = snapshotResults.stream()
                     .collect(java.util.stream.Collectors.toMap(BankSnapshotResult::questionId, result -> result));
-            int reusableCount = 0;
+            List<BankReuse> reuses = new ArrayList<>();
             for (ProblemQuestion question : bank) {
                 BankSnapshotResult result = resultById.get(question.getId());
                 if (result == null || !result.reusable()) continue;
                 selectedIds.add(question.getId());
-                reusableCount++;
-                slots.add(new ProblemGenerationSlotPlan(index++, GenerationSlotSource.BANK_REUSE,
-                    question.getId(), result.snapshot(), result.assetStorageKeys(), null));
-                if (reusableCount == requirement.count()) break;
+                reuses.add(new BankReuse(question.getId(), result.snapshot(), result.assetStorageKeys()));
+                if (reuses.size() == requirement.count()) break;
             }
-            int shortage = requirement.count() - reusableCount;
-            for (int i = 0; i < shortage; i++) {
-                ProblemGenerationCommand command = createGenerationCommand(requirement, selectedIds);
-                selectedIds.addAll(command.references().stream().map(GenerationReference::sourceQuestionId)
-                        .filter(java.util.Objects::nonNull).toList());
+            int shortage = requirement.count() - reuses.size();
+            stages.add(new RequirementStage(requirement, reuses, shortage, Set.copyOf(selectedIds)));
+        }
+
+        List<java.util.concurrent.Callable<List<ProblemGenerationCommand>>> tasks = stages.stream()
+                .map(stage -> (java.util.concurrent.Callable<List<ProblemGenerationCommand>>)
+                        () -> buildShortageCommands(stage))
+                .toList();
+        List<List<ProblemGenerationCommand>> commandsPerStage =
+                OrderedParallelPlanner.map(planningExecutor, tasks);
+
+        List<ProblemGenerationSlotPlan> slots = new ArrayList<>();
+        int index = 1;
+        for (int stageIndex = 0; stageIndex < stages.size(); stageIndex++) {
+            RequirementStage stage = stages.get(stageIndex);
+            for (BankReuse reuse : stage.reuses()) {
+                slots.add(new ProblemGenerationSlotPlan(index++, GenerationSlotSource.BANK_REUSE,
+                    reuse.questionId(), reuse.snapshot(), reuse.assetStorageKeys(), null));
+            }
+            for (ProblemGenerationCommand command : commandsPerStage.get(stageIndex)) {
                 slots.add(new ProblemGenerationSlotPlan(index++, GenerationSlotSource.AI_GENERATION,
                     null, command));
             }
@@ -96,6 +128,21 @@ public class ProblemGenerationPlanningService {
                 slots.stream().filter(slot -> slot.source() == GenerationSlotSource.AI_GENERATION).count(),
                 ragProperties != null && ragProperties.enabled());
         return new ProblemGenerationPlan(clientRequestId, jobType, slots);
+    }
+
+    /** 한 요구의 부족분 AI 명령을 순차로 만든다. 요구-지역 제외 집합을 은행 확정 시점의 스냅샷으로
+     *  시작해, 같은 소단원 안에서 생성되는 문항끼리는 예시가 겹치지 않도록 누적 제외를 보존한다. */
+    private List<ProblemGenerationCommand> buildShortageCommands(RequirementStage stage) {
+        if (stage.shortage() <= 0) return List.of();
+        List<ProblemGenerationCommand> commands = new ArrayList<>(stage.shortage());
+        Set<Long> excluded = new HashSet<>(stage.exclusionSeed());
+        for (int i = 0; i < stage.shortage(); i++) {
+            ProblemGenerationCommand command = createGenerationCommand(stage.requirement(), excluded);
+            excluded.addAll(command.references().stream().map(GenerationReference::sourceQuestionId)
+                    .filter(java.util.Objects::nonNull).toList());
+            commands.add(command);
+        }
+        return commands;
     }
 
     private ProblemGenerationCommand createGenerationCommand(ProblemGenerationRequirement requirement,
@@ -158,5 +205,16 @@ public class ProblemGenerationPlanningService {
 
     private long elapsedMs(long startedAt) {
         return (System.nanoTime() - startedAt) / 1_000_000;
+    }
+
+    /** Pass 1에서 확정한 한 요구의 은행 재사용·부족분 수량·검색 제외 시드를 담는 중간 결과다. */
+    private record RequirementStage(ProblemGenerationRequirement requirement,
+                                    List<BankReuse> reuses, int shortage, Set<Long> exclusionSeed) {
+    }
+
+    /** 은행 재사용 슬롯 하나에 필요한 최소 정보다. 최종 슬롯 인덱스는 Pass 3에서 매긴다. */
+    private record BankReuse(Long questionId,
+                             com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 snapshot,
+                             java.util.Map<String, String> assetStorageKeys) {
     }
 }

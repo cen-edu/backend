@@ -50,9 +50,10 @@ public class PersonalizedProblemGenerationPlanningService {
     private final ObjectProvider<ProblemRetrievalTracePort> traceProvider;
     private final ProblemRagProperties ragProperties;
     private final ProblemVisualReferenceQueryService visualReferenceQueryService;
+    private final java.util.concurrent.ExecutorService planningExecutor;
 
     public PersonalizedProblemGenerationPlanningService(ProblemBankSnapshotQueryService snapshotQueryService) {
-        this(snapshotQueryService, null, null, null, null);
+        this(snapshotQueryService, null, null, null, null, null);
     }
 
     /** RAG 검색과 fallback 추적 Port를 선택적으로 연결해 계획기를 구성한다. */
@@ -61,21 +62,35 @@ public class PersonalizedProblemGenerationPlanningService {
             ObjectProvider<ProblemReferenceRetrievalPort> retrievalProvider,
             ObjectProvider<ProblemRetrievalTracePort> traceProvider,
             ProblemRagProperties ragProperties) {
-        this(snapshotQueryService, retrievalProvider, traceProvider, ragProperties, null);
+        this(snapshotQueryService, retrievalProvider, traceProvider, ragProperties, null, null);
     }
 
-    @Autowired
     public PersonalizedProblemGenerationPlanningService(
             ProblemBankSnapshotQueryService snapshotQueryService,
             ObjectProvider<ProblemReferenceRetrievalPort> retrievalProvider,
             ObjectProvider<ProblemRetrievalTracePort> traceProvider,
             ProblemRagProperties ragProperties,
             ProblemVisualReferenceQueryService visualReferenceQueryService) {
+        this(snapshotQueryService, retrievalProvider, traceProvider, ragProperties,
+                visualReferenceQueryService, null);
+    }
+
+    /** ADVANCED 검색을 소단원 간 병렬 실행할 fan-out 풀을 연결한다(null이면 순차 실행). */
+    @Autowired
+    public PersonalizedProblemGenerationPlanningService(
+            ProblemBankSnapshotQueryService snapshotQueryService,
+            ObjectProvider<ProblemReferenceRetrievalPort> retrievalProvider,
+            ObjectProvider<ProblemRetrievalTracePort> traceProvider,
+            ProblemRagProperties ragProperties,
+            ProblemVisualReferenceQueryService visualReferenceQueryService,
+            @org.springframework.beans.factory.annotation.Qualifier("problemPlanningRetrievalExecutor")
+            java.util.concurrent.ExecutorService planningExecutor) {
         this.snapshotQueryService = snapshotQueryService;
         this.retrievalProvider = retrievalProvider;
         this.traceProvider = traceProvider;
         this.ragProperties = ragProperties;
         this.visualReferenceQueryService = visualReferenceQueryService;
+        this.planningExecutor = planningExecutor;
     }
 
     /** 교육과정 순서와 REVIEW·SIMILAR·ADVANCED 단계 순서를 보존한 계획을 만든다. */
@@ -275,13 +290,18 @@ public class PersonalizedProblemGenerationPlanningService {
                                      ReissueProposalResponse proposal,
                                      Map<Long, CustomProblemGenerationItemRequest> requests,
                                      Map<Long, CurriculumPathResponse> paths) {
+        // ADVANCED 검색은 제외 집합이 없어(retrieveAdvancedExamples가 Set.of()) 소단원 간 완전히 독립적이다.
+        // 순서 보존 fan-out으로 병렬 실행하되, executor가 null이면 순차로 폴백한다.
+        List<java.util.concurrent.Callable<ProblemGenerationSlotPlan>> tasks = new ArrayList<>();
         for (ReissueProposalResponse.SubUnitProposal subUnit : proposal.subcategories()) {
             CustomProblemGenerationItemRequest request = requests.get(subUnit.subUnitId());
             if (request == null) continue;
+            CurriculumPathResponse path = paths.get(subUnit.subUnitId());
             for (int i = 0; i < request.advancedCount(); i++) {
-                slots.add(advancedAiSlot(subUnit, paths.get(subUnit.subUnitId())));
+                tasks.add(() -> advancedAiSlot(subUnit, path));
             }
         }
+        slots.addAll(OrderedParallelPlanner.map(planningExecutor, tasks));
     }
 
     /** 취약 분포와 풀이 단계를 포함한 ADVANCED AI 슬롯을 만든다. */
