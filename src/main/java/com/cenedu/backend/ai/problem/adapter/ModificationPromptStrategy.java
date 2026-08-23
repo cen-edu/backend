@@ -24,8 +24,9 @@ public class ModificationPromptStrategy {
                 protectedTargets에 포함된 영역은 원문과 의미를 바꾸지 마라.
                 requestedTargets와 instructions에 해당하는 변경만 적용하라.
                 schemaVersion, requestId, DB ID, storageKey는 출력하지 마라.
-                answerUnits가 requestedTargets 또는 dependentTargets일 때만 정답을 변경하라.
-                그 외 answerUnits는 빈 배열로 반환해도 서버가 기준 Snapshot의 값을 보존한다.
+                action이 REPLACE면 모든 필드가 대상이다 — 정답을 포함해 지시에 맞게 전부 다시 작성하라.
+                action이 REPLACE가 아니면 answerUnits가 requestedTargets 또는 dependentTargets일 때만 정답을 변경하라.
+                그 경우 그 외 answerUnits는 빈 배열로 반환해도 서버가 기준 Snapshot의 값을 보존한다.
                 action=%s, requestedTargets=%s, dependentTargets=%s, protectedTargets=%s, instructions=%s
                 editableContext=%s
                 """.formatted(plan.action(), plan.requestedTargets(), plan.dependentTargets(),
