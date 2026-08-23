@@ -148,6 +148,20 @@ class ProblemGenerationWorkerTest {
     }
 
     @Test
+    @DisplayName("semantic pipeline이 내부 재시도를 소진한 실패는 outer attempt를 다시 돌지 않는다")
+    void doesNotRetryWhenInnerPipelineAlreadyExhaustedRetries() {
+        when(generationPort.generate(any())).thenThrow(
+                new com.cenedu.backend.global.common.BusinessException(
+                        com.cenedu.backend.global.common.ErrorCode.PROBLEM_GENERATION_RETRY_EXHAUSTED));
+
+        worker.execute(1L);
+
+        verify(generationPort, times(1)).generate(any());
+        verify(jobService, org.mockito.Mockito.never()).prepareRetry(any(), any());
+        verify(jobService).fail(workItem, "GENERATION_RETRY_EXHAUSTED");
+    }
+
+    @Test
     @DisplayName("검증 기술 오류는 새 후보를 생성하지 않고 Item을 실패로 종료한다")
     void verificationErrorDoesNotRegenerate() {
         when(generationPort.generate(any())).thenAnswer(invocation ->

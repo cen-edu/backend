@@ -36,6 +36,54 @@ class ProblemEditOutputGuardTest {
     }
 
     @Test
+    void CONTINUE_COLLECTION은_semantic_model이_있어도_patch_없이_통과한다() {
+        ObjectProvider<ObjectMapper> provider = org.mockito.Mockito.mock(ObjectProvider.class);
+        when(provider.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(new ObjectMapper());
+        var guard = new ProblemEditOutputGuard(provider);
+        UUID requestId = UUID.randomUUID();
+        var payload = new ProblemEditAgentPayload(2, requestId, 1L, 20L, AuthoringInteractionStatus.COLLECTING,
+                null, ProblemSnapshotFixtures.shortInput(), org.mockito.Mockito.mock(com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1.class), List.of());
+        var request = AgentRequest.of(AgentKind.PROBLEM_EDIT, new Actor(7L, Actor.Role.TEACHER), "수정", Map.of(ProblemEditAgent.REQUEST_KEY, payload));
+        var result = new ProblemEditConversationResult(EditConversationAction.CONTINUE_COLLECTION, List.of(), null, "어떤 값을 바꿀까요?");
+
+        GuardDecision decision = guard.inspect(request, AgentResponse.ofData(Map.of(ProblemEditAgentResultEnvelope.RESPONSE_KEY, result)));
+
+        assertThat(decision.blocked()).isFalse();
+    }
+
+    @Test
+    void CANCEL은_semantic_model이_있어도_patch_없이_통과한다() {
+        ObjectProvider<ObjectMapper> provider = org.mockito.Mockito.mock(ObjectProvider.class);
+        when(provider.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(new ObjectMapper());
+        var guard = new ProblemEditOutputGuard(provider);
+        UUID requestId = UUID.randomUUID();
+        var payload = new ProblemEditAgentPayload(2, requestId, 1L, 20L, AuthoringInteractionStatus.COLLECTING,
+                null, ProblemSnapshotFixtures.shortInput(), org.mockito.Mockito.mock(com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1.class), List.of());
+        var request = AgentRequest.of(AgentKind.PROBLEM_EDIT, new Actor(7L, Actor.Role.TEACHER), "취소", Map.of(ProblemEditAgent.REQUEST_KEY, payload));
+        var result = new ProblemEditConversationResult(EditConversationAction.CANCEL, List.of(), null, "취소했습니다.");
+
+        GuardDecision decision = guard.inspect(request, AgentResponse.ofData(Map.of(ProblemEditAgentResultEnvelope.RESPONSE_KEY, result)));
+
+        assertThat(decision.blocked()).isFalse();
+    }
+
+    @Test
+    void CONFIRM_EXECUTION은_semantic_model이_있어도_patch_없이_통과한다() {
+        ObjectProvider<ObjectMapper> provider = org.mockito.Mockito.mock(ObjectProvider.class);
+        when(provider.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(new ObjectMapper());
+        var guard = new ProblemEditOutputGuard(provider);
+        UUID requestId = UUID.randomUUID();
+        var payload = new ProblemEditAgentPayload(2, requestId, 1L, 20L, AuthoringInteractionStatus.AWAITING_CONFIRMATION,
+                null, ProblemSnapshotFixtures.shortInput(), org.mockito.Mockito.mock(com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1.class), List.of());
+        var request = AgentRequest.of(AgentKind.PROBLEM_EDIT, new Actor(7L, Actor.Role.TEACHER), "확인", Map.of(ProblemEditAgent.REQUEST_KEY, payload));
+        var result = new ProblemEditConversationResult(EditConversationAction.CONFIRM_EXECUTION, List.of(), null, "실행합니다.");
+
+        GuardDecision decision = guard.inspect(request, AgentResponse.ofData(Map.of(ProblemEditAgentResultEnvelope.RESPONSE_KEY, result)));
+
+        assertThat(decision.blocked()).isFalse();
+    }
+
+    @Test
     void semanticPatch의_request와_base가_다르면_차단한다() {
         ObjectProvider<ObjectMapper> provider = org.mockito.Mockito.mock(ObjectProvider.class);
         when(provider.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(new ObjectMapper());

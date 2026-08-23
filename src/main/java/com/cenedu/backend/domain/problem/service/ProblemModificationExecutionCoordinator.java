@@ -97,8 +97,10 @@ public class ProblemModificationExecutionCoordinator {
                     .orElseThrow(() -> new com.cenedu.backend.global.common.BusinessException(
                         com.cenedu.backend.global.common.ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
             if (baseVersion.getSemanticModel() == null && semanticExtractionService != null) {
-                var extraction = semanticExtractionService.ensureVersionSemantic(
-                        teacherId, plan.sessionId(), baseVersion.getId(), currentCurriculum(baseSnapshot));
+                var extraction = baseVersion.getSourceQuestionId() != null
+                        ? semanticExtractionService.ensureVersionSemantic(
+                                teacherId, plan.sessionId(), baseVersion.getId(), currentCurriculum(baseSnapshot))
+                        : extractFinalizedQuestionSemantic(teacherId, plan, baseSnapshot);
                 if (extraction.status() == SemanticExtractionStatus.EXTRACTED) {
                     baseVersion = versionRepository.findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
                             .orElseThrow(() -> new com.cenedu.backend.global.common.BusinessException(
@@ -106,14 +108,14 @@ public class ProblemModificationExecutionCoordinator {
                 } else if (plan.instructions() != null && !plan.instructions().isEmpty()) {
                     Object fallback = modificationWorker.execute(teacherId,
                             new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
-                                    plan.requestId(), plan, baseSnapshot, null));
+                                    plan.requestId(), plan, baseSnapshot, semanticModel(baseVersion)));
                     return legacyFallbackResult(plan, fallback);
                 }
             }
             if (baseVersion.getSemanticModel() == null) {
                 Object fallback = modificationWorker.execute(teacherId,
                         new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
-                                plan.requestId(), plan, baseSnapshot, null));
+                                plan.requestId(), plan, baseSnapshot, semanticModel(baseVersion)));
                 return legacyFallbackResult(plan, fallback);
             }
             if (plan.semanticPatch().mode() == com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode.STRUCTURAL_REGENERATION) {
@@ -145,9 +147,12 @@ public class ProblemModificationExecutionCoordinator {
                 return bankResult;
             }
         }
+        ProblemAuthoringVersion executionBaseVersion = versionRepository
+                .findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
+                .orElseThrow();
         Object result = modificationWorker.execute(teacherId,
                 new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
-                        plan.requestId(), plan, baseSnapshot, null));
+                        plan.requestId(), plan, baseSnapshot, semanticModel(executionBaseVersion)));
         if (plan.action() == EditAction.REPLACE && decisionEventService != null) decisionEventService.recordReplacement(
                 teacherId, plan.sessionId(), plan.baseVersionId(), plan.requestId(), plan.instructions());
         return result;
@@ -162,6 +167,28 @@ public class ProblemModificationExecutionCoordinator {
         return new CurriculumScope(path.curriculumRevision(), path.schoolLevel(), path.grade(),
                 path.semester() == null ? null : path.semester().intValue(), path.achievementStandardId(),
                 path.subUnitId(), path.majorUnitName(), path.middleUnitName(), path.subUnitName());
+    }
+
+    /** 문제은행에서 재진입한 최종화 세션은 Version에 sourceQuestionId가 없을 수 있어 최종 문항을 기준으로 추출한다. */
+    private com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionResult
+    extractFinalizedQuestionSemantic(long teacherId, ProblemEditExecutionPlan plan,
+            com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 snapshot) {
+        var session = sessionRepository.findByIdAndOwnerTeacherId(plan.sessionId(), teacherId)
+                .orElseThrow();
+        if (session.getFinalizedQuestionId() == null) {
+            return new com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionResult(
+                    SemanticExtractionStatus.UNSUPPORTED, null, java.util.List.of("source question이 없습니다."));
+        }
+        return semanticExtractionService.ensureQuestionSemantic(session.getFinalizedQuestionId(),
+                currentCurriculum(snapshot), snapshot);
+    }
+
+    /** 수정 기준 Version에 저장된 semantic model을 후보 검증 경로로 전달한다. */
+    private com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1 semanticModel(
+            ProblemAuthoringVersion version) {
+        if (version == null || version.getSemanticModel() == null) return null;
+        return jsonCodec.read(version.getSemanticModel(),
+                com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1.class);
     }
 
     private ProblemModificationExecutionResult legacyFallbackResult(ProblemEditExecutionPlan plan, Object result) {

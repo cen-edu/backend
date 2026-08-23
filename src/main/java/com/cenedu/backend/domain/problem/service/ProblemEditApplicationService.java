@@ -5,9 +5,12 @@ import java.util.List;
 import java.util.UUID;
 
 import com.cenedu.backend.domain.problem.authoring.edit.*;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
+import com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionStatus;
 import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
 import com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemModificationExecutionResult;
+import com.cenedu.backend.domain.curriculum.service.CurriculumUnitQueryService;
 import com.cenedu.backend.domain.problem.dto.request.ProblemEditTurnRequest;
 import com.cenedu.backend.domain.problem.dto.response.ProblemEditTurnResponse;
 import com.cenedu.backend.domain.problem.entity.*;
@@ -26,6 +29,8 @@ public class ProblemEditApplicationService {
     private final ProblemEditConversationService conversationService;
     private final ProblemEditAgentGateway gateway;
     private final ProblemModificationExecutionCoordinator executionCoordinator;
+    private ProblemSemanticExtractionService semanticExtractionService;
+    private CurriculumUnitQueryService curriculumUnitQueryService;
 
     public ProblemEditApplicationService(ProblemAuthoringSessionRepository sessionRepository,
             ProblemAuthoringVersionRepository versionRepository, ProblemAuthoringJsonCodec jsonCodec,
@@ -37,6 +42,18 @@ public class ProblemEditApplicationService {
         this.conversationService = conversationService;
         this.gateway = gateway;
         this.executionCoordinator = executionCoordinator;
+    }
+
+    /** semantic model이 없는 기존 Version을 편집 턴 시작 전에 채우는 lazy extraction 경계를 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSemanticExtractionService(ProblemSemanticExtractionService service) {
+        this.semanticExtractionService = service;
+    }
+
+    /** extraction에 현재 Snapshot의 소단원 curriculum scope를 제공한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setCurriculumUnitQueryService(CurriculumUnitQueryService service) {
+        this.curriculumUnitQueryService = service;
     }
 
     /** 수정 요청을 해석하고 확인 요청일 때만 구조화 명령을 Session에 저장한다. */
@@ -81,6 +98,15 @@ public class ProblemEditApplicationService {
             }
             return ProblemEditTurnResponse.from(new ProblemEditConversationResult(
                     EditConversationAction.CONFIRM_EXECUTION, List.of(), "수정 요청을 실행했습니다."), confirmedExecutionResult);
+        }
+        if (semanticModel == null && semanticExtractionService != null) {
+            var extraction = semanticExtractionService.ensureVersionSemantic(
+                    teacherId, sessionId, baseVersionId, currentCurriculum(baseSnapshot));
+            if (extraction.status() == SemanticExtractionStatus.EXTRACTED) {
+                version = versionRepository.findByIdAndSessionId(baseVersionId, sessionId).orElseThrow();
+                semanticModel = version.getSemanticModel() == null ? null
+                        : jsonCodec.read(version.getSemanticModel(), ProblemSemanticModelV1.class);
+            }
         }
         ProblemEditAgentPayload payload = new ProblemEditAgentPayload(2, UUID.randomUUID(), sessionId, baseVersionId,
                 session.getInteractionStatus(), request.selectedTarget(),
@@ -133,5 +159,15 @@ public class ProblemEditApplicationService {
         if (session.getPendingInstructions() == null) return List.of();
         PendingProblemEditCommand pending = jsonCodec.read(session.getPendingInstructions(), PendingProblemEditCommand.class);
         return pending.instructions() == null ? List.of() : pending.instructions();
+    }
+
+    private CurriculumScope currentCurriculum(QuestionSnapshotV1 snapshot) {
+        if (curriculumUnitQueryService == null || snapshot.metadata().subUnitId() == null) return null;
+        var path = curriculumUnitQueryService.getPathsBySubUnitIds(
+                java.util.Set.of(snapshot.metadata().subUnitId())).get(snapshot.metadata().subUnitId());
+        if (path == null) return null;
+        return new CurriculumScope(path.curriculumRevision(), path.schoolLevel(), path.grade(),
+                path.semester() == null ? null : path.semester().intValue(), path.achievementStandardId(),
+                path.subUnitId(), path.majorUnitName(), path.middleUnitName(), path.subUnitName());
     }
 }

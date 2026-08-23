@@ -65,11 +65,16 @@ public class ProblemSemanticExtractionService {
                 .orElseThrow(() -> new IllegalArgumentException("authoring session 소유권이 없습니다."));
         ProblemAuthoringVersion version = versionRepository.findByIdAndSessionId(versionId, sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("authoring version을 찾을 수 없습니다."));
-        if (version.getSourceQuestionId() == null) {
+        Long sourceQuestionId = version.getSourceQuestionId();
+        var session = sessionRepository.findByIdAndOwnerTeacherId(sessionId, ownerTeacherId).orElse(null);
+        if (sourceQuestionId == null && session != null && session.getFinalizedQuestionId() != null) {
+            sourceQuestionId = session.getFinalizedQuestionId();
+        }
+        if (sourceQuestionId == null) {
             return new SemanticExtractionResult(SemanticExtractionStatus.UNSUPPORTED, null,
                     java.util.List.of("source question이 없습니다."));
         }
-        SemanticExtractionResult result = ensureQuestionSemantic(version.getSourceQuestionId(), curriculum,
+        SemanticExtractionResult result = ensureQuestionSemantic(sourceQuestionId, curriculum,
                 readSnapshot(version.getSnapshot()));
         if (result.status() == SemanticExtractionStatus.EXTRACTED && result.semanticModel() != null) {
             transactionTemplate.executeWithoutResult(status -> versionRepository.findByIdAndSessionId(versionId, sessionId)

@@ -42,6 +42,16 @@ public class ProblemSnapshotEntityMapper {
                                                 ProblemQuestion derivedFrom,
                                                 SemanticModelDocument semanticModel,
                                                 Map<String, RenderSpecDocument> renderSpecs) {
+        return map(snapshot, finalAssetKeys, derivedFrom, semanticModel, renderSpecs, Map.of());
+    }
+
+    /** Snapshot 자산을 계획된 역할과 최종 저장 키로 함께 영속화한다. */
+    public ProblemQuestionPersistenceBundle map(QuestionSnapshotV1 snapshot,
+                                                Map<String, String> finalAssetKeys,
+                                                ProblemQuestion derivedFrom,
+                                                SemanticModelDocument semanticModel,
+                                                Map<String, RenderSpecDocument> renderSpecs,
+                                                Map<String, AssetRole> assetRoles) {
         requireValid(snapshot);
         SnapshotMetadata metadata = snapshot.metadata();
         String contentBlocks = write(snapshot.contentBlocks());
@@ -72,7 +82,9 @@ public class ProblemSnapshotEntityMapper {
                 .map(r -> ProblemRubricItem.create(question, r.displayOrder(), r.criterion(), (short) r.weightPercent(), null, null))
                 .toList();
         List<ProblemAsset> assets = snapshot.assets().stream().map((a) -> {
-            ProblemAsset asset = ProblemAsset.create(question, a.assetKey(), AssetRole.FIGURE,
+            AssetRole role = assetRoles == null ? null : assetRoles.get(a.assetKey());
+            if (role == null) throw new IllegalArgumentException("자산 역할이 없습니다: " + a.assetKey());
+            ProblemAsset asset = ProblemAsset.create(question, a.assetKey(), role,
                     (short) snapshot.assets().indexOf(a), requiredAssetKey(finalAssetKeys, a.assetKey()),
                     0, 0, a.altText());
             RenderSpecDocument renderSpec = renderSpecs == null ? null : renderSpecs.get(a.assetKey());

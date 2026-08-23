@@ -10,6 +10,7 @@ import com.cenedu.backend.domain.analysis.reissue.ReissueProposalResponse;
 import com.cenedu.backend.domain.curriculum.dto.response.CurriculumPathResponse;
 import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
+import com.cenedu.backend.domain.problem.authoring.visual.*;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationReference;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification;
@@ -48,22 +49,33 @@ public class PersonalizedProblemGenerationPlanningService {
     private final ObjectProvider<ProblemReferenceRetrievalPort> retrievalProvider;
     private final ObjectProvider<ProblemRetrievalTracePort> traceProvider;
     private final ProblemRagProperties ragProperties;
+    private final ProblemVisualReferenceQueryService visualReferenceQueryService;
 
     public PersonalizedProblemGenerationPlanningService(ProblemBankSnapshotQueryService snapshotQueryService) {
-        this(snapshotQueryService, null, null, null);
+        this(snapshotQueryService, null, null, null, null);
     }
 
     /** RAG 검색과 fallback 추적 Port를 선택적으로 연결해 계획기를 구성한다. */
-    @Autowired
     public PersonalizedProblemGenerationPlanningService(
             ProblemBankSnapshotQueryService snapshotQueryService,
             ObjectProvider<ProblemReferenceRetrievalPort> retrievalProvider,
             ObjectProvider<ProblemRetrievalTracePort> traceProvider,
             ProblemRagProperties ragProperties) {
+        this(snapshotQueryService, retrievalProvider, traceProvider, ragProperties, null);
+    }
+
+    @Autowired
+    public PersonalizedProblemGenerationPlanningService(
+            ProblemBankSnapshotQueryService snapshotQueryService,
+            ObjectProvider<ProblemReferenceRetrievalPort> retrievalProvider,
+            ObjectProvider<ProblemRetrievalTracePort> traceProvider,
+            ProblemRagProperties ragProperties,
+            ProblemVisualReferenceQueryService visualReferenceQueryService) {
         this.snapshotQueryService = snapshotQueryService;
         this.retrievalProvider = retrievalProvider;
         this.traceProvider = traceProvider;
         this.ragProperties = ragProperties;
+        this.visualReferenceQueryService = visualReferenceQueryService;
     }
 
     /** 교육과정 순서와 REVIEW·SIMILAR·ADVANCED 단계 순서를 보존한 계획을 만든다. */
@@ -218,11 +230,13 @@ public class PersonalizedProblemGenerationPlanningService {
             java.util.Set<Long> alreadyReusedIds, UUID retrievalRequestId) {
         ProblemReferenceRetrievalPort port = ragProperties != null && ragProperties.enabled()
                 && retrievalProvider != null ? retrievalProvider.getIfAvailable() : null;
-        ProblemReferenceQuery query = new ProblemReferenceQuery(retrievalRequestId,
+        VisualReferenceKind requiredVisualKind = visualReferenceQueryService == null ? null
+                : visualReferenceQueryService.get(originId).kind();
+        ProblemReferenceQuery query = ProblemReferenceQuery.withVisualKind(retrievalRequestId,
                 GenerationPurpose.PERSONALIZED_SIMILAR_SHORTAGE, curriculum, QuestionType.STEP_FILL,
                 similar.difficulty(), originId, originSnapshot,
                 ragProperties == null ? 40 : ragProperties.candidateLimit(),
-                Math.min(4, requestedCount), excludedIds(similar, alreadyReusedIds));
+                Math.min(4, requestedCount), excludedIds(similar, alreadyReusedIds), requiredVisualKind);
         if (port == null) {
             log.info("event=problem_retrieval stage=RAG outcome=FALLBACK requestId={} fallbackReason={} candidateReferenceCount=0",
                     retrievalRequestId, RetrievalFallbackReason.PORT_UNAVAILABLE);
@@ -370,8 +384,11 @@ public class PersonalizedProblemGenerationPlanningService {
         }
         long originId = subUnit.similar().referenceQuestions().getFirst().questionId();
         CurriculumScope curriculum = curriculum(path);
+        VisualReferenceDescriptor visual = visualReferenceQueryService == null ? null : visualReferenceQueryService.get(originId);
+        if (visual != null && visual.kind() == VisualReferenceKind.UNKNOWN_FIGURE)
+            throw new BusinessException(ErrorCode.PROBLEM_VISUAL_SOURCE_UNSUPPORTED);
         return aiSlot(subUnit, path, stage, purpose, originId, curriculum,
-                List.of(new GenerationReference(GenerationReferenceRole.ORIGIN, originId, null)));
+                List.of(new GenerationReference(GenerationReferenceRole.ORIGIN, originId, null, null, visual)));
     }
 
     /** 이미 조회한 ORIGIN과 검색 예시를 사용해 AI 부족분 명령을 만든다. */
@@ -381,8 +398,12 @@ public class PersonalizedProblemGenerationPlanningService {
                                              CurriculumScope curriculum,
                                              List<GenerationReference> references) {
         String difficulty = stage == CustomStage.ADVANCED ? "high" : subUnit.similar().difficulty();
+        var originVisual = references.getFirst().visualReference();
+        var mode = originVisual == null ? VisualGenerationMode.NONE : VisualGenerationMode.PRESERVE_ORIGIN;
         GenerationSpecification specification = new GenerationSpecification(
-                QuestionType.STEP_FILL, difficulty, null, List.of());
+                QuestionType.STEP_FILL, difficulty, null, List.of(), false,
+                new VisualGenerationRequirement(mode,
+                        originVisual == null ? null : originVisual.kind()));
         ProblemGenerationCommand command = new ProblemGenerationCommand(UUID.randomUUID(), null,
                 purpose, specification, curriculum, references, List.of());
         return new ProblemGenerationSlotPlan(1, GenerationSlotSource.AI_GENERATION, null,

@@ -30,10 +30,11 @@ public class ProblemSearchIndexJdbcRepository {
         try { json = objectMapper.writeValueAsString(command); }
         catch (Exception e) { throw new IllegalArgumentException("검색 인덱싱 명령을 직렬화할 수 없습니다.", e); }
         int count = jdbc.update("""
-                INSERT INTO problem_search_index_task(question_id, idempotency_key, command, status, next_attempt_at)
-                VALUES (:questionId, :key, CAST(:command AS jsonb), 'PENDING', CURRENT_TIMESTAMP)
+                INSERT INTO problem_search_index_task(question_id, index_schema_version, idempotency_key, command, status, next_attempt_at)
+                VALUES (:questionId, :schemaVersion, :key, CAST(:command AS jsonb), 'PENDING', CURRENT_TIMESTAMP)
                 ON CONFLICT DO NOTHING
                 """, new MapSqlParameterSource().addValue("questionId", command.questionId())
+                .addValue("schemaVersion", command.indexSchemaVersion())
                 .addValue("key", command.idempotencyKey().toString()).addValue("command", json));
         return count == 1;
     }
@@ -61,8 +62,8 @@ public class ProblemSearchIndexJdbcRepository {
 
     /** 현재 READY 문서의 해시를 반환한다. */
     public Optional<ReadySearchIndexMetadata> findReadyMetadata(long questionId) {
-        List<ReadySearchIndexMetadata> result = jdbc.query("SELECT document_hash FROM problem_search_index WHERE question_id=:id AND index_status='READY'",
-                new MapSqlParameterSource("id", questionId), (rs, row) -> new ReadySearchIndexMetadata(rs.getString(1)));
+        List<ReadySearchIndexMetadata> result = jdbc.query("SELECT document_hash, index_schema_version FROM problem_search_index WHERE question_id=:id AND index_status='READY' ORDER BY index_schema_version DESC",
+                new MapSqlParameterSource("id", questionId), (rs, row) -> new ReadySearchIndexMetadata(rs.getString(1), rs.getShort(2)));
         return result.stream().findFirst();
     }
 
@@ -71,13 +72,14 @@ public class ProblemSearchIndexJdbcRepository {
                             EmbeddingResult embedding, String vectorLiteral) {
         jdbc.update("""
                 INSERT INTO problem_search_index(question_id, curriculum_revision, school_level, grade, semester,
-                    achievement_standard_id, sub_unit_id, question_type, difficulty, presentation, source_family_key,
+                    achievement_standard_id, sub_unit_id, question_type, difficulty, presentation, visual_kind, index_schema_version, source_family_key,
                     document_text, document_hash, duplicate_cluster_key, concept_keys, snapshot, embedding_model,
                     embedding_dimensions, embedding, index_status, deleted)
-                VALUES (:questionId,:revision,:school,:grade,:semester,:achievement,:subUnit,:type,:difficulty,:presentation,
+                VALUES (:questionId,:revision,:school,:grade,:semester,:achievement,:subUnit,:type,:difficulty,:presentation,:visualKind,:schemaVersion,
                     :family,:text,:hash,:duplicate,:concepts,CAST(:snapshot AS jsonb),:model,:dimensions,
                     CAST(:embedding AS vector),'READY',false)
                 ON CONFLICT (question_id) DO UPDATE SET document_text=EXCLUDED.document_text,
+                    visual_kind=EXCLUDED.visual_kind, index_schema_version=EXCLUDED.index_schema_version,
                     document_hash=EXCLUDED.document_hash, duplicate_cluster_key=EXCLUDED.duplicate_cluster_key,
                     concept_keys=EXCLUDED.concept_keys, snapshot=EXCLUDED.snapshot, embedding_model=EXCLUDED.embedding_model,
                     embedding_dimensions=EXCLUDED.embedding_dimensions, embedding=EXCLUDED.embedding,
@@ -87,7 +89,7 @@ public class ProblemSearchIndexJdbcRepository {
                 .addValue("grade", task.command().curriculum().grade()).addValue("semester", task.command().curriculum().semester())
                 .addValue("achievement", task.command().curriculum().achievementStandardId()).addValue("subUnit", task.command().curriculum().subUnitId())
                 .addValue("type", task.command().snapshot().metadata().questionType().name()).addValue("difficulty", task.command().snapshot().metadata().difficulty())
-                .addValue("presentation", task.command().snapshot().metadata().presentation().name()).addValue("family", document.sourceFamilyKey())
+                .addValue("presentation", task.command().snapshot().metadata().presentation().name()).addValue("visualKind", task.command().visualKind().name()).addValue("schemaVersion", task.command().indexSchemaVersion()).addValue("family", document.sourceFamilyKey())
                 .addValue("text", document.documentText()).addValue("hash", document.documentHash()).addValue("duplicate", document.duplicateClusterKey())
                 .addValue("concepts", task.command().conceptKeys().toArray(new String[0])).addValue("snapshot", write(task.command().snapshot()))
                 .addValue("model", embedding.model()).addValue("dimensions", embedding.vector().size()).addValue("embedding", vectorLiteral));
@@ -111,5 +113,5 @@ public class ProblemSearchIndexJdbcRepository {
     private String write(Object value) { try { return objectMapper.writeValueAsString(value); } catch (Exception e) { throw new IllegalStateException(e); } }
 
     public record ClaimedSearchIndexTask(long taskId, long questionId, SearchIndexingCommand command, int attemptCount) {}
-    public record ReadySearchIndexMetadata(String documentHash) {}
+    public record ReadySearchIndexMetadata(String documentHash, short indexSchemaVersion) {}
 }

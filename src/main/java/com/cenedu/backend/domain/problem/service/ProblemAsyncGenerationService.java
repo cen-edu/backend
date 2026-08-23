@@ -9,6 +9,7 @@ import com.cenedu.backend.domain.curriculum.service.CurriculumUnitQueryService;
 import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification;
+import com.cenedu.backend.domain.problem.authoring.visual.*;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationJobResult;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationPlan;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationRequirement;
@@ -25,6 +26,7 @@ import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /** 동기 생성 API를 유지하면서 S3 Job 기반 비동기 생성을 제공한다. */
 @Service
@@ -39,17 +41,32 @@ public class ProblemAsyncGenerationService {
     private final ProblemGenerationAsyncRunner runner;
     private final ProblemSnapshotQueryService snapshotQueryService;
     private final CurriculumUnitQueryService curriculumQueryService;
+    private final com.cenedu.backend.domain.problem.config.ProblemVisualAuthoringProperties visualProperties;
 
+    @Autowired
     public ProblemAsyncGenerationService(ProblemGenerationPlanningService planningService,
                                          ProblemGenerationJobService jobService,
                                          ProblemGenerationAsyncRunner runner,
                                          ProblemSnapshotQueryService snapshotQueryService,
-                                         CurriculumUnitQueryService curriculumQueryService) {
+                                         CurriculumUnitQueryService curriculumQueryService,
+                                         com.cenedu.backend.domain.problem.config.ProblemVisualAuthoringProperties visualProperties) {
         this.planningService = planningService;
         this.jobService = jobService;
         this.runner = runner;
         this.snapshotQueryService = snapshotQueryService;
         this.curriculumQueryService = curriculumQueryService;
+        this.visualProperties = visualProperties;
+    }
+
+    /** 테스트와 기존 호출부의 기본 AUTO 동작을 보존하는 생성자. */
+    public ProblemAsyncGenerationService(ProblemGenerationPlanningService planningService,
+                                         ProblemGenerationJobService jobService,
+                                         ProblemGenerationAsyncRunner runner,
+                                         ProblemSnapshotQueryService snapshotQueryService,
+                                         CurriculumUnitQueryService curriculumQueryService) {
+        this(planningService, jobService, runner, snapshotQueryService, curriculumQueryService,
+                new com.cenedu.backend.domain.problem.config.ProblemVisualAuthoringProperties(
+                        false, Set.of(), Set.of(), 1, false));
     }
 
     /** 일반학습 STEP_FILL 요청을 Job으로 접수하고 AI 부족분만 병렬 실행한다. */
@@ -138,8 +155,14 @@ public class ProblemAsyncGenerationService {
         CurriculumScope context = new CurriculumScope(path.curriculumRevision(), path.schoolLevel(),
                 path.grade(), path.semester() == null ? null : path.semester().intValue(), path.achievementStandardId(), subUnitId,
                 path.majorUnitName(), path.middleUnitName(), path.subUnitName());
+        VisualGenerationRequirement visual = (type == QuestionType.MULTIPLE_CHOICE || type == QuestionType.SHORT_INPUT)
+                ? new VisualGenerationRequirement(visualProperties.forceRequired()
+                        ? VisualGenerationMode.REQUIRED : VisualGenerationMode.AUTO,
+                        visualProperties.forceRequired()
+                                ? VisualReferenceKind.COORDINATE_GRAPH : VisualReferenceKind.UNKNOWN_FIGURE)
+                : VisualGenerationRequirement.none();
         return new ProblemGenerationRequirement(subUnitId, difficulty, type, count, purpose,
-                new GenerationSpecification(type, difficultyLabel, null, List.of()), context,
+                new GenerationSpecification(type, difficultyLabel, null, List.of(), false, visual), context,
                 List.of(), List.of());
     }
 

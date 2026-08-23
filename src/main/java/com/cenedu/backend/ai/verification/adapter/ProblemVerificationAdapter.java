@@ -229,6 +229,8 @@ public class ProblemVerificationAdapter implements ProblemVerificationPort {
     ) {
         List<VerificationFinding> findings = new ArrayList<>();
         findings.add(isolate(VerificationCheckType.ASSET_CONSISTENCY,
+                () -> assetChecks.assetIntegrity(snapshot, request.assetManifest())));
+        findings.add(isolate(VerificationCheckType.ASSET_CONSISTENCY,
                 () -> assetChecks.manifestReadiness(request.expectation(), request.assetManifest())));
         findings.add(isolate(VerificationCheckType.ASSET_CONSISTENCY,
                 () -> assetChecks.altTextIntegrity(snapshot)));

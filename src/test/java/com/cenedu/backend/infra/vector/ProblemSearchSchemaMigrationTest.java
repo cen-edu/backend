@@ -51,4 +51,22 @@ class ProblemSearchSchemaMigrationTest {
                                   'fk_problem_generation_item_origin_question')
                 """, Integer.class)).isEqualTo(2);
     }
+
+    @Test
+    void visualKindAndSchemaVersionMigrationProvidesVersionedTaskUniqueness() {
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_name = 'problem_search_index'
+                  AND column_name IN ('visual_kind', 'index_schema_version')
+                """, Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_name = 'problem_search_index_task'
+                  AND column_name = 'index_schema_version'
+                """, Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM pg_constraint
+                WHERE conname = 'uk_problem_search_task_question_schema'
+                """, Integer.class)).isEqualTo(1);
+    }
 }

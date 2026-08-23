@@ -37,14 +37,14 @@ class ProblemSemanticPatchApplierTest {
         ProblemSemanticMaterializer materializer=model -> new MaterializedProblem(null,List.of(),
                 new SemanticMaterializationReport(1,List.of(),Map.of("P",model.presentation().questionTemplate()),Set.of(),Set.of()));
         var patch=new ProblemSemanticPatch(1,UUID.randomUUID(),1L,SemanticEditMode.PRESENTATIONAL_PATCH,List.of(
-                new SemanticPatchOperation(SemanticPatchOperationType.SET_TEMPLATE_TEXT,"/presentation/questionTemplate","${A}","${A} changed")),"x");
+                new SemanticPatchOperation(SemanticPatchOperationType.SET_TEMPLATE_TEXT,"/presentation/questionTemplate","{{A}}","{{A}} changed")),"x");
         assertThatThrownBy(()->new ProblemSemanticPatchApplier(new ProblemSemanticPatchClassifier(),materializer).apply(model(),patch))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("normalized semantic value");
     }
     @Test void template_placeholder가_바뀌면_거부한다(){
-        var model=model(); var patch=new ProblemSemanticPatch(1,UUID.randomUUID(),1L,SemanticEditMode.PRESENTATIONAL_PATCH,List.of(new SemanticPatchOperation(SemanticPatchOperationType.SET_TEMPLATE_TEXT,"/presentation/questionTemplate","${A}","${B}")),"x");
+        var model=model(); var patch=new ProblemSemanticPatch(1,UUID.randomUUID(),1L,SemanticEditMode.PRESENTATIONAL_PATCH,List.of(new SemanticPatchOperation(SemanticPatchOperationType.SET_TEMPLATE_TEXT,"/presentation/questionTemplate","{{A}}","{{B}}")),"x");
         assertThatThrownBy(()->new ProblemSemanticPatchApplier().apply(model,patch)).isInstanceOf(IllegalArgumentException.class);
     }
-    private ProblemSemanticModelV1 model(){var p=new SemanticParameter("A",SemanticValueType.INTEGER,"3",null,true,null);var c=new SemanticComputation("C",SemanticOperation.IDENTITY,List.of("A"),null,null,"3");var i=new SemanticProblemIntent(QuestionType.SHORT_INPUT,"mid",null,"identity","C",1,false);var v=new SemanticPresentationPlan("${A}",List.of(),List.of(),"${C}",null,List.of());return new ProblemSemanticModelV1(1,new CurriculumScope("2022_REVISED","MIDDLE",1,1,null,1L,"a","b","c"),i,List.of(p),List.of(c),List.of(),v,List.of(),List.of());}
+    private ProblemSemanticModelV1 model(){var p=new SemanticParameter("A",SemanticValueType.INTEGER,"3",null,true,null);var c=new SemanticComputation("C",SemanticOperation.IDENTITY,List.of("A"),null,null,"3");var i=new SemanticProblemIntent(QuestionType.SHORT_INPUT,"mid",null,"identity","C",1,false);var v=new SemanticPresentationPlan("{{A}}",List.of(),List.of(),"{{C}}",null,List.of());return new ProblemSemanticModelV1(1,new CurriculumScope("2022_REVISED","MIDDLE",1,1,null,1L,"a","b","c"),i,List.of(p),List.of(c),List.of(),v,List.of(),List.of());}
     private ProblemSemanticModelV1 modelWithEditable(boolean editable){var p=new SemanticParameter("A",SemanticValueType.INTEGER,"3",null,editable,null);var base=model();return new ProblemSemanticModelV1(1,base.curriculum(),base.intent(),List.of(p),base.computations(),base.constraints(),base.presentation(),base.diagrams(),base.assertions());}
 }

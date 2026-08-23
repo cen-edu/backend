@@ -214,6 +214,102 @@ class ProblemCandidateProcessingServiceTest {
         verifyNoInteractions(verificationPort);
     }
 
+    @Test
+    @DisplayName("semantic authoring이 켜져 있어도 AI_GENERATE 후보는 semantic model 없이 통과한다 (VisualGenerationMode.NONE 문항)")
+    void allowsGenerateCandidateWithoutSemanticModelWhenSemanticAuthoringEnabled() {
+        service = serviceWithSemanticAuthoring(true);
+        when(verificationPort.verify(any())).thenAnswer(invocation -> {
+            var request = (com.cenedu.backend.domain.problem.authoring.verification
+                    .ProblemVerificationRequest) invocation.getArgument(0);
+            return new ProblemVerificationReport(
+                    request.verificationRequestId(), request.scope(),
+                    VerificationOverallStatus.PASSED, List.of());
+        });
+
+        CandidateProcessingResult result = service.process(request());
+
+        assertThat(result.promoted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("semantic authoring이 켜져 있어도 부모 Version에 semantic model이 없었다면 AI_MODIFY 후보도 통과한다")
+    void allowsModifyCandidateWithoutSemanticModelWhenParentHadNone() {
+        service = serviceWithSemanticAuthoring(true);
+        org.springframework.test.util.ReflectionTestUtils.setField(session, "currentVersionId", 200L);
+        ProblemAuthoringVersion parent = mock(ProblemAuthoringVersion.class);
+        when(parent.getSemanticModel()).thenReturn(null);
+        when(versionRepository.findById(200L)).thenReturn(Optional.of(parent));
+        when(versionRepository.findByIdAndSessionId(200L, 31L)).thenReturn(Optional.of(parent));
+        when(verificationPort.verify(any())).thenAnswer(invocation -> {
+            var request = (com.cenedu.backend.domain.problem.authoring.verification
+                    .ProblemVerificationRequest) invocation.getArgument(0);
+            return new ProblemVerificationReport(
+                    request.verificationRequestId(), request.scope(),
+                    VerificationOverallStatus.PASSED, List.of());
+        });
+
+        CandidateProcessingResult result = service.process(modifyRequest(200L));
+
+        assertThat(result.promoted()).isTrue();
+    }
+
+    @Test
+    @DisplayName("semantic authoring이 켜져 있고 부모 Version에 semantic model이 있었다면 없는 AI_MODIFY 후보는 거부한다")
+    void rejectsModifyCandidateWithoutSemanticModelWhenParentHadOne() {
+        service = serviceWithSemanticAuthoring(true);
+        ProblemAuthoringVersion parent = mock(ProblemAuthoringVersion.class);
+        when(parent.getSemanticModel()).thenReturn("{\"schemaVersion\":1}");
+        when(versionRepository.findById(200L)).thenReturn(Optional.of(parent));
+
+        assertThatThrownBy(() -> service.process(modifyRequest(200L)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("semantic model이 필요합니다");
+        verify(versionRepository, never()).saveAndFlush(any());
+    }
+
+    @SuppressWarnings("unchecked")
+    private ProblemCandidateProcessingService serviceWithSemanticAuthoring(boolean enabled) {
+        SnapshotStructuralValidator structural = new SnapshotStructuralValidator();
+        ObjectProvider<ProblemVerificationPort> verificationProvider = mock(ObjectProvider.class);
+        when(verificationProvider.getIfAvailable()).thenReturn(verificationPort);
+        ObjectProvider<ProblemAssetProductionPort> assetProvider = mock(ObjectProvider.class);
+        PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+        when(transactionManager.getTransaction(any(TransactionDefinition.class)))
+                .thenReturn(new SimpleTransactionStatus());
+        return new ProblemCandidateProcessingService(
+                sessionRepository,
+                versionRepository,
+                structural,
+                new SnapshotNormalizedValidator(structural),
+                new ProblemAuthoringJsonCodec(new ObjectMapper()),
+                verificationProvider,
+                assetProvider,
+                transactionManager,
+                new ProblemAiConcurrencyLimiter(4, 30),
+                new com.cenedu.backend.ai.problem.adapter.semantic.SemanticAuthoringProperties(enabled));
+    }
+
+    private CandidateProcessingRequest modifyRequest(long parentVersionId) {
+        UUID requestId = UUID.randomUUID();
+        ProblemCandidateDraft candidate = new ProblemCandidateDraft(
+                requestId, shortInput(), List.of(),
+                new CandidateProvenance(CandidateSourceType.AI_MODIFY, null, List.of()));
+        CurriculumScope curriculum = new CurriculumScope(
+                "2022_REVISED", "MIDDLE", 1, 1, null, 1L,
+                "수와 연산", "사칙연산", "덧셈");
+        return new CandidateProcessingRequest(
+                7L, 31L, parentVersionId,
+                AuthoringOperationType.AI_MODIFY,
+                VerificationOperationType.EDIT,
+                candidate,
+                new VerificationExpectation(
+                        shortInput().metadata().questionType(), "mid", curriculum,
+                        null, List.of(), List.of()),
+                new com.cenedu.backend.domain.problem.authoring.verification.EditVerificationContext(
+                        shortInput(), List.of(), List.of(), List.of(), List.of()),
+                "수정 후보");
+    }
+
     private CandidateProcessingRequest request() {
         UUID requestId = UUID.randomUUID();
         ProblemCandidateDraft candidate = new ProblemCandidateDraft(

@@ -44,6 +44,8 @@ import com.cenedu.backend.domain.problem.authoring.semantic.materialization.Sema
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.DefaultProblemSemanticMaterializer;
 import com.cenedu.backend.ai.problem.adapter.semantic.SemanticAuthoringProperties;
 import com.cenedu.backend.domain.problem.authoring.diagram.DiagramSpecValidator;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationPolicy;
+import com.cenedu.backend.domain.problem.config.ProblemVisualAuthoringProperties;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringSession;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
@@ -79,6 +81,8 @@ public class ProblemCandidateProcessingService {
     private final ProblemSemanticDocumentCodec semanticDocumentCodec =
             new ProblemSemanticDocumentCodec(new tools.jackson.databind.ObjectMapper());
     private final SemanticAuthoringProperties semanticProperties;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ProblemVisualAuthoringProperties visualProperties;
 
     public ProblemCandidateProcessingService(
             ProblemAuthoringSessionRepository sessionRepository,
@@ -481,7 +485,7 @@ public class ProblemCandidateProcessingService {
                 || request.verificationContext() == null) {
             throw new IllegalArgumentException("후보 처리 필수값이 누락되었습니다.");
         }
-        validateSemanticCandidate(request.candidate());
+        validateSemanticCandidate(request);
         structuralValidator.validate(request.candidate().snapshot());
         normalizedValidator.validate(request.candidate().snapshot());
         validateSourceType(request.operationType(),
@@ -490,25 +494,63 @@ public class ProblemCandidateProcessingService {
     }
 
     /** 의미 후보를 다시 계산해 Snapshot·자산 계획이 서버 결과와 일치하는지 확인한다. */
-    private void validateSemanticCandidate(ProblemCandidateDraft candidate) {
+    private void validateSemanticCandidate(CandidateProcessingRequest request) {
+        ProblemCandidateDraft candidate = request.candidate();
         if (candidate.semanticModel() == null) {
+            // semantic authoring이 켜져 있어도 semantic model이 없는 후보가 정당한 경우가 있다:
+            // (1) AI_GENERATE — VisualGenerationMode.NONE인 문항(서술형·빈칸형 등)은
+            //     SpringAiProblemGenerationAdapter가 애초에 NonSemanticProblemGenerationPipeline으로
+            //     보내고, 그 경로는 semantic model을 만들지 않는다. 이건 버그가 아니라 설계다.
+            // (2) AI_MODIFY — 수정 대상 Version이 원래부터 semantic model이 없었다면
+            //     ProblemModificationExecutionCoordinator가 legacy 수정 경로로 폴백하는데,
+            //     그 경로도 semantic model을 만들지 않는다. base가 이미 없었다면 정상이다.
+            // 따라서 "무조건 있어야 한다"가 아니라 "원래 있었어야 하는데 없다"만 걸러낸다.
             if (semanticProperties.enabled()
-                    && (candidate.provenance().sourceType() == CandidateSourceType.AI_GENERATE
-                    || candidate.provenance().sourceType() == CandidateSourceType.AI_MODIFY)) {
+                    && candidate.provenance().sourceType() == CandidateSourceType.AI_MODIFY
+                    && parentHadSemanticModel(request.parentVersionId())) {
                 throw new IllegalArgumentException("semantic authoring 활성화 상태에서는 semantic model이 필요합니다.");
             }
             return;
         }
         MaterializedProblem materialized = semanticMaterializer.materialize(candidate.semanticModel());
+        ProblemVisualAuthoringProperties properties = visualProperties == null
+                ? new ProblemVisualAuthoringProperties(true,
+                java.util.Set.of(com.cenedu.backend.domain.problem.authoring.diagram.DiagramKind.values()),
+                java.util.Set.of(com.cenedu.backend.global.common.enums.QuestionType.MULTIPLE_CHOICE,
+                        com.cenedu.backend.global.common.enums.QuestionType.SHORT_INPUT), 1)
+                : visualProperties;
+        new VisualGenerationPolicy(properties).validate(
+                candidate.semanticModel().intent().visualRequired()
+                        ? new com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement(
+                        com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode.AUTO,
+                        com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.UNKNOWN_FIGURE)
+                        : com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement.none(),
+                candidate.semanticModel());
         if (!Objects.equals(materialized.snapshot(), candidate.snapshot())
                 || !Objects.equals(materialized.assetPlans(), candidate.assetPlans())) {
             throw new IllegalArgumentException("의미 모델과 materialized 후보가 일치하지 않습니다.");
         }
+        new com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator()
+                .validate(candidate.semanticModel(), candidate.snapshot(), candidate.assetPlans());
         List<com.cenedu.backend.domain.problem.authoring.diagram.DiagramSpecV1> specs = candidate.assetPlans().stream()
                 .filter(plan -> plan.specification() != null && plan.specification().diagramSpec() != null)
                 .map(plan -> plan.specification().diagramSpec())
                 .toList();
-        new DiagramSpecValidator().validateAll(specs, Map.of());
+        Map<String, com.cenedu.backend.domain.problem.authoring.semantic.evaluation.SemanticResolvedValue> values =
+                materialized.assetPlans().stream()
+                        .filter(plan -> plan.specification() != null)
+                        .findFirst()
+                        .map(plan -> plan.specification().resolvedValues())
+                        .orElse(Map.of());
+        new DiagramSpecValidator().validateAll(specs, values);
+    }
+
+    /** 수정 대상 Version이 원래 semantic model을 갖고 있었는지 확인한다. */
+    private boolean parentHadSemanticModel(Long parentVersionId) {
+        if (parentVersionId == null) return false;
+        return versionRepository.findById(parentVersionId)
+                .map(version -> version.getSemanticModel() != null)
+                .orElse(false);
     }
 
     private SemanticMaterializationReport semanticReport(ProblemCandidateDraft candidate) {

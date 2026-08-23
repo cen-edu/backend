@@ -21,5 +21,7 @@ public record ProblemRagProperties(
             @DefaultValue("3") int maxAttempts,
             @DefaultValue("30s") Duration retryDelay,
             @DefaultValue("5s") Duration workerDelay,
-            @DefaultValue("60s") Duration backfillDelay) {}
+            @DefaultValue("10m") Duration backfillInitialDelay,
+            @DefaultValue("1h") Duration backfillDelay,
+            @DefaultValue("50") int backfillBatchSize) {}
 }

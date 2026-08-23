@@ -7,6 +7,7 @@ import com.cenedu.backend.ai.agent.ChatMessage;
 import com.cenedu.backend.ai.client.LlmClient;
 import com.cenedu.backend.ai.problem.ProblemStructuredOutputSchemas;
 import com.cenedu.backend.domain.problem.authoring.candidate.*;
+import com.cenedu.backend.domain.problem.authoring.edit.EditAction;
 import com.cenedu.backend.domain.problem.authoring.edit.EditTargetType;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditExecutionPlan;
@@ -73,9 +74,10 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
                                 command.baseSnapshot().metadata().subUnitId(), "대단원", "중단원", "소단원"),
                             List.of(), List.of()), output);
             var mergedSnapshot = snapshotMerger.merge(command.plan(), command.baseSnapshot(), mapped.snapshot());
-            ProblemCandidateDraft candidate = ProblemCandidateDraft.legacy(command.requestId(), mergedSnapshot,
-                    mapped.assetPlans(), new CandidateProvenance(CandidateSourceType.AI_MODIFY,
-                    null, List.of()));
+            ProblemCandidateDraft candidate = new ProblemCandidateDraft(
+                    command.requestId(), mergedSnapshot, mapped.assetPlans(),
+                    command.baseSemanticModel(),
+                    new CandidateProvenance(CandidateSourceType.AI_MODIFY, null, List.of()));
             structuralValidator.validate(candidate.snapshot());
             normalizedValidator.validate(candidate.snapshot());
             return candidate;
@@ -97,6 +99,15 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
     /**
      * 모델이 수정 대상이 아닌 필드를 비워도 매퍼가 병합 전에 실패하지 않게 한다.
      * 보호 영역은 애초에 기준 Snapshot 값으로 대체하므로 모델의 변조가 병합기까지 전파되지 않는다.
+     *
+     * <p>action이 REPLACE면 requestedTargets가 항상 WHOLE_QUESTION 하나뿐이라, 필드별
+     * targetType 일치를 요구하는 {@link #editable} 검사로는 어떤 구체 필드도 editable로
+     * 판정되지 않는다. {@link ProblemModificationSnapshotMerger#merge}가 REPLACE를
+     * 무조건 통과시키는 것과 같은 의도로, REPLACE일 때는 이 필드들도 모델 출력을 그대로 쓴다.
+     *
+     * <p>assets는 예외다. 이 경로가 쓰는 {@link ProblemStructuredOutputSchemas#CANDIDATE}는
+     * assets를 항상 빈 배열로 강제한다 — 레거시 경로는 이미지를 새로 만들 수 없다. action과
+     * 무관하게 항상 기준 Snapshot의 자산을 그대로 유지한다.
      */
     private ProblemGenerationOutput withProtectedBaseValues(
             ProblemModificationCommand command,
@@ -104,20 +115,21 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
     ) {
         QuestionSnapshotV1 base = command.baseSnapshot();
         ProblemEditExecutionPlan plan = command.plan();
-        boolean bodyEditable = editable(plan, EditTargetType.QUESTION_BODY)
+        boolean replace = plan.action() == EditAction.REPLACE;
+        boolean bodyEditable = replace || editable(plan, EditTargetType.QUESTION_BODY)
                 || editable(plan, EditTargetType.CONTENT_BLOCK);
         return new ProblemGenerationOutput(
                 bodyEditable ? output.question() : firstQuestionText(base),
                 bodyEditable ? output.contentBlocks() : contentBlocks(base),
-                editable(plan, EditTargetType.CHOICE) ? output.choices() : choices(base),
-                editable(plan, EditTargetType.STEP) ? output.steps() : steps(base),
-                editable(plan, EditTargetType.ANSWER_UNIT) ? output.answerUnits() : answers(base),
-                editable(plan, EditTargetType.EXPLANATION) ? output.explanation() : base.explanation(),
-                editable(plan, EditTargetType.LEARNING_GUIDE)
+                replace || editable(plan, EditTargetType.CHOICE) ? output.choices() : choices(base),
+                replace || editable(plan, EditTargetType.STEP) ? output.steps() : steps(base),
+                replace || editable(plan, EditTargetType.ANSWER_UNIT) ? output.answerUnits() : answers(base),
+                replace || editable(plan, EditTargetType.EXPLANATION) ? output.explanation() : base.explanation(),
+                replace || editable(plan, EditTargetType.LEARNING_GUIDE)
                         ? output.learningGuide() : learningGuide(base),
-                editable(plan, EditTargetType.RUBRIC_ITEM)
+                replace || editable(plan, EditTargetType.RUBRIC_ITEM)
                         ? output.rubricItems() : rubrics(base),
-                output.assets());
+                assets(base));
     }
 
     private boolean editable(ProblemEditExecutionPlan plan, EditTargetType type) {
@@ -173,6 +185,18 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
         return base.rubricItems().stream().map(rubric ->
                 new ProblemGenerationOutput.RubricOutput(
                         rubric.criterion(), rubric.weightPercent())).toList();
+    }
+
+    /** 자산을 수정하지 않는 편집에서는 기존 이미지 자산을 LLM 응답에 다시 포함한다. */
+    private List<ProblemGenerationOutput.AssetOutput> assets(QuestionSnapshotV1 base) {
+        return base.assets().stream()
+                .map(asset -> new ProblemGenerationOutput.AssetOutput(
+                        "FIGURE", "SVG", asset.altText(),
+                        asset.altText() == null || asset.altText().isBlank()
+                                ? "기존 이미지 자산을 그대로 유지한다."
+                                : asset.altText(),
+                        List.of(), List.of(), null))
+                .toList();
     }
 
     /** B1/ST1 형태의 1부터 시작하는 키를 모델 계약의 0부터 인덱스로 되돌린다. */

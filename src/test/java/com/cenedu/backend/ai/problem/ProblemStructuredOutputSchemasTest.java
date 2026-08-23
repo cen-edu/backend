@@ -17,7 +17,7 @@ class ProblemStructuredOutputSchemasTest {
         JsonNode root = new ObjectMapper().readTree(ProblemStructuredOutputSchemas.SEMANTIC_MODEL);
         assertThat(root.path("additionalProperties").asBoolean()).isFalse();
         assertThat(root.path("properties").has("schemaVersion")).isTrue();
-        assertThat(root.path("properties").path("diagrams").path("items").path("oneOf").size()).isEqualTo(5);
+        assertThat(root.path("properties").path("diagrams").path("items").path("anyOf").size()).isEqualTo(5);
         JsonNode definitions = root.path("$defs");
         assertItemsRef(definitions, "coordinateGraph", "points", "coordinatePoint");
         assertItemsRef(definitions, "coordinateGraph", "segments", "coordinateSegment");
@@ -32,7 +32,7 @@ class ProblemStructuredOutputSchemasTest {
         assertItemsRef(definitions, "solidGeometry", "labels", "solidLabel");
         assertItemsRef(definitions, "dataTable", "cells", "cell");
         assertItemsRef(definitions, "dataTable", "highlightedCells", "address");
-        JsonNode solidKinds = definitions.path("solidGeometry").path("allOf").get(1)
+        JsonNode solidKinds = definitions.path("solidGeometry")
                 .path("properties").path("solidKind").path("enum");
         assertThat(solidKinds).hasSize(6);
         assertThat(solidKinds.get(0).asText()).isEqualTo("RECTANGULAR_PRISM");
@@ -51,7 +51,30 @@ class ProblemStructuredOutputSchemasTest {
     private void assertEveryObjectIsClosed(JsonNode node) {
         if (node.isObject()) {
             if ("object".equals(node.path("type").asText())) assertThat(node.path("additionalProperties").asBoolean()).isFalse();
+            if (node.has("required")) {
+                var required = new java.util.HashSet<String>();
+                node.path("required").forEach(value -> assertThat(required.add(value.asText())).isTrue());
+            }
             node.elements().forEachRemaining(this::assertEveryObjectIsClosed);
         } else if (node.isArray()) node.elements().forEachRemaining(this::assertEveryObjectIsClosed);
+    }
+
+    @Test void semanticSchemaDoesNotContainUnsupportedComposition() {
+        String schema = ProblemStructuredOutputSchemas.SEMANTIC_MODEL;
+        assertThat(schema).doesNotContain("\"allOf\"");
+        assertThat(schema).doesNotContain("\"oneOf\"");
+        assertThat(schema).doesNotContain("\"not\"");
+    }
+
+    @Test void semanticSchemaMatchesServerOwnedChoiceAndAssetContracts() throws Exception {
+        JsonNode root = new ObjectMapper().readTree(ProblemStructuredOutputSchemas.SEMANTIC_MODEL);
+        JsonNode definitions = root.path("$defs");
+        assertThat(definitions.path("base").path("properties").path("assetKey").path("pattern").asText())
+                .isEqualTo("^F[1-9][0-9]*$");
+        JsonNode valueKey = definitions.path("choice").path("properties").path("valueKey");
+        assertThat(valueKey.path("type").asText()).isEqualTo("string");
+        assertThat(valueKey.has("anyOf")).isFalse();
+        assertThat(definitions.path("presentation").path("properties").path("learningGuide").path("type").asText())
+                .isEqualTo("object");
     }
 }

@@ -54,8 +54,12 @@ public class ProblemSearchIndexWorker {
                 repository.markRetry(task.taskId(), task.attemptCount(), Instant.now().plus(properties.indexing().retryDelay()), "ASSETS_NOT_READY"); return;
             }
             if (eligibility == SearchCorpusEligibility.REJECTED) { repository.markFailed(task.taskId(), task.attemptCount(), "CORPUS_REJECTED"); return; }
-            ProblemSearchDocument document = documentFactory.create(task.command());
             var ready = repository.findReadyMetadata(task.questionId());
+            if (ready.isPresent() && ready.get().indexSchemaVersion() > task.command().indexSchemaVersion()) {
+                repository.markSkipped(task.taskId());
+                return;
+            }
+            ProblemSearchDocument document = documentFactory.create(task.command());
             if (ready.isPresent() && ready.get().documentHash().equals(document.documentHash())) {
                 repository.markSkipped(task.taskId()); return;
             }
