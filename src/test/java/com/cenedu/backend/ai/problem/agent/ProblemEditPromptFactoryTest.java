@@ -45,6 +45,16 @@ class ProblemEditPromptFactoryTest {
     }
 
     @Test
+    void editable이_false인_파라미터는_PARAMETRIC_PATCH_대신_STRUCTURAL_REGENERATION을_쓰도록_안내한다() {
+        var payload = new ProblemEditAgentPayload(1, 1L, 2L,
+                AuthoringInteractionStatus.COLLECTING, null, ProblemSnapshotFixtures.shortInput(), List.of());
+
+        String prompt = factory().create(payload);
+
+        assertThat(prompt).contains("editable").contains("STRUCTURAL_REGENERATION으로 분류한다");
+    }
+
+    @Test
     void semantic_model이_없으면_빈_currentSemanticValues를_반환한다() {
         var payload = new ProblemEditAgentPayload(1, 1L, 2L,
                 AuthoringInteractionStatus.COLLECTING, null, ProblemSnapshotFixtures.shortInput(), List.of());
