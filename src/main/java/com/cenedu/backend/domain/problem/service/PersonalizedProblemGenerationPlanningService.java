@@ -414,23 +414,6 @@ public class PersonalizedProblemGenerationPlanningService {
         return (System.nanoTime() - startedAt) / 1_000_000;
     }
 
-    /** 기준 문항과 교육과정 경로를 보존하는 맞춤 AI 슬롯을 만든다. */
-    private ProblemGenerationSlotPlan aiSlot(ReissueProposalResponse.SubUnitProposal subUnit,
-                                             CurriculumPathResponse path, CustomStage stage,
-                                             GenerationPurpose purpose) {
-        if (path == null || subUnit.similar().referenceQuestions() == null
-                || subUnit.similar().referenceQuestions().isEmpty()) {
-            throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
-        }
-        long originId = subUnit.similar().referenceQuestions().getFirst().questionId();
-        CurriculumScope curriculum = curriculum(path);
-        VisualReferenceDescriptor visual = visualReferenceQueryService == null ? null : visualReferenceQueryService.get(originId);
-        if (visual != null && visual.kind() == VisualReferenceKind.UNKNOWN_FIGURE)
-            throw new BusinessException(ErrorCode.PROBLEM_VISUAL_SOURCE_UNSUPPORTED);
-        return aiSlot(subUnit, path, stage, purpose, originId, curriculum,
-                List.of(new GenerationReference(GenerationReferenceRole.ORIGIN, originId, null, null, visual)));
-    }
-
     /** 이미 조회한 ORIGIN과 검색 예시를 사용해 AI 부족분 명령을 만든다. */
     private ProblemGenerationSlotPlan aiSlot(ReissueProposalResponse.SubUnitProposal subUnit,
                                              CurriculumPathResponse path, CustomStage stage,
