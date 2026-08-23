@@ -65,6 +65,16 @@ public class ProblemGenerationJobService {
         this.tracePort = tracePort;
     }
 
+    /** 계획 수립(RAG 임베딩·벡터검색) 이전 단계에서 clientRequestId로 기존 Job을 조회하는
+     *  읽기 전용 멱등 조회다. 존재하면 호출부가 비싼 계획 수립을 건너뛰도록 한다.
+     *  {@link #create} 내부 멱등 체크는 동시성 레이스 안전망으로 그대로 유지한다. */
+    @Transactional(readOnly = true)
+    public Optional<ProblemGenerationJobResult> findByClientRequestId(long ownerTeacherId,
+                                                                      java.util.UUID clientRequestId) {
+        return jobRepository.findByOwnerTeacherIdAndClientRequestId(ownerTeacherId, clientRequestId)
+                .map(this::toResult);
+    }
+
     /** 문제은행 재사용과 AI 생성 슬롯을 하나의 멱등 Job으로 저장한다. */
     @Transactional
     public ProblemGenerationJobResult create(long ownerTeacherId, ProblemGenerationPlan plan) {

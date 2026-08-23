@@ -3,6 +3,7 @@ package com.cenedu.backend.domain.problem.service;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import com.cenedu.backend.domain.curriculum.dto.response.CurriculumPathResponse;
 import com.cenedu.backend.domain.curriculum.service.CurriculumUnitQueryService;
@@ -126,20 +127,29 @@ public class ProblemAsyncGenerationService {
         return new ProblemGenerationJobStatusResponse(job.jobId(), job.status(), slots.size(), completed, slots);
     }
 
+    /** clientRequestId로 이미 접수된 Job이 있으면 계획 수립(RAG 임베딩·벡터검색)을 생략하고
+     *  대기 중인 Item만 재선점 실행해 시작 응답을 만든다. 멱등 재요청의 낭비를 여기서 차단한다. */
+    public Optional<ProblemGenerationStartResponse> resumeIfExists(long teacherId,
+                                                                   java.util.UUID clientRequestId) {
+        return jobService.findByClientRequestId(teacherId, clientRequestId)
+                .map(this::runQueuedAndRespond);
+    }
+
     /** 생성 계획을 멱등 Job으로 저장하고 대기 문항만 비동기 실행한다. */
     private ProblemGenerationStartResponse createAndRun(long teacherId, java.util.UUID clientRequestId,
                                                          GenerationJobType type,
                                                          List<ProblemGenerationRequirement> requirements) {
-        ProblemGenerationJobResult job = jobService.create(teacherId,
-                planningService.plan(clientRequestId, type, requirements));
-        job.items().stream().filter(item -> item.status() == GenerationItemStatus.QUEUED)
-                .forEach(item -> runner.execute(item.itemId()));
-        return new ProblemGenerationStartResponse(job.jobId(), job.status(), job.items().size());
+        return resumeIfExists(teacherId, clientRequestId).orElseGet(() -> runQueuedAndRespond(
+                jobService.create(teacherId, planningService.plan(clientRequestId, type, requirements))));
     }
 
     /** 이미 수립된 계획을 Job으로 저장하고 대기 AI Item만 실행한다. */
     private ProblemGenerationStartResponse createAndRun(long teacherId, ProblemGenerationPlan plan) {
-        ProblemGenerationJobResult job = jobService.create(teacherId, plan);
+        return runQueuedAndRespond(jobService.create(teacherId, plan));
+    }
+
+    /** Job의 QUEUED Item만 비동기 실행기로 재선점 요청하고 시작 응답을 만든다. */
+    private ProblemGenerationStartResponse runQueuedAndRespond(ProblemGenerationJobResult job) {
         job.items().stream().filter(item -> item.status() == GenerationItemStatus.QUEUED)
                 .forEach(item -> runner.execute(item.itemId()));
         return new ProblemGenerationStartResponse(job.jobId(), job.status(), job.items().size());
