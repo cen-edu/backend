@@ -8,6 +8,9 @@ import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemGenerationPort;
 import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
 import com.cenedu.backend.domain.problem.authoring.verification.*;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringVersionRepository;
@@ -46,7 +49,7 @@ public class ProblemStructuralRegenerationService {
         var specification = new GenerationSpecification(
                 requested != null && requested.questionType() != null ? requested.questionType() : intent.questionType(),
                 requested != null && requested.difficulty() != null ? requested.difficulty() : intent.difficulty(),
-                intent.evaluationArea(), java.util.List.of(), true);
+                intent.evaluationArea(), java.util.List.of(), true, visualRequirement(baseModel));
         var command = new ProblemGenerationCommand(plan.requestId(), java.util.UUID.randomUUID(),
                 GenerationPurpose.GENERAL_LEARNING_SHORTAGE, specification, baseModel.curriculum(),
                 java.util.List.of(new GenerationReference(GenerationReferenceRole.ORIGIN,
@@ -66,5 +69,22 @@ public class ProblemStructuralRegenerationService {
                         SemanticImpactArea.STEPS, SemanticImpactArea.ANSWERS, SemanticImpactArea.EXPLANATION,
                         SemanticImpactArea.LEARNING_GUIDE, SemanticImpactArea.RUBRICS, SemanticImpactArea.ASSETS), true,
                         true), result.promoted(), false);
+    }
+
+    /**
+     * 원본이 도형을 갖고 있으면 같은 도형 종류를 유지한 채 값만 새로 만들도록 지시한다.
+     *
+     * <p>이 값을 채우지 않으면 {@link GenerationSpecification}의 기본값(mode=NONE)이 그대로 나가
+     * {@code SpringAiProblemGenerationAdapter}가 semantic model을 만들지 않는
+     * {@code NonSemanticProblemGenerationPipeline}으로 보낸다. 구조 재생성은 이미 semantic model이
+     * 있는 문항에서만 일어나므로, 그 결과가 다시 semantic model 없이 돌아오면 이후 검증에서
+     * PROBLEM_SEMANTIC_MODEL_INVALID로 막힌다.
+     */
+    private VisualGenerationRequirement visualRequirement(ProblemSemanticModelV1 baseModel) {
+        if (!baseModel.intent().visualRequired() || baseModel.diagrams().isEmpty()) {
+            return VisualGenerationRequirement.none();
+        }
+        return new VisualGenerationRequirement(VisualGenerationMode.PRESERVE_ORIGIN,
+                VisualReferenceKind.fromDiagramKind(baseModel.diagrams().getFirst().kind()));
     }
 }
