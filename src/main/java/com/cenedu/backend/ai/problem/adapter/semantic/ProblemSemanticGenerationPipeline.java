@@ -59,10 +59,24 @@ public final class ProblemSemanticGenerationPipeline {
                 visualConsistencyValidator.validate(normalized, materialized.snapshot(), materialized.assetPlans());
                 return new ProblemCandidateDraft(command.requestId(), materialized.snapshot(), materialized.assetPlans(), normalized, new CandidateProvenance(CandidateSourceType.AI_GENERATE, null, command.references().stream().map(x -> x.sourceQuestionId()).toList()));
             } catch (RuntimeException e) {
+                // 전송·예산 오류(429/5xx, 빈 응답, 호출예산 소진)는 LlmClient가 이미 재시도한 인프라
+                // 실패다. 내용 검증 실패가 아니므로 findings로 실어 재호출(내용 교정)하지 않고 그대로
+                // 던져, worker의 재생성 계층이 새 시도로 다루게 한다. 이렇게 하지 않으면 429 하나가
+                // 무의미한 내용 재시도로 최대 세 번 소모되고, 오류 메시지가 프롬프트에 섞여 들어간다.
+                if (isInfrastructureFailure(e)) throw e;
                 findings = violationMessages(e);
             }
         }
         throw new SemanticGenerationException(findings);
+    }
+
+    /** 내용 교정으로 회복할 수 없는 전송·예산 계층 실패인지 판정한다. */
+    private boolean isInfrastructureFailure(RuntimeException exception) {
+        if (!(exception instanceof BusinessException business)) return false;
+        ErrorCode code = business.getErrorCode();
+        return code == ErrorCode.AI_CLIENT_CALL_FAILED
+                || code == ErrorCode.AI_CLIENT_EMPTY_RESPONSE
+                || code == ErrorCode.AI_CLIENT_CALL_BUDGET_EXHAUSTED;
     }
 
     private List<String> violationMessages(RuntimeException e) {

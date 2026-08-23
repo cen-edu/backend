@@ -441,9 +441,9 @@ public class ProblemCandidateProcessingService {
     }
 
     private boolean retryableVerificationException(RuntimeException exception) {
-        if (exception instanceof BusinessException businessException) {
-            return businessException.getErrorCode() == ErrorCode.AI_CLIENT_CALL_FAILED;
-        }
+        // 전송계층 오류(429/5xx → AI_CLIENT_CALL_FAILED)는 LlmClient가 이미 재시도하는 L1의 몫이라
+        // 여기서 verify 전체를 다시 부르지 않는다(이중 재시도 방지). LlmClient가 못 다루는, 모델이
+        // 형식을 어긴 malformed 출력만 재검증한다.
         return exception instanceof com.cenedu.backend.ai.verification.adapter.SolverResponseParseException;
     }
 
