@@ -1,18 +1,27 @@
 package com.cenedu.backend.domain.problem.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
+import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationPlan;
+import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationSlotPlan;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationWorkItem;
 import com.cenedu.backend.domain.problem.authoring.generation.GenerationSlotSource;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationItemResult;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationJobResult;
+import com.cenedu.backend.global.common.enums.QuestionType;
 import com.cenedu.backend.domain.problem.entity.ProblemGenerationItem;
 import com.cenedu.backend.domain.problem.entity.ProblemGenerationJob;
 import com.cenedu.backend.domain.problem.entity.enums.GenerationJobStatus;
@@ -24,6 +33,7 @@ import com.cenedu.backend.domain.problem.repository.ProblemGenerationJobReposito
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.ObjectMapper;
 
 class ProblemGenerationJobServiceTest {
@@ -55,7 +65,8 @@ class ProblemGenerationJobServiceTest {
                 itemRepository,
                 mock(ProblemAuthoringSessionRepository.class),
                 new ProblemAuthoringJsonCodec(new ObjectMapper()),
-                mock(ProblemAuthoringVersionService.class));
+                mock(ProblemAuthoringVersionService.class),
+                mock(PlatformTransactionManager.class));
         ProblemGenerationWorkItem workItem = new ProblemGenerationWorkItem(
                 1L, 5L, 7L, 11L, mock(ProblemGenerationCommand.class));
 
@@ -83,7 +94,8 @@ class ProblemGenerationJobServiceTest {
                 itemRepository,
                 mock(ProblemAuthoringSessionRepository.class),
                 new ProblemAuthoringJsonCodec(new ObjectMapper()),
-                mock(ProblemAuthoringVersionService.class));
+                mock(ProblemAuthoringVersionService.class),
+                mock(PlatformTransactionManager.class));
 
         ProblemGenerationJobResult jobResult = ReflectionTestUtils.invokeMethod(
                 service, "toResult", job);
@@ -93,6 +105,45 @@ class ProblemGenerationJobServiceTest {
         assertThat(result.source()).isEqualTo(GenerationSlotSource.AI_GENERATION);
         assertThat(result.originQuestionId()).isEqualTo(30L);
         assertThat(result.customStage()).isEqualTo(CustomStage.ADVANCED);
+    }
+
+    @Test
+    @DisplayName("동시 요청이 유니크 제약에 걸리면 예외 대신 기존 Job을 재조회해 멱등 응답한다")
+    void concurrentUniqueViolationReturnsExistingJob() {
+        ProblemGenerationJobRepository jobRepository = mock(ProblemGenerationJobRepository.class);
+        ProblemGenerationItemRepository itemRepository = mock(ProblemGenerationItemRepository.class);
+        UUID clientRequestId = UUID.randomUUID();
+        ProblemGenerationJob winnerJob = ProblemGenerationJob.create(
+                7L, clientRequestId, GenerationJobType.GENERAL_LEARNING);
+        ReflectionTestUtils.setField(winnerJob, "id", 99L);
+        // 사전 조회는 비어 있고(생성 진입), insert가 유니크 위반으로 실패한 뒤 재조회는 선발 Job을 본다.
+        when(jobRepository.findByOwnerTeacherIdAndClientRequestId(7L, clientRequestId))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(winnerJob));
+        when(jobRepository.saveAndFlush(any()))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException("unique violation"));
+        when(itemRepository.findAllByJobIdOrderByItemOrder(99L)).thenReturn(List.of());
+        ProblemGenerationJobService service = new ProblemGenerationJobService(
+                jobRepository,
+                itemRepository,
+                mock(ProblemAuthoringSessionRepository.class),
+                new ProblemAuthoringJsonCodec(new ObjectMapper()),
+                mock(ProblemAuthoringVersionService.class),
+                mock(PlatformTransactionManager.class));
+
+        ProblemGenerationCommand command = new ProblemGenerationCommand(UUID.randomUUID(), null,
+                GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
+                new GenerationSpecification(QuestionType.SHORT_INPUT, "mid", null, List.of()),
+                new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "major", "middle", "sub"),
+                List.of(), List.of());
+        ProblemGenerationPlan plan = new ProblemGenerationPlan(clientRequestId,
+                GenerationJobType.GENERAL_LEARNING,
+                List.of(new ProblemGenerationSlotPlan(1, GenerationSlotSource.AI_GENERATION, null, command)));
+
+        ProblemGenerationJobResult result = service.create(7L, plan);
+
+        assertThat(result.jobId()).isEqualTo(99L);
+        verify(jobRepository, times(2)).findByOwnerTeacherIdAndClientRequestId(7L, clientRequestId);
     }
 
     private ProblemGenerationItem item(Long id, int order) {
