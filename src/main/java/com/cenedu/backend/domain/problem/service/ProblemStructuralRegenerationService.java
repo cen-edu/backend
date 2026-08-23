@@ -57,6 +57,12 @@ public class ProblemStructuralRegenerationService {
         ProblemCandidateDraft candidate = port.generate(command);
         if (candidate == null || candidate.semanticModel() == null)
             throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID);
+        // generation port는 항상 AI_GENERATE 출처로 후보를 만든다. 이 서비스는 그 결과를
+        // AuthoringOperationType.AI_MODIFY Version으로 등록하므로, validateSourceType의
+        // operationType-sourceType 일치 검사를 통과하도록 출처를 이 흐름에 맞게 다시 붙인다.
+        candidate = new ProblemCandidateDraft(candidate.requestId(), candidate.snapshot(), candidate.assetPlans(),
+                candidate.semanticModel(), new CandidateProvenance(CandidateSourceType.AI_MODIFY,
+                        candidate.provenance().sourceQuestionId(), candidate.provenance().referenceQuestionIds()));
         var result = processingService.process(new CandidateProcessingRequest(ownerTeacherId, plan.sessionId(),
                 baseVersion.getId(), AuthoringOperationType.AI_MODIFY, VerificationOperationType.EDIT, candidate,
                 new VerificationExpectation(candidate.snapshot().metadata().questionType(), candidate.snapshot().metadata().difficulty(),

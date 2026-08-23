@@ -80,6 +80,15 @@ class ProblemStructuralRegenerationServiceTest {
         var visualRequirement = captor.getValue().specification().visualRequirement();
         assertThat(visualRequirement.mode()).isEqualTo(VisualGenerationMode.PRESERVE_ORIGIN);
         assertThat(visualRequirement.requiredKind()).isEqualTo(VisualReferenceKind.COORDINATE_GRAPH);
+
+        // generation port는 항상 AI_GENERATE로 후보를 만들지만, 이 서비스는 AI_MODIFY Version으로
+        // 등록하므로 processingService에 넘기기 전에 출처를 AI_MODIFY로 다시 붙여야 한다
+        // (그렇지 않으면 ProblemCandidateProcessingService.validateSourceType이 거부한다).
+        ArgumentCaptor<com.cenedu.backend.domain.problem.authoring.candidate.CandidateProcessingRequest> requestCaptor =
+                ArgumentCaptor.forClass(com.cenedu.backend.domain.problem.authoring.candidate.CandidateProcessingRequest.class);
+        org.mockito.Mockito.verify(processingService).process(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().candidate().provenance().sourceType())
+                .isEqualTo(com.cenedu.backend.domain.problem.authoring.candidate.CandidateSourceType.AI_MODIFY);
     }
 
     private ProblemSemanticModelV1 semanticModelWithCoordinateGraph() {
