@@ -101,12 +101,15 @@ public class PersonalizedProblemGenerationPlanningService {
             throw new IllegalArgumentException("맞춤 생성 계획 입력이 필요합니다.");
         }
         Map<Long, CustomProblemGenerationItemRequest> requests = toRequestMap(items);
+        // SIMILAR·ADVANCED가 공유할 ORIGIN·참고 문항 Snapshot을 소단원 전체에서 한 번에 조회한다.
+        Map<Long, BankSnapshotResult> referenceSnapshots = prefetchReferenceSnapshots(proposal, requests);
         List<ProblemGenerationSlotPlan> slots = new ArrayList<>();
         appendReviewSlots(slots, proposal, requests);
         appendSimilarSlots(slots, proposal, requests, curriculumPaths,
                 slots.stream().map(ProblemGenerationSlotPlan::sourceQuestionId)
-                        .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet()));
-        appendAdvancedSlots(slots, proposal, requests, curriculumPaths);
+                        .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet()),
+                referenceSnapshots);
+        appendAdvancedSlots(slots, proposal, requests, curriculumPaths, referenceSnapshots);
         List<ProblemGenerationSlotPlan> planned = reindex(slots);
         log.info("event=problem_authoring_plan stage=PLANNING outcome=SUCCESS clientRequestId={} jobType={} "
                         + "slotCount={} reviewCount={} similarReuseCount={} similarAiCount={} advancedAiCount={} ragEnabled={}",
@@ -162,17 +165,34 @@ public class PersonalizedProblemGenerationPlanningService {
         }
     }
 
+    /** SIMILAR·ADVANCED가 공유할 ORIGIN·참고 문항 Snapshot을 소단원 전체에서 한 번에 조회한다.
+     *  기존에는 같은 소단원의 referenceQuestions Snapshot을 SIMILAR·ADVANCED가 각각 재조회했다. */
+    private Map<Long, BankSnapshotResult> prefetchReferenceSnapshots(
+            ReissueProposalResponse proposal, Map<Long, CustomProblemGenerationItemRequest> requests) {
+        java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>();
+        for (ReissueProposalResponse.SubUnitProposal subUnit : proposal.subcategories()) {
+            CustomProblemGenerationItemRequest request = requests.get(subUnit.subUnitId());
+            if (request == null || (request.similarCount() == 0 && request.advancedCount() == 0)) continue;
+            if (subUnit.similar() == null || subUnit.similar().referenceQuestions() == null) continue;
+            subUnit.similar().referenceQuestions().stream()
+                    .map(ReissueProposalResponse.ReferenceQuestion::questionId).forEach(ids::add);
+        }
+        if (ids.isEmpty()) return Map.of();
+        return snapshotsById(List.copyOf(ids));
+    }
+
     /** SIMILAR 단계의 AI 슬롯 뼈대를 교육과정 순서대로 붙인다. */
     private void appendSimilarSlots(List<ProblemGenerationSlotPlan> slots,
                                     ReissueProposalResponse proposal,
                                     Map<Long, CustomProblemGenerationItemRequest> requests,
                                     Map<Long, CurriculumPathResponse> paths,
-                                    java.util.Set<Long> alreadyReusedIds) {
+                                    java.util.Set<Long> alreadyReusedIds,
+                                    Map<Long, BankSnapshotResult> referenceSnapshots) {
         for (ReissueProposalResponse.SubUnitProposal subUnit : proposal.subcategories()) {
             CustomProblemGenerationItemRequest request = requests.get(subUnit.subUnitId());
             if (request == null) continue;
             appendSimilarForSubUnit(slots, subUnit, request.similarCount(), paths.get(subUnit.subUnitId()),
-                    alreadyReusedIds);
+                    alreadyReusedIds, referenceSnapshots);
         }
     }
 
@@ -180,7 +200,8 @@ public class PersonalizedProblemGenerationPlanningService {
     private void appendSimilarForSubUnit(List<ProblemGenerationSlotPlan> slots,
                                          ReissueProposalResponse.SubUnitProposal subUnit,
                                          int requestedCount, CurriculumPathResponse path,
-                                         java.util.Set<Long> alreadyReusedIds) {
+                                         java.util.Set<Long> alreadyReusedIds,
+                                         Map<Long, BankSnapshotResult> referenceSnapshots) {
         if (requestedCount == 0) return;
         ReissueProposalResponse.SimilarProposal similar = subUnit.similar();
         if (similar.referenceQuestions() == null || similar.referenceQuestions().isEmpty()) {
@@ -189,8 +210,7 @@ public class PersonalizedProblemGenerationPlanningService {
         long originId = similar.referenceQuestions().getFirst().questionId();
         List<Long> referenceIds = similar.referenceQuestions().stream()
                 .map(ReissueProposalResponse.ReferenceQuestion::questionId).distinct().toList();
-        Map<Long, BankSnapshotResult> references = snapshotsById(referenceIds);
-        BankSnapshotResult origin = references.get(originId);
+        BankSnapshotResult origin = referenceSnapshots.get(originId);
         if (origin == null || !origin.reusable()) {
             throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
         }
@@ -205,7 +225,7 @@ public class PersonalizedProblemGenerationPlanningService {
         examples.add(new GenerationReference(GenerationReferenceRole.ORIGIN, originId, origin.snapshot()));
         for (Long referenceId : referenceIds) {
             if (referenceId.equals(originId)) continue;
-            BankSnapshotResult reference = references.get(referenceId);
+            BankSnapshotResult reference = referenceSnapshots.get(referenceId);
             if (reference != null && reference.reusable()) {
                 examples.add(new GenerationReference(GenerationReferenceRole.EXAMPLE,
                         referenceId, reference.snapshot()));
@@ -289,7 +309,8 @@ public class PersonalizedProblemGenerationPlanningService {
     private void appendAdvancedSlots(List<ProblemGenerationSlotPlan> slots,
                                      ReissueProposalResponse proposal,
                                      Map<Long, CustomProblemGenerationItemRequest> requests,
-                                     Map<Long, CurriculumPathResponse> paths) {
+                                     Map<Long, CurriculumPathResponse> paths,
+                                     Map<Long, BankSnapshotResult> referenceSnapshots) {
         // ADVANCED 검색은 제외 집합이 없어(retrieveAdvancedExamples가 Set.of()) 소단원 간 완전히 독립적이다.
         // 순서 보존 fan-out으로 병렬 실행하되, executor가 null이면 순차로 폴백한다.
         List<java.util.concurrent.Callable<ProblemGenerationSlotPlan>> tasks = new ArrayList<>();
@@ -298,7 +319,7 @@ public class PersonalizedProblemGenerationPlanningService {
             if (request == null) continue;
             CurriculumPathResponse path = paths.get(subUnit.subUnitId());
             for (int i = 0; i < request.advancedCount(); i++) {
-                tasks.add(() -> advancedAiSlot(subUnit, path));
+                tasks.add(() -> advancedAiSlot(subUnit, path, referenceSnapshots));
             }
         }
         slots.addAll(OrderedParallelPlanner.map(planningExecutor, tasks));
@@ -306,15 +327,14 @@ public class PersonalizedProblemGenerationPlanningService {
 
     /** 취약 분포와 풀이 단계를 포함한 ADVANCED AI 슬롯을 만든다. */
     private ProblemGenerationSlotPlan advancedAiSlot(
-            ReissueProposalResponse.SubUnitProposal subUnit, CurriculumPathResponse path) {
+            ReissueProposalResponse.SubUnitProposal subUnit, CurriculumPathResponse path,
+            Map<Long, BankSnapshotResult> referenceSnapshots) {
         ReissueProposalResponse.SimilarProposal similar = subUnit.similar();
         if (path == null || similar.referenceQuestions() == null || similar.referenceQuestions().isEmpty()) {
             throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
         }
         long originId = similar.referenceQuestions().getFirst().questionId();
-        Map<Long, BankSnapshotResult> references = snapshotsById(similar.referenceQuestions().stream()
-                .map(ReissueProposalResponse.ReferenceQuestion::questionId).distinct().toList());
-        BankSnapshotResult origin = references.get(originId);
+        BankSnapshotResult origin = referenceSnapshots.get(originId);
         if (origin == null || !origin.reusable()) {
             throw new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID);
         }
@@ -324,7 +344,7 @@ public class PersonalizedProblemGenerationPlanningService {
                 originId, origin.snapshot()));
         for (ReissueProposalResponse.ReferenceQuestion reference : similar.referenceQuestions()) {
             if (reference.questionId() == originId) continue;
-            BankSnapshotResult example = references.get(reference.questionId());
+            BankSnapshotResult example = referenceSnapshots.get(reference.questionId());
             if (example != null && example.reusable()) {
                 generationReferences.add(new GenerationReference(GenerationReferenceRole.EXAMPLE,
                         reference.questionId(), example.snapshot()));
