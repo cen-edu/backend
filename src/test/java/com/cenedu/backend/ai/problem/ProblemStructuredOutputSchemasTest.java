@@ -59,6 +59,33 @@ class ProblemStructuredOutputSchemasTest {
         } else if (node.isArray()) node.elements().forEachRemaining(this::assertEveryObjectIsClosed);
     }
 
+    @Test void repairDeltaHasTypeOnEveryReplacementFieldAndOnlyTargetedFields() throws Exception {
+        var targets = java.util.Set.of(
+                com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.EXPLANATION,
+                com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.STEPS,
+                com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.CHOICES);
+        JsonNode root = new ObjectMapper().readTree(ProblemStructuredOutputSchemas.repairDeltaFor(targets));
+
+        JsonNode replacementProps = root.path("properties").path("replacements").path("properties");
+        // 계획 대상만 포함한다.
+        var fields = new java.util.HashSet<String>();
+        replacementProps.fieldNames().forEachRemaining(fields::add);
+        assertThat(fields).containsExactlyInAnyOrder("EXPLANATION", "STEPS", "CHOICES");
+        // 모든 대체 필드에 type 키가 있어야 한다 — 빈 {}(type 없음)는 OpenAI가 400으로 거부했다.
+        replacementProps.fieldNames().forEachRemaining(field ->
+                assertThat(replacementProps.path(field).has("type"))
+                        .as("replacements.%s must declare a type", field).isTrue());
+        // replacements와 rationale은 필수, 대상 필드도 required에 담긴다.
+        assertThat(root.path("required").toString()).contains("replacements").contains("rationale");
+        assertThat(root.path("properties").path("replacements").path("required").toString())
+                .contains("EXPLANATION").contains("STEPS").contains("CHOICES");
+        assertThat(root.path("properties").path("replacements").path("additionalProperties").asBoolean()).isFalse();
+        // 모든 object 노드가 additionalProperties:false 여야 한다 — strict Structured Outputs가 이를
+        // 요구하고, 없으면 API가 400(Invalid schema)으로 거부한다. CANDIDATE 하위 스키마 재사용이
+        // 이 불변식을 유지하는지 검증한다.
+        assertEveryObjectIsClosed(root);
+    }
+
     @Test void semanticSchemaDoesNotContainUnsupportedComposition() {
         String schema = ProblemStructuredOutputSchemas.SEMANTIC_MODEL;
         assertThat(schema).doesNotContain("\"allOf\"");

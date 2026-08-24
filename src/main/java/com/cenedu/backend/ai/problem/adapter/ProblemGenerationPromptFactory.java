@@ -13,6 +13,16 @@ public class ProblemGenerationPromptFactory {
 
     /** 서버가 기대하는 S1 JSON 계약과 생성 조건을 프롬프트로 만든다. */
     public ProblemGenerationPrompt create(ProblemGenerationCommand command) {
+        return create(command, List.of());
+    }
+
+    /**
+     * 직전 시도의 서버 검증 위반을 프롬프트에 실어 내용 교정 재시도를 유도한다.
+     *
+     * <p>{@code priorViolations}가 비어 있으면 최초 생성과 동일하다. 위반이 있으면 모델에게
+     * "무엇이 왜 틀렸는지"를 알려, 같은 구조 실수를 근거 없이 반복하지 않도록 한다.
+     */
+    public ProblemGenerationPrompt create(ProblemGenerationCommand command, List<String> priorViolations) {
         var spec = command.specification();
         var curriculum = command.curriculum();
         String systemPrompt = """
@@ -28,15 +38,18 @@ public class ProblemGenerationPromptFactory {
                 문제를 출력하기 전에 반드시 다음 순서로 자체 검산하라:
                 (1) 학생이 보는 contentBlocks[0].text만 읽고 풀이에 필요한 모든 정보를 확인한다.
                 (2) 문제를 처음부터 직접 풀어 최종값을 계산한다.
-                (3) answerUnits, choices의 정답, explanation의 결론에 같은 값을 대입해 일치 여부를 확인한다.
+                (3) answerUnits, choices의 정답, explanation의 마지막 결론 값이 서로 문자 단위로 일치하는지 대조한다.
                 어느 하나라도 계산 불가·정보 부족·값 불일치이면 그 문항을 출력하지 말고 조건을 만족하는 새 문항을 만든다.
                 생성 과정의 검산 메모리나 숨은 전제는 JSON에 쓰지 말고, 검산된 결과만 출력한다.
                 최상위 question은 contentBlocks[0].text와 같은 실제 문제 문장으로 작성한다.
                 모든 최상위 목록(contentBlocks, choices, steps, answerUnits, rubricItems, assets)은
                 사용하지 않더라도 반드시 []로 출력한다. 단일 객체로 출력하지 마라.
                 explanation, learningGuide(conceptTitle, summary, keyPoints 1~3개)는 필수다.
-                explanation에는 이 문제의 구체적인 계산 또는 모범 응답 방향을 담고 일반론만 쓰지 않는다.
-                keyPoints는 직접적인 정답이나 계산 절차를 노출하지 않는다.
+                explanation에는 이 문제의 구체적인 계산 과정과 최종 결론을 담고 일반론만 쓰지 않는다.
+                explanation의 마지막 결론 값은 answerUnits의 정답과 반드시 문자 그대로 일치해야 하며,
+                문제 text에 주어지지 않은 새로운 수치·조건을 explanation에서 만들어 쓰지 마라(주어진 값으로만 계산한다).
+                learningGuide의 conceptTitle·summary·keyPoints 어디에도 이 문항의 실제 정답 값이나 정답 보기를
+                쓰지 마라. 개념과 접근 관점만 서술하고 최종 정답 수치·계산 절차는 넣지 않는다.
                 학생에게 표시되는 contentBlocks, choices, steps, explanation, learningGuide의 수식은
                 인라인 LaTeX인 $...$로 감싸라(예: $2^3$, $\\frac{1}{2}$). 일반 문장과 단위만 있는 텍스트는 감싸지 마라.
                 answerUnits의 answerRaw는 화면 표시용 구분자($, $$, \\(, \\)) 없이 비교 가능한 원시값만 작성하라.
@@ -49,6 +62,16 @@ public class ProblemGenerationPromptFactory {
             messages.add(ChatMessage.user("FEW_SHOT_JSON\n" + new FewShotReferenceSerializer().serialize(curriculum, command.references())));
         }
         messages.add(ChatMessage.user("CURRENT_REQUEST_JSON\n" + currentRequest(command)));
+        if (priorViolations != null && !priorViolations.isEmpty()) {
+            StringBuilder feedback = new StringBuilder("PREVIOUS_ATTEMPT_VIOLATIONS\n"
+                    + "직전 시도가 서버 검증에서 실패했다. 아래 위반을 모두 고쳐서 유효한 문항을 다시 생성하라. "
+                    + "특히 빈칸(BLANK)과 answerUnits는 개수와 순서가 정확히 1:1로 대응해야 하고, "
+                    + "객관식 정답 answerRaw는 반드시 존재하는 보기 키(C1, C2 …)여야 한다.\n");
+            for (String violation : priorViolations) {
+                feedback.append("- ").append(violation).append('\n');
+            }
+            messages.add(ChatMessage.user(feedback.toString()));
+        }
         return new ProblemGenerationPrompt(systemPrompt, messages);
     }
 

@@ -8,6 +8,8 @@ import com.cenedu.backend.ai.problem.adapter.FewShotReferenceSerializer;
 import com.cenedu.backend.domain.problem.authoring.generation.*;
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.DefaultProblemSemanticMaterializer;
 import com.cenedu.backend.domain.problem.authoring.semantic.model.*;
+import com.cenedu.backend.global.common.BusinessException;
+import com.cenedu.backend.global.common.ErrorCode;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
@@ -27,6 +29,19 @@ class ProblemSemanticGenerationPipelineTest {
         var client=mock(LlmClient.class); when(client.completeStructured(anyString(),anyList(),anyString())).thenReturn(new LlmResponse("{}",0,0,0));
         assertThatThrownBy(() -> pipeline(client).generate(command())).isInstanceOf(ProblemSemanticGenerationPipeline.SemanticGenerationException.class);
         verify(client,times(3)).completeStructured(anyString(),anyList(),anyString());
+    }
+
+    @Test void transportFailureIsRethrownImmediatelyWithoutContentRetry() {
+        // 전송계층 오류는 LlmClient(L1)가 이미 재시도한 인프라 실패다. semantic 루프가 내용 검증
+        // 실패로 오인해 3× 재시도하지 않고, 그대로 던져 worker 재생성 계층이 다루게 한다.
+        var client=mock(LlmClient.class);
+        when(client.completeStructured(anyString(),anyList(),anyString()))
+                .thenThrow(new BusinessException(ErrorCode.AI_CLIENT_CALL_FAILED,"boom"));
+        assertThatThrownBy(() -> pipeline(client).generate(command()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(e -> assertThat(((BusinessException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.AI_CLIENT_CALL_FAILED));
+        verify(client,times(1)).completeStructured(anyString(),anyList(),anyString());
     }
 
     @Test void generationPromptForbidsAnswerEquationInDiagramLabels() {

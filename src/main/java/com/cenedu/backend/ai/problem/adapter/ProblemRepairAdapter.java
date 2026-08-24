@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import com.cenedu.backend.ai.client.LlmClient;
 import com.cenedu.backend.ai.client.LlmUseCase;
+import com.cenedu.backend.ai.problem.ProblemStructuredOutputSchemas;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemRepairPort;
 import com.cenedu.backend.domain.problem.authoring.repair.ProblemRepairCommand;
 import com.cenedu.backend.domain.problem.authoring.repair.ProblemRepairDelta;
@@ -19,12 +20,6 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ProblemRepairAdapter implements ProblemRepairPort {
     private static final long REPAIR_SEED = 20260821L;
-    private static final String SCHEMA = """
-            {"type":"object","additionalProperties":false,"required":["replacements","rationale"],"properties":{
-              "replacements":{"type":"object","additionalProperties":false,"properties":{
-                "CONTENT":{},"CHOICES":{},"ANSWERS":{},"STEPS":{},"EXPLANATION":{},"RUBRIC":{},"LEARNING_GUIDE":{},"ASSET":{}}},
-              "rationale":{"type":"string"}}}
-            """;
 
     private final LlmClient llmClient;
     private final ObjectMapper objectMapper;
@@ -41,7 +36,8 @@ public class ProblemRepairAdapter implements ProblemRepairPort {
     public ProblemRepairDelta repair(ProblemRepairCommand command) {
         JsonNode root = objectMapper.readTree(llmClient.completeStructured(
                 promptFactory.systemPrompt(), promptFactory.messages(command), REPAIR_SEED,
-                LlmUseCase.VERIFICATION, SCHEMA).text());
+                LlmUseCase.VERIFICATION,
+                ProblemStructuredOutputSchemas.repairDeltaFor(command.plan().targets())).text());
         JsonNode replacements = root.path("replacements");
         if (!replacements.isObject()) {
             throw new IllegalArgumentException("Repair 응답의 replacements가 객체가 아닙니다.");
