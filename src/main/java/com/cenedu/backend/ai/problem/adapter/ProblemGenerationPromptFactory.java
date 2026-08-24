@@ -13,6 +13,16 @@ public class ProblemGenerationPromptFactory {
 
     /** 서버가 기대하는 S1 JSON 계약과 생성 조건을 프롬프트로 만든다. */
     public ProblemGenerationPrompt create(ProblemGenerationCommand command) {
+        return create(command, List.of());
+    }
+
+    /**
+     * 직전 시도의 서버 검증 위반을 프롬프트에 실어 내용 교정 재시도를 유도한다.
+     *
+     * <p>{@code priorViolations}가 비어 있으면 최초 생성과 동일하다. 위반이 있으면 모델에게
+     * "무엇이 왜 틀렸는지"를 알려, 같은 구조 실수를 근거 없이 반복하지 않도록 한다.
+     */
+    public ProblemGenerationPrompt create(ProblemGenerationCommand command, List<String> priorViolations) {
         var spec = command.specification();
         var curriculum = command.curriculum();
         String systemPrompt = """
@@ -49,6 +59,16 @@ public class ProblemGenerationPromptFactory {
             messages.add(ChatMessage.user("FEW_SHOT_JSON\n" + new FewShotReferenceSerializer().serialize(curriculum, command.references())));
         }
         messages.add(ChatMessage.user("CURRENT_REQUEST_JSON\n" + currentRequest(command)));
+        if (priorViolations != null && !priorViolations.isEmpty()) {
+            StringBuilder feedback = new StringBuilder("PREVIOUS_ATTEMPT_VIOLATIONS\n"
+                    + "직전 시도가 서버 검증에서 실패했다. 아래 위반을 모두 고쳐서 유효한 문항을 다시 생성하라. "
+                    + "특히 빈칸(BLANK)과 answerUnits는 개수와 순서가 정확히 1:1로 대응해야 하고, "
+                    + "객관식 정답 answerRaw는 반드시 존재하는 보기 키(C1, C2 …)여야 한다.\n");
+            for (String violation : priorViolations) {
+                feedback.append("- ").append(violation).append('\n');
+            }
+            messages.add(ChatMessage.user(feedback.toString()));
+        }
         return new ProblemGenerationPrompt(systemPrompt, messages);
     }
 
