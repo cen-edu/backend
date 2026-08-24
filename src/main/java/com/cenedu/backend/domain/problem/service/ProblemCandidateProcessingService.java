@@ -217,20 +217,29 @@ public class ProblemCandidateProcessingService {
         if (!plan.repairable()) return null;
         ProblemRepairPort repairPort = repairPortProvider.getIfAvailable();
         if (repairPort == null) return null;
-        ProblemRepairDelta delta = repairPort.repair(new ProblemRepairCommand(
-                UUID.randomUUID(), request.candidate().snapshot(), plan));
-        var repairedSnapshot = repairDeltaMerger.merge(request.candidate().snapshot(), plan, delta);
-        structuralValidator.validate(repairedSnapshot);
-        normalizedValidator.validate(repairedSnapshot);
-        ProblemCandidateDraft repairedCandidate = ProblemCandidateDraft.legacy(
-                UUID.randomUUID(), repairedSnapshot, request.candidate().assetPlans(),
-                new CandidateProvenance(CandidateSourceType.AI_MODIFY,
-                        registered.versionId(), List.of(registered.versionId())));
-        CandidateProcessingRequest repairedRequest = new CandidateProcessingRequest(
-                request.ownerTeacherId(), request.sessionId(), registered.versionId(),
-                AuthoringOperationType.AI_MODIFY, request.verificationOperationType(), repairedCandidate,
-                request.expectation(), request.verificationContext(), "검증 오류 항목 부분 수정");
-        return processInternal(repairedRequest, false, repairProfile(plan));
+        // repair는 어디까지나 선택적 재교정이다. repair 호출·병합·검증에서 예외가 나면 그것을 위로
+        // 전파해 원래의 FAILED를 하드 에러(VERIFICATION_ERROR)로 바꾸지 않는다 — null을 반환해
+        // 원래 FAILED 결과로 폴백시키고, worker가 통상적인 재생성으로 처리하게 한다.
+        try {
+            ProblemRepairDelta delta = repairPort.repair(new ProblemRepairCommand(
+                    UUID.randomUUID(), request.candidate().snapshot(), plan));
+            var repairedSnapshot = repairDeltaMerger.merge(request.candidate().snapshot(), plan, delta);
+            structuralValidator.validate(repairedSnapshot);
+            normalizedValidator.validate(repairedSnapshot);
+            ProblemCandidateDraft repairedCandidate = ProblemCandidateDraft.legacy(
+                    UUID.randomUUID(), repairedSnapshot, request.candidate().assetPlans(),
+                    new CandidateProvenance(CandidateSourceType.AI_MODIFY,
+                            registered.versionId(), List.of(registered.versionId())));
+            CandidateProcessingRequest repairedRequest = new CandidateProcessingRequest(
+                    request.ownerTeacherId(), request.sessionId(), registered.versionId(),
+                    AuthoringOperationType.AI_MODIFY, request.verificationOperationType(), repairedCandidate,
+                    request.expectation(), request.verificationContext(), "검증 오류 항목 부분 수정");
+            return processInternal(repairedRequest, false, repairProfile(plan));
+        } catch (RuntimeException exception) {
+            log.warn("event=problem_authoring_stage operation=REPAIR outcome=ERROR itemId={} errorType={} message={}",
+                    context("itemId"), exception.getClass().getSimpleName(), exception.getMessage());
+            return null;
+        }
     }
 
     private VerificationProfile repairProfile(ProblemRepairPlan plan) {

@@ -80,6 +80,10 @@ class ProblemStructuredOutputSchemasTest {
         assertThat(root.path("properties").path("replacements").path("required").toString())
                 .contains("EXPLANATION").contains("STEPS").contains("CHOICES");
         assertThat(root.path("properties").path("replacements").path("additionalProperties").asBoolean()).isFalse();
+        // 모든 object 노드가 additionalProperties:false 여야 한다 — strict Structured Outputs가 이를
+        // 요구하고, 없으면 API가 400(Invalid schema)으로 거부한다. CANDIDATE 하위 스키마 재사용이
+        // 이 불변식을 유지하는지 검증한다.
+        assertEveryObjectIsClosed(root);
     }
 
     @Test void semanticSchemaDoesNotContainUnsupportedComposition() {

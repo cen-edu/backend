@@ -269,31 +269,65 @@ public final class ProblemStructuredOutputSchemas {
         return "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{" + props + "}}";
     }
 
+    /** CANDIDATE 스키마를 한 번만 파싱해 하위 스키마 재사용에 쓴다. */
+    private static final com.fasterxml.jackson.databind.JsonNode CANDIDATE_NODE = parseCandidate();
+
+    private static com.fasterxml.jackson.databind.JsonNode parseCandidate() {
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(CANDIDATE);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("CANDIDATE 스키마를 파싱할 수 없습니다.", e);
+        }
+    }
+
+    /** Repair 대상을 CANDIDATE의 동일 필드 하위 스키마로 매핑한다. */
+    private static String candidateFieldFor(
+            com.cenedu.backend.domain.problem.authoring.repair.RepairTarget target) {
+        return switch (target) {
+            case CONTENT -> "contentBlocks";
+            case CHOICES -> "choices";
+            case STEPS -> "steps";
+            case ANSWERS -> "answerUnits";
+            case RUBRIC -> "rubricItems";
+            case EXPLANATION -> "explanation";
+            case LEARNING_GUIDE -> "learningGuide";
+            case ASSET -> "assets";
+        };
+    }
+
     /**
      * Repair 계획에 포함된 대상만 모델 출력 필드로 허용하는 스키마를 만든다.
      *
-     * <p>{@link #modificationDeltaFor}와 같은 이유로 각 필드는 union 타입을 쓴다 —
-     * OpenAI json_schema는 모든 속성에 {@code type} 키를 요구해서 빈 {@code {}}는 400
-     * (Invalid schema: schema must have a 'type' key)으로 거부된다. 대체 값의 형태는 대상마다
-     * (배열·문자열·객체) 다르므로 {@code ["object","array","string","null"]} 합집합으로 두고,
-     * 실제 형태 검증은 서버 병합기({@code ProblemRepairDeltaMerger})가 한다.
+     * <p>OpenAI Structured Outputs는 strict라 union 타입(예: {@code ["object","array"...]})의
+     * object 분기에 {@code additionalProperties:false}를 요구한다. 대체 값은 대상마다 형태가 달라
+     * union으로는 strict를 만족시킬 수 없으므로, <b>이미 strict-valid로 동작하는 {@link #CANDIDATE}의
+     * 동일 필드 하위 스키마를 그대로 재사용</b>한다(예: STEPS→CANDIDATE.properties.steps).
      *
      * <p>계획 대상만 properties·required에 담아, 어댑터의 "계획 밖 대상 거부"와 병합기의
      * "응답 키가 계획과 정확히 일치" 계약을 모델이 자연히 만족하게 한다.
      */
     public static String repairDeltaFor(
             java.util.Set<com.cenedu.backend.domain.problem.authoring.repair.RepairTarget> targets) {
-        String props = targets.stream()
-                .map(target -> "\"" + target.name() + "\":{\"type\":[\"object\",\"array\",\"string\",\"null\"]}")
-                .collect(java.util.stream.Collectors.joining(","));
-        String required = targets.stream()
-                .map(target -> "\"" + target.name() + "\"")
-                .collect(java.util.stream.Collectors.joining(","));
-        return "{\"type\":\"object\",\"additionalProperties\":false,"
-                + "\"required\":[\"replacements\",\"rationale\"],\"properties\":{"
-                + "\"replacements\":{\"type\":\"object\",\"additionalProperties\":false,"
-                + "\"required\":[" + required + "],\"properties\":{" + props + "}},"
-                + "\"rationale\":{\"type\":\"string\"}}}";
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var candidateProps = CANDIDATE_NODE.path("properties");
+        var root = mapper.createObjectNode();
+        root.put("type", "object");
+        root.put("additionalProperties", false);
+        root.set("required", mapper.createArrayNode().add("replacements").add("rationale"));
+        var props = root.putObject("properties");
+        var replacements = props.putObject("replacements");
+        replacements.put("type", "object");
+        replacements.put("additionalProperties", false);
+        var required = replacements.putArray("required");
+        var replacementProps = replacements.putObject("properties");
+        // enum 선언 순서로 순회해 스키마 출력을 결정적으로 만든다.
+        for (var target : com.cenedu.backend.domain.problem.authoring.repair.RepairTarget.values()) {
+            if (!targets.contains(target)) continue;
+            replacementProps.set(target.name(), candidateProps.path(candidateFieldFor(target)).deepCopy());
+            required.add(target.name());
+        }
+        props.putObject("rationale").put("type", "string");
+        return root.toString();
     }
 
     /** 사용자 수정 대화 한 턴의 분류·지시 추출 계약이다. */
