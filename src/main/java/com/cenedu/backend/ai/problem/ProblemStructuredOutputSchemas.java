@@ -269,6 +269,33 @@ public final class ProblemStructuredOutputSchemas {
         return "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{" + props + "}}";
     }
 
+    /**
+     * Repair 계획에 포함된 대상만 모델 출력 필드로 허용하는 스키마를 만든다.
+     *
+     * <p>{@link #modificationDeltaFor}와 같은 이유로 각 필드는 union 타입을 쓴다 —
+     * OpenAI json_schema는 모든 속성에 {@code type} 키를 요구해서 빈 {@code {}}는 400
+     * (Invalid schema: schema must have a 'type' key)으로 거부된다. 대체 값의 형태는 대상마다
+     * (배열·문자열·객체) 다르므로 {@code ["object","array","string","null"]} 합집합으로 두고,
+     * 실제 형태 검증은 서버 병합기({@code ProblemRepairDeltaMerger})가 한다.
+     *
+     * <p>계획 대상만 properties·required에 담아, 어댑터의 "계획 밖 대상 거부"와 병합기의
+     * "응답 키가 계획과 정확히 일치" 계약을 모델이 자연히 만족하게 한다.
+     */
+    public static String repairDeltaFor(
+            java.util.Set<com.cenedu.backend.domain.problem.authoring.repair.RepairTarget> targets) {
+        String props = targets.stream()
+                .map(target -> "\"" + target.name() + "\":{\"type\":[\"object\",\"array\",\"string\",\"null\"]}")
+                .collect(java.util.stream.Collectors.joining(","));
+        String required = targets.stream()
+                .map(target -> "\"" + target.name() + "\"")
+                .collect(java.util.stream.Collectors.joining(","));
+        return "{\"type\":\"object\",\"additionalProperties\":false,"
+                + "\"required\":[\"replacements\",\"rationale\"],\"properties\":{"
+                + "\"replacements\":{\"type\":\"object\",\"additionalProperties\":false,"
+                + "\"required\":[" + required + "],\"properties\":{" + props + "}},"
+                + "\"rationale\":{\"type\":\"string\"}}}";
+    }
+
     /** 사용자 수정 대화 한 턴의 분류·지시 추출 계약이다. */
     public static final String EDIT_TURN = """
             {
