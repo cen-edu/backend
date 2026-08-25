@@ -189,10 +189,14 @@ public record ReissueProposalResponse(
             @Schema(description = "발동 조건 충족 여부. 상 난이도에서 CLEAR 한 경우에만 참이다")
             boolean triggered,
 
-            @Schema(description = "기본 0. 발동 가능해도 교사가 올려야 나간다", example = "0")
+            @Schema(description = "기본 0. 응용은 권하지 않는 것이 기본이고 교사가 올려야 나간다",
+                    example = "0")
             int proposedCount,
 
-            @Schema(description = "발동하지 않았으면 0")
+            @Schema(description = """
+                    상한. 발동 여부와 무관하게 열려 있다 — 낼지 말지는 교사가 정한다.
+                    발동 조건은 triggered 로 판단한다.
+                    """)
             int maxCount,
 
             @Schema(description = "이 소단원 문항을 틀린 누적 횟수. 미분류 문항의 오답도 센다")
