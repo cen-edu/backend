@@ -109,9 +109,14 @@ final class ReissueGuidanceWriter {
     /**
      * 어디가 약한지.
      *
-     * <p>대표값이 없는 이유를 원인별로 나누지 않는다. 분류된 문항이 적어서든 오답이 흩어져서든
-     * 교사에게는 "특정하지 못했다" 는 같은 결론이고, 그 구분으로 교사가 할 수 있는 일이 없다.
-     * 오답이 아예 없는 경우만 따로 둔다 — 그건 "잘했다" 는 뜻이라 읽는 사람이 다르게 받는다.
+     * <p>오답이 한 건이어도 그 영역을 적는다. 소단원 하나에서 나온 오답이 한 건뿐이면 그 한
+     * 건이 근거의 전부라, "이 영역에서 틀렸다" 는 사실이 아무 말도 하지 않는 것보다 쓸모 있다.
+     *
+     * <p>마지막 문장은 <b>분류된 문항이 하나도 없을 때만</b> 나온다. 오답은 있는데
+     * {@code problem_question.evaluation_area} 가 비어 있어 어느 영역인지 알 수 없는 경우다.
+     * 학생이 아니라 문항 데이터 쪽 사정이라 "몰려 있지 않다" 처럼 학생 이야기로 적지 않는다.
+     *
+     * <p>오답이 아예 없는 경우는 따로 둔다 — 그건 "잘했다" 는 뜻이라 읽는 사람이 다르게 받는다.
      */
     private static String weakness(ReissueProposalResponse.AdvancedProposal advanced) {
         String area = label(advanced.primaryEvaluationArea());
@@ -128,7 +133,7 @@ final class ReissueGuidanceWriter {
         if (advanced.historicalIncorrectItemCount() == 0) {
             return "누적 오답이 없어 특정할 취약점이 없습니다.";
         }
-        return "오답 %d건이 특정 영역에 몰려 있지 않습니다."
+        return "오답 %d건이 있으나 평가 영역이 분류된 문항이 없습니다."
                 .formatted(advanced.historicalIncorrectItemCount());
     }
 

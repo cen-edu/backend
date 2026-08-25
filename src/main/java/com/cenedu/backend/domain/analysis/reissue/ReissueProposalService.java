@@ -67,14 +67,6 @@ public class ReissueProposalService {
      */
     private static final int MIN_EVIDENCE_SAMPLE = 2;
 
-    /**
-     * 대표값으로 뽑기 위한 최소 오답 수.
-     *
-     * <p>1건은 우연일 수 있다. 커버리지(분포가 실제 오답을 얼마나 설명하는지) 대신 이 바닥을
-     * 쓴다 — 분류되지 않은 데이터를 신경 쓰지 않고 있는 근거만 본다.
-     */
-    private static final int MIN_EVIDENCE_INCORRECT = 2;
-
     /** 근거가 하나도 없을 때 서 있을 자리. 위아래 어느 쪽으로도 조절할 수 있는 가운데다. */
     private static final short FALLBACK_DIFFICULTY = DifficultyLadder.MID;
 
@@ -364,7 +356,9 @@ public class ReissueProposalService {
      * 1개 틀린 영역(50%)이 10문항 중 4개 틀린 영역(40%)을 이겨서 최소 채점 수를 크게 걸어야
      * 했는데, 그럴 필요가 없어졌다.
      *
-     * <p>대신 오답 개수에 바닥을 둔다. 1건은 우연일 수 있다.
+     * <p>오답 개수에 바닥을 두지 않는다. 소단원 하나에서 나온 오답이 한 건뿐이면 그 한 건이
+     * 근거의 전부다 — 약한 근거가 아니라 완전한 근거다. 교사에게는 "이 영역에서 틀렸다" 는
+     * 사실이 아무 말도 하지 않는 것보다 쓸모 있다.
      *
      * <p>커버리지(분포가 실제 오답을 얼마나 설명하는지)로는 막지 않는다. 커버리지가 낮은 원인은
      * 학생이 아니라 {@code problem_question.evaluation_area} 가 비어 있는 것이고, 문항 은행의
@@ -376,7 +370,7 @@ public class ReissueProposalService {
     ) {
         return evidence.stream()
                 .filter(item -> item.gradedItemCount() >= MIN_EVIDENCE_SAMPLE)
-                .filter(item -> item.incorrectItemCount() >= MIN_EVIDENCE_INCORRECT)
+                .filter(item -> item.incorrectItemCount() > 0)
                 .max(Comparator.comparingInt(
                                 ReissueProposalResponse.EvaluationAreaEvidence::incorrectItemCount)
                         .thenComparing(
@@ -385,13 +379,13 @@ public class ReissueProposalService {
                 .orElse(null);
     }
 
-    /** 우선 참고할 풀이 단계. 평가 영역과 같은 기준으로 고른다 — 개수 우선, 오답 2건 이상. */
+    /** 우선 참고할 풀이 단계. 평가 영역과 같은 기준으로 고른다 — 오답 개수 우선. */
     private DiagnosticStage primaryTargetStage(
             List<ReissueProposalResponse.DiagnosticStageEvidence> evidence
     ) {
         return evidence.stream()
                 .filter(item -> item.gradedUnitCount() >= MIN_EVIDENCE_SAMPLE)
-                .filter(item -> item.incorrectUnitCount() >= MIN_EVIDENCE_INCORRECT)
+                .filter(item -> item.incorrectUnitCount() > 0)
                 .max(Comparator.comparingInt(
                                 ReissueProposalResponse.DiagnosticStageEvidence::incorrectUnitCount)
                         .thenComparing(
