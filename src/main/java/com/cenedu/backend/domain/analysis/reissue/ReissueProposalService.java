@@ -62,18 +62,18 @@ public class ReissueProposalService {
     /**
      * 대표값으로 뽑기 위한 최소 채점 표본.
      *
-     * <p>2문항 중 1개 틀린 영역이 오답률 50%로, 10문항 중 4개 틀린 영역(40%)을 이기는 것을 막는다.
+     * <p>오답률이 아니라 오답 개수로 고르게 되면서 크게 걸 이유가 없어졌다. 한 문항만 채점된
+     * 영역을 후보에서 빼는 정도로 둔다.
      */
-    private static final int MIN_EVIDENCE_SAMPLE = 4;
+    private static final int MIN_EVIDENCE_SAMPLE = 2;
 
     /**
-     * 대표값을 낼 수 있는 최소 커버리지(%).
+     * 대표값으로 뽑기 위한 최소 오답 수.
      *
-     * <p>분포 배열이 실제 오답의 절반도 설명하지 못하면 대표값을 내지 않는다.
-     * {@code problem_question.evaluation_area} 가 nullable 이라 분류되지 않은 문항이 많은
-     * 소단원에서는 표본 몇 개가 대표를 차지하기 쉽다.
+     * <p>1건은 우연일 수 있다. 커버리지(분포가 실제 오답을 얼마나 설명하는지) 대신 이 바닥을
+     * 쓴다 — 분류되지 않은 데이터를 신경 쓰지 않고 있는 근거만 본다.
      */
-    private static final BigDecimal MIN_EVIDENCE_COVERAGE_RATE = BigDecimal.valueOf(50);
+    private static final int MIN_EVIDENCE_INCORRECT = 2;
 
     /** 근거가 하나도 없을 때 서 있을 자리. 위아래 어느 쪽으로도 조절할 수 있는 가운데다. */
     private static final short FALLBACK_DIFFICULTY = DifficultyLadder.MID;
@@ -171,22 +171,11 @@ public class ReissueProposalService {
         return new ReissueProposalResponse.SubUnitProposal(
                 subUnitId,
                 subUnit.subUnitName(),
-                ReissueGuidanceWriter.write(adaptive, review, similar, advanced,
-                        hasEnoughCoverage(explainedIncorrectCount(advanced),
-                                advanced.historicalIncorrectItemCount())),
+                ReissueGuidanceWriter.write(adaptive, review, similar, advanced),
                 adaptive.toResponse(context.customSessionCount()),
                 review,
                 similar,
                 advanced);
-    }
-
-    /** 평가 영역으로 설명된 오답 수. 미분류 문항의 오답은 여기 잡히지 않는다. */
-    private static int explainedIncorrectCount(
-            ReissueProposalResponse.AdvancedProposal advanced
-    ) {
-        return advanced.evaluationAreaEvidence().stream()
-                .mapToInt(ReissueProposalResponse.EvaluationAreaEvidence::incorrectItemCount)
-                .sum();
     }
 
     /**
@@ -359,7 +348,7 @@ public class ReissueProposalService {
                 MAX_PROPOSED_COUNT,
                 historicalIncorrectItemCount,
                 weakness == null ? 0 : weakness.incorrectSessionCount(),
-                primaryEvaluationArea(areaEvidence, historicalIncorrectItemCount),
+                primaryEvaluationArea(areaEvidence),
                 primaryTargetStage(stageEvidence),
                 areaEvidence,
                 stageEvidence);
@@ -368,51 +357,47 @@ public class ReissueProposalService {
     /**
      * 우선 참고할 평가 영역.
      *
-     * <p>표본이 적은 영역이 높은 오답률로 대표를 차지하지 않도록 최소 채점 수를 걸고, 분포가 실제
-     * 오답을 절반도 설명하지 못하면 대표값 자체를 내지 않는다.
+     * <p>오답률이 아니라 <b>오답 개수</b>로 고른다. 이 값은 LLM 에게 "어느 영역을 겨냥해 문제를
+     * 만들라" 고 알려 주는 것이라, 비율이 높은 영역보다 실제로 많이 틀린 영역이 맞다.
+     *
+     * <p>개수로 고르면 표본이 적은 영역이 대표를 가로채지 못한다. 오답률로 고를 때는 2문항 중
+     * 1개 틀린 영역(50%)이 10문항 중 4개 틀린 영역(40%)을 이겨서 최소 채점 수를 크게 걸어야
+     * 했는데, 그럴 필요가 없어졌다.
+     *
+     * <p>대신 오답 개수에 바닥을 둔다. 1건은 우연일 수 있다.
+     *
+     * <p>커버리지(분포가 실제 오답을 얼마나 설명하는지)로는 막지 않는다. 커버리지가 낮은 원인은
+     * 학생이 아니라 {@code problem_question.evaluation_area} 가 비어 있는 것이고, 문항 은행의
+     * 분류율이 절반 남짓이라 기준선 근처에서 통과·차단이 갈려 교사 눈에는 변덕으로 보였다.
+     * 분류된 오답이 적어도 그 몇 건은 진짜 데이터다 — 아무 말도 하지 않는 것보다 낫다.
      */
     private EvaluationArea primaryEvaluationArea(
-            List<ReissueProposalResponse.EvaluationAreaEvidence> evidence,
-            int historicalIncorrectItemCount
+            List<ReissueProposalResponse.EvaluationAreaEvidence> evidence
     ) {
-        if (!hasEnoughCoverage(evidence.stream()
-                .mapToInt(ReissueProposalResponse.EvaluationAreaEvidence::incorrectItemCount)
-                .sum(), historicalIncorrectItemCount)) {
-            return null;
-        }
         return evidence.stream()
                 .filter(item -> item.gradedItemCount() >= MIN_EVIDENCE_SAMPLE)
-                .filter(item -> item.incorrectItemCount() > 0)
-                .max(Comparator.comparing(
-                                ReissueProposalResponse.EvaluationAreaEvidence::incorrectRate)
-                        .thenComparingInt(
-                                ReissueProposalResponse.EvaluationAreaEvidence::incorrectItemCount))
+                .filter(item -> item.incorrectItemCount() >= MIN_EVIDENCE_INCORRECT)
+                .max(Comparator.comparingInt(
+                                ReissueProposalResponse.EvaluationAreaEvidence::incorrectItemCount)
+                        .thenComparing(
+                                ReissueProposalResponse.EvaluationAreaEvidence::incorrectRate))
                 .map(ReissueProposalResponse.EvaluationAreaEvidence::evaluationArea)
                 .orElse(null);
     }
 
-    /** 우선 참고할 풀이 단계. 평가 영역과 달리 답안 단위라 커버리지 기준은 걸지 않는다. */
+    /** 우선 참고할 풀이 단계. 평가 영역과 같은 기준으로 고른다 — 개수 우선, 오답 2건 이상. */
     private DiagnosticStage primaryTargetStage(
             List<ReissueProposalResponse.DiagnosticStageEvidence> evidence
     ) {
         return evidence.stream()
                 .filter(item -> item.gradedUnitCount() >= MIN_EVIDENCE_SAMPLE)
-                .filter(item -> item.incorrectUnitCount() > 0)
-                .max(Comparator.comparing(
-                                ReissueProposalResponse.DiagnosticStageEvidence::incorrectRate)
-                        .thenComparingInt(
-                                ReissueProposalResponse.DiagnosticStageEvidence::incorrectUnitCount))
+                .filter(item -> item.incorrectUnitCount() >= MIN_EVIDENCE_INCORRECT)
+                .max(Comparator.comparingInt(
+                                ReissueProposalResponse.DiagnosticStageEvidence::incorrectUnitCount)
+                        .thenComparing(
+                                ReissueProposalResponse.DiagnosticStageEvidence::incorrectRate))
                 .map(ReissueProposalResponse.DiagnosticStageEvidence::diagnosticType)
                 .orElse(null);
-    }
-
-    /** 분포가 실제 오답을 충분히 설명하는지. 오답이 아예 없으면 대표값을 낼 이유도 없다. */
-    private boolean hasEnoughCoverage(int explainedIncorrectCount, int historicalIncorrectCount) {
-        if (historicalIncorrectCount == 0) {
-            return false;
-        }
-        return rate(explainedIncorrectCount, historicalIncorrectCount)
-                .compareTo(MIN_EVIDENCE_COVERAGE_RATE) >= 0;
     }
 
     /** 분모가 0 이면 비율을 만들지 않는다. 0.0 은 "완벽하게 잘함"으로 읽힌다. */

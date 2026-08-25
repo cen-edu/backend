@@ -27,23 +27,17 @@ final class ReissueGuidanceWriter {
     private ReissueGuidanceWriter() {
     }
 
-    /**
-     * 소단원 하나의 설명 세 문장을 만든다.
-     *
-     * @param coverageEnough 취약 분포가 실제 오답을 설명하기에 충분한지. 거짓이면 대표값이 없는
-     *                       이유가 "취약점 없음"이 아니라 "자료 부족"이다
-     */
+    /** 소단원 하나의 설명 세 문장을 만든다. */
     static ReissueProposalResponse.Guidance write(
             Adaptive adaptive,
             ReissueProposalResponse.ReviewProposal review,
             ReissueProposalResponse.SimilarProposal similar,
-            ReissueProposalResponse.AdvancedProposal advanced,
-            boolean coverageEnough
+            ReissueProposalResponse.AdvancedProposal advanced
     ) {
         return new ReissueProposalResponse.Guidance(
                 status(adaptive),
                 plan(review, similar, advanced, adaptive),
-                weakness(advanced, coverageEnough));
+                weakness(advanced));
     }
 
     /** 지금 이 난이도에 서 있는 이유. */
@@ -112,10 +106,14 @@ final class ReissueGuidanceWriter {
         return "응용은 상 난이도를 통과하지 못해 내지 않습니다.";
     }
 
-    /** 어디가 약한지. 대표값이 없을 때 "취약점 없음"과 "자료 부족"을 구분한다. */
-    private static String weakness(
-            ReissueProposalResponse.AdvancedProposal advanced, boolean coverageEnough
-    ) {
+    /**
+     * 어디가 약한지.
+     *
+     * <p>대표값이 없는 이유를 원인별로 나누지 않는다. 분류된 문항이 적어서든 오답이 흩어져서든
+     * 교사에게는 "특정하지 못했다" 는 같은 결론이고, 그 구분으로 교사가 할 수 있는 일이 없다.
+     * 오답이 아예 없는 경우만 따로 둔다 — 그건 "잘했다" 는 뜻이라 읽는 사람이 다르게 받는다.
+     */
+    private static String weakness(ReissueProposalResponse.AdvancedProposal advanced) {
         String area = label(advanced.primaryEvaluationArea());
         String stage = label(advanced.primaryTargetStage());
         if (area != null && stage != null) {
@@ -130,11 +128,7 @@ final class ReissueGuidanceWriter {
         if (advanced.historicalIncorrectItemCount() == 0) {
             return "누적 오답이 없어 특정할 취약점이 없습니다.";
         }
-        if (!coverageEnough) {
-            return "오답 %d건 중 분류된 문항이 적어 취약 영역을 특정하지 못했습니다."
-                    .formatted(advanced.historicalIncorrectItemCount());
-        }
-        return "오답 %d건이 특정 영역에 몰리지 않아 취약 영역을 특정하지 못했습니다."
+        return "오답 %d건이 특정 영역에 몰려 있지 않습니다."
                 .formatted(advanced.historicalIncorrectItemCount());
     }
 
