@@ -1,7 +1,9 @@
 # AWS EC2 배포용 compose. 이 저장소에서 빌드하지 않는다 — Docker Hub 에 올려 둔
 # 이미지를 받아서 띄운다(t3.micro 1GB 에서 Gradle 빌드는 OOM 으로 죽는다).
 #
-# EC2 에 올리는 파일은 이 파일과 .env 두 개뿐이다.
+# 프론트는 Vercel 이 서빙한다. 여기 있는 것은 API 와 그 앞단뿐이다.
+#
+# EC2 에 올리는 파일:
 #   scp -i cen-edu.pem deploy/docker-compose.prod.yml ec2-user@<EIP>:/home/ec2-user/app/
 #   scp -i cen-edu.pem deploy/.env.prod.example       ec2-user@<EIP>:/home/ec2-user/app/.env
 #   scp -i cen-edu.pem -r deploy/nginx                ec2-user@<EIP>:/home/ec2-user/app/
