@@ -13,7 +13,7 @@ public class ProblemAiExecutionBudgetAdapter implements ProblemAiExecutionBudget
     private final int modificationBudget;
 
     public ProblemAiExecutionBudgetAdapter(LlmCallBudgetManager manager,
-            @Value("${app.ai.problem.call-budget.generation:8}") int generationBudget,
+            @Value("${app.ai.problem.call-budget.generation:12}") int generationBudget,
             @Value("${app.ai.problem.call-budget.modification:8}") int modificationBudget) {
         this.manager = manager; this.generationBudget = generationBudget; this.modificationBudget = modificationBudget;
     }
