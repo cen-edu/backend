@@ -67,6 +67,21 @@ public class ProblemSearchIndexJdbcRepository {
         return result.stream().findFirst();
     }
 
+    /** 본문 임베딩은 유지하고 변경된 검색 메타데이터와 Snapshot만 갱신한다. */
+    public void refreshReadyMetadata(ClaimedSearchIndexTask task, ProblemSearchDocument document) {
+        jdbc.update("""
+                UPDATE problem_search_index SET curriculum_revision=:revision, school_level=:school,
+                    grade=:grade, semester=:semester, achievement_standard_id=:achievement,
+                    sub_unit_id=:subUnit, question_type=:type, difficulty=:difficulty,
+                    presentation=:presentation, visual_kind=:visualKind,
+                    index_schema_version=:schemaVersion, source_family_key=:family,
+                    document_text=:text, document_hash=:hash, duplicate_cluster_key=:duplicate,
+                    concept_keys=:concepts, snapshot=CAST(:snapshot AS jsonb),
+                    index_status='READY', deleted=false, updated_at=CURRENT_TIMESTAMP
+                WHERE question_id=:questionId AND index_status='READY'
+                """, indexParameters(task, document));
+    }
+
     /** 새 임베딩이 준비된 문서를 READY 행으로 원자 교체한다. */
     public void upsertReady(ClaimedSearchIndexTask task, ProblemSearchDocument document,
                             EmbeddingResult embedding, String vectorLiteral) {
@@ -78,21 +93,75 @@ public class ProblemSearchIndexJdbcRepository {
                 VALUES (:questionId,:revision,:school,:grade,:semester,:achievement,:subUnit,:type,:difficulty,:presentation,:visualKind,:schemaVersion,
                     :family,:text,:hash,:duplicate,:concepts,CAST(:snapshot AS jsonb),:model,:dimensions,
                     CAST(:embedding AS vector),'READY',false)
-                ON CONFLICT (question_id) DO UPDATE SET document_text=EXCLUDED.document_text,
+                ON CONFLICT (question_id) DO UPDATE SET curriculum_revision=EXCLUDED.curriculum_revision,
+                    school_level=EXCLUDED.school_level, grade=EXCLUDED.grade, semester=EXCLUDED.semester,
+                    achievement_standard_id=EXCLUDED.achievement_standard_id,
+                    sub_unit_id=EXCLUDED.sub_unit_id, question_type=EXCLUDED.question_type,
+                    difficulty=EXCLUDED.difficulty, presentation=EXCLUDED.presentation,
+                    source_family_key=EXCLUDED.source_family_key, document_text=EXCLUDED.document_text,
                     visual_kind=EXCLUDED.visual_kind, index_schema_version=EXCLUDED.index_schema_version,
                     document_hash=EXCLUDED.document_hash, duplicate_cluster_key=EXCLUDED.duplicate_cluster_key,
                     concept_keys=EXCLUDED.concept_keys, snapshot=EXCLUDED.snapshot, embedding_model=EXCLUDED.embedding_model,
                     embedding_dimensions=EXCLUDED.embedding_dimensions, embedding=EXCLUDED.embedding,
                     index_status='READY', deleted=false, updated_at=CURRENT_TIMESTAMP
-                """, new MapSqlParameterSource().addValue("questionId", task.questionId())
-                .addValue("revision", task.command().curriculum().curriculumRevision()).addValue("school", task.command().curriculum().schoolLevel())
-                .addValue("grade", task.command().curriculum().grade()).addValue("semester", task.command().curriculum().semester())
-                .addValue("achievement", task.command().curriculum().achievementStandardId()).addValue("subUnit", task.command().curriculum().subUnitId())
-                .addValue("type", task.command().snapshot().metadata().questionType().name()).addValue("difficulty", task.command().snapshot().metadata().difficulty())
-                .addValue("presentation", task.command().snapshot().metadata().presentation().name()).addValue("visualKind", task.command().visualKind().name()).addValue("schemaVersion", task.command().indexSchemaVersion()).addValue("family", document.sourceFamilyKey())
-                .addValue("text", document.documentText()).addValue("hash", document.documentHash()).addValue("duplicate", document.duplicateClusterKey())
-                .addValue("concepts", task.command().conceptKeys().toArray(new String[0])).addValue("snapshot", write(task.command().snapshot()))
-                .addValue("model", embedding.model()).addValue("dimensions", embedding.vector().size()).addValue("embedding", vectorLiteral));
+                """, indexParameters(task, document)
+                .addValue("model", embedding.model()).addValue("dimensions", embedding.vector().size())
+                .addValue("embedding", vectorLiteral));
+    }
+
+    /** 삭제된 원본 문항의 READY 인덱스를 검색 불가 상태로 동기화한다. */
+    public int markDeletedSourceIndexes() {
+        return jdbc.update("""
+                UPDATE problem_search_index search_index
+                SET index_status='DELETED', deleted=true, updated_at=CURRENT_TIMESTAMP
+                FROM problem_question source_question
+                WHERE source_question.id=search_index.question_id
+                  AND source_question.deleted_at IS NOT NULL
+                  AND (search_index.index_status <> 'DELETED' OR search_index.deleted=false)
+                """, new MapSqlParameterSource());
+    }
+
+    /** 최신 작업보다 낡거나 비어 있는 활성 문항 인덱스 작업을 다시 PENDING으로 전환한다. */
+    public int reactivateStaleTasks() {
+        return jdbc.update("""
+                UPDATE problem_search_index_task task
+                SET status='PENDING', attempt_count=0, next_attempt_at=CURRENT_TIMESTAMP,
+                    last_error=NULL, updated_at=CURRENT_TIMESTAMP
+                FROM problem_question source_question
+                LEFT JOIN problem_search_index search_index
+                  ON search_index.question_id=source_question.id
+                WHERE source_question.id=task.question_id
+                  AND source_question.deleted_at IS NULL
+                  AND task.status IN ('READY','SKIPPED')
+                  AND NOT EXISTS (
+                      SELECT 1 FROM problem_search_index_task newer
+                      WHERE newer.question_id=task.question_id
+                        AND newer.index_schema_version > task.index_schema_version)
+                  AND (search_index.question_id IS NULL
+                       OR search_index.index_status <> 'READY'
+                       OR search_index.deleted=true
+                       OR search_index.index_schema_version < task.index_schema_version
+                       OR (search_index.index_schema_version = task.index_schema_version
+                           AND search_index.visual_kind <> COALESCE(task.command->>'visualKind', 'NONE')))
+                """, new MapSqlParameterSource());
+    }
+
+    /** 커서 뒤의 활성·비서술형·미인덱싱 문항 ID를 일정 크기로 반환한다. */
+    public List<Long> findActiveMissingQuestionIds(long afterQuestionId, int limit) {
+        return jdbc.query("""
+                SELECT source_question.id
+                FROM problem_question source_question
+                LEFT JOIN problem_search_index search_index
+                  ON search_index.question_id=source_question.id
+                 AND search_index.index_status='READY' AND search_index.deleted=false
+                WHERE source_question.deleted_at IS NULL
+                  AND source_question.question_type <> 'ESSAY'
+                  AND search_index.question_id IS NULL
+                  AND source_question.id > :afterQuestionId
+                ORDER BY source_question.id
+                LIMIT :limit
+                """, new MapSqlParameterSource().addValue("afterQuestionId", afterQuestionId)
+                .addValue("limit", limit), (rs, row) -> rs.getLong("id"));
     }
 
     /** 작업을 READY 상태로 종료한다. */
@@ -109,6 +178,26 @@ public class ProblemSearchIndexJdbcRepository {
         return new MapSqlParameterSource().addValue("id", id).addValue("attempts", attempts)
                 .addValue("next", next == null ? null : Timestamp.from(next))
                 .addValue("error", error);
+    }
+    private MapSqlParameterSource indexParameters(ClaimedSearchIndexTask task,
+            ProblemSearchDocument document) {
+        return new MapSqlParameterSource().addValue("questionId", task.questionId())
+                .addValue("revision", task.command().curriculum().curriculumRevision())
+                .addValue("school", task.command().curriculum().schoolLevel())
+                .addValue("grade", task.command().curriculum().grade())
+                .addValue("semester", task.command().curriculum().semester())
+                .addValue("achievement", task.command().curriculum().achievementStandardId())
+                .addValue("subUnit", task.command().curriculum().subUnitId())
+                .addValue("type", task.command().snapshot().metadata().questionType().name())
+                .addValue("difficulty", task.command().snapshot().metadata().difficulty())
+                .addValue("presentation", task.command().snapshot().metadata().presentation().name())
+                .addValue("visualKind", task.command().visualKind().name())
+                .addValue("schemaVersion", task.command().indexSchemaVersion())
+                .addValue("family", document.sourceFamilyKey())
+                .addValue("text", document.documentText()).addValue("hash", document.documentHash())
+                .addValue("duplicate", document.duplicateClusterKey())
+                .addValue("concepts", task.command().conceptKeys().toArray(new String[0]))
+                .addValue("snapshot", write(task.command().snapshot()));
     }
     private String write(Object value) { try { return objectMapper.writeValueAsString(value); } catch (Exception e) { throw new IllegalStateException(e); } }
 
