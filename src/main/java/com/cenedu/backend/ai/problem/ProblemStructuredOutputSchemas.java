@@ -355,11 +355,11 @@ public final class ProblemStructuredOutputSchemas {
                     }},
                     "semanticPatch":{"type":["object","null"],"additionalProperties":false,
                       "properties":{
-                        "mode":{"type":"string","enum":["PRESENTATIONAL_PATCH","PARAMETRIC_PATCH","STRUCTURAL_REGENERATION","RESTORE","REJECTED"]},
+                        "mode":{"type":"string","enum":["PRESENTATIONAL_PATCH","PARAMETRIC_PATCH","CHOICE_REORDER","STRUCTURAL_REGENERATION","RESTORE","REJECTED"]},
                         "operations":{"type":"array","items":{
                           "type":"object","additionalProperties":false,
                           "properties":{
-                            "type":{"type":"string","enum":["SET_PARAMETER_VALUE","SET_PARAMETER_UNIT","SET_TEMPLATE_TEXT","SET_DIAGRAM_STYLE","SET_LABEL_TEXT"]},
+                            "type":{"type":"string","enum":["SET_PARAMETER_VALUE","SET_PARAMETER_UNIT","SET_TEMPLATE_TEXT","SET_DIAGRAM_STYLE","SET_LABEL_TEXT","SET_CHOICE_ORDER"]},
                             "path":{"type":"string"},"expectedOldValue":{"type":["string","null"]},"newValue":{"type":"string"}
                           },
                           "required":["type","path","expectedOldValue","newValue"]

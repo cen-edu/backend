@@ -52,9 +52,17 @@ public class ProblemSemanticModificationService {
             throw new BusinessException(ErrorCode.PROBLEM_EDIT_COMMAND_STALE,
                     "현재 문항의 값이 patch가 기대한 값과 다릅니다: " + e.path()
                             + " (기대값=" + e.expected() + ", 실제값=" + e.actual() + ")");
+        } catch (IllegalArgumentException e) {
+            // patch가 mode의 불변식을 어긴 경우다. 서버 결함이 아니라 Agent가 만든 요청이
+            // 규칙에 맞지 않는 상황이므로, 일반 예외로 흘려보내 500이 되게 두지 않는다.
+            throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_EDIT_REJECTED, e.getMessage());
         }
         MaterializedProblem baseMaterialized = materializer.materialize(baseModel);
         MaterializedProblem materialized = materializer.materialize(changed);
+        if (patch.mode() == SemanticEditMode.CHOICE_REORDER) {
+            requireSameChoiceSet(baseMaterialized, materialized);
+            requireSameCorrectChoice(baseMaterialized, materialized);
+        }
         if (patch.mode() == SemanticEditMode.PRESENTATIONAL_PATCH) {
             if (!java.util.Objects.equals(baseMaterialized.report().resolvedValues(), materialized.report().resolvedValues())
                     || !java.util.Objects.equals(baseMaterialized.snapshot().answerUnits(), materialized.snapshot().answerUnits()))
@@ -98,5 +106,47 @@ public class ProblemSemanticModificationService {
                 "확정된 semantic patch 실행"));
         return new ProblemModificationExecutionResult(result.versionId(), patch.mode(),
                 diffFactory.create(baseModel, changed, patch.mode()), result.promoted(), false);
+    }
+
+    /** 순서만 바뀌었으므로 보기 본문의 집합은 그대로여야 한다. */
+    private void requireSameChoiceSet(MaterializedProblem before, MaterializedProblem after) {
+        if (!java.util.Objects.equals(sortedChoiceContents(before), sortedChoiceContents(after))) {
+            throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID,
+                    "보기 순서 변경이 보기 내용을 바꿨습니다.");
+        }
+    }
+
+    /**
+     * 순서가 바뀌어도 정답은 같은 보기를 가리켜야 한다.
+     *
+     * <p>정답은 choiceKey(C1·C2…)로 저장되고 그 키는 순서에서 나오므로, 재정렬 후 정답 키는
+     * 반드시 달라진다. 따라서 키가 아니라 그 키가 가리키는 본문을 비교해야 정답이 다른 보기로
+     * 옮겨 가지 않았는지 확인할 수 있다.
+     */
+    private void requireSameCorrectChoice(MaterializedProblem before, MaterializedProblem after) {
+        if (!java.util.Objects.equals(correctChoiceContent(before), correctChoiceContent(after))) {
+            throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID,
+                    "보기 순서 변경이 정답을 다른 보기로 옮겼습니다.");
+        }
+    }
+
+    private java.util.List<String> sortedChoiceContents(MaterializedProblem problem) {
+        return problem.snapshot().choices().stream()
+                .map(com.cenedu.backend.domain.problem.authoring.model.SnapshotChoice::content)
+                .sorted().toList();
+    }
+
+    private String correctChoiceContent(MaterializedProblem problem) {
+        var units = problem.snapshot().answerUnits();
+        if (units.isEmpty()) {
+            throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID, "정답 단위가 없습니다.");
+        }
+        String choiceKey = units.getFirst().answerRaw();
+        return problem.snapshot().choices().stream()
+                .filter(choice -> choice.choiceKey().equals(choiceKey))
+                .map(com.cenedu.backend.domain.problem.authoring.model.SnapshotChoice::content)
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID,
+                        "정답이 가리키는 보기를 찾을 수 없습니다."));
     }
 }

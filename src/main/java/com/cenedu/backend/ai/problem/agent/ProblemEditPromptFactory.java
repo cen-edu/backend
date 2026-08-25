@@ -45,8 +45,8 @@ public class ProblemEditPromptFactory {
                 교체 요청은 문제은행에서 조건에 맞는 기존 문항을 먼저 찾아 바꾸고, 없을 때만
                 새로 만든다. requiresNewProblem이 true면 문제은행을 건너뛰고 바로 새로 만든다.
                 그러니 위 조건을 빠짐없이 채우는 것이 중요하다.
-                semanticPatch의 mode는 PRESENTATIONAL_PATCH, PARAMETRIC_PATCH, STRUCTURAL_REGENERATION,
-                RESTORE, REJECTED 중 하나이며 operations는 허용된 semantic path만 사용한다.
+                semanticPatch의 mode는 PRESENTATIONAL_PATCH, PARAMETRIC_PATCH, CHOICE_REORDER,
+                STRUCTURAL_REGENERATION, RESTORE, REJECTED 중 하나이며 operations는 허용된 semantic path만 사용한다.
                 semanticPatch에는 requestId, baseVersionId, schemaVersion을 넣지 않는다.
                 operation의 expectedOldValue는 아래 currentSemanticValues에서 해당 path의 값을 그대로 복사한 것이어야 한다.
                 사용자 문장에 등장한 숫자나 추측값을 expectedOldValue로 쓰지 않는다. 반드시 currentSemanticValues를 조회해서 채운다.
@@ -54,6 +54,15 @@ public class ProblemEditPromptFactory {
                   expectedOldValue=currentSemanticValues.parameters의 RADIUS.value, newValue=5.
                 말을 더 간결하게 => PRESENTATIONAL_PATCH와 placeholder를 유지하는 정확한 template path,
                   expectedOldValue=currentSemanticValues.presentation의 해당 template 전체 텍스트.
+                보기 순서 변경("보기 순서 바꿔줘", "1번과 3번 자리 바꿔줘", "보기 섞어줘")
+                  => CHOICE_REORDER. 자리가 바뀌는 보기마다 SET_CHOICE_ORDER operation을 하나씩 만든다.
+                  path는 /presentation/choices/{choiceKey}/displayOrder이고, 여기서 choiceKey는
+                  화면의 C1·C2가 아니라 currentSemanticValues.presentation.choices에 있는 그 보기의
+                  choiceKey다. expectedOldValue는 그 보기의 현재 displayOrder, newValue는 새 displayOrder를
+                  각각 숫자 문자열로 넣는다. 바뀐 뒤 전체 displayOrder는 0부터 보기 수-1까지 중복 없이
+                  모두 채워져야 한다. 보기 본문(contentTemplate)과 valueKey는 절대 바꾸지 않는다 —
+                  내용을 함께 바꾸면 거부된다. 순서가 지금과 같아지는 요청도 거부된다.
+                  객관식이 아닌 문항에는 이 mode를 쓰지 않는다.
                 문항 유형·도형 종류 변경 => STRUCTURAL_REGENERATION, 빈 operations,
                   requestedSpecification.questionType에 목표 유형.
                 난이도 변경(더 쉽게·더 어렵게·상·중·하) => STRUCTURAL_REGENERATION, 빈 operations,
