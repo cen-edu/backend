@@ -1,6 +1,7 @@
 package com.cenedu.backend.domain.problem.service;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 
 import com.cenedu.backend.domain.problem.authoring.candidate.*;
@@ -58,7 +59,7 @@ public class ProblemModificationWorker {
         try {
         for (int attempt = 0; attempt < 2; attempt++) {
             if (budget != null) budget.stage(ProblemAiExecutionBudgetPort.Stage.MODIFICATION, attempt + 1);
-            ProblemModificationCommand attemptCommand = commandForAttempt(command, attempt);
+            ProblemModificationCommand attemptCommand = commandForAttempt(command, attempt, lastResult);
             ProblemCandidateDraft candidate;
             try {
                 candidate = port.modify(attemptCommand);
@@ -109,14 +110,34 @@ public class ProblemModificationWorker {
     /** Version의 sourceRequestId 유일성을 지키면서 같은 확정 계획을 재실행한다. */
     private ProblemModificationCommand commandForAttempt(
             ProblemModificationCommand command,
-            int attempt
+            int attempt,
+            CandidateProcessingResult previousResult
     ) {
         if (attempt == 0) return command;
         UUID requestId = UUID.nameUUIDFromBytes(
                 (command.requestId() + ":attempt:" + attempt)
                         .getBytes(StandardCharsets.UTF_8));
         return new ProblemModificationCommand(
-                requestId, command.plan(), command.baseSnapshot(), command.baseSemanticModel());
+                requestId, command.plan(), command.baseSnapshot(), command.baseSemanticModel(),
+                command.baseAssetPlans(), failedIssueCodes(previousResult));
+    }
+
+    /** 직전 검증에서 실패한 코드만 추려 민감한 근거 없이 재시도 방향을 전달한다. */
+    private List<VerificationIssueCode> failedIssueCodes(CandidateProcessingResult result) {
+        if (result == null || result.verificationBundle() == null) return List.of();
+        var bundle = result.verificationBundle();
+        return java.util.stream.Stream.concat(
+                        bundle.contentReport() == null || bundle.contentReport().findings() == null
+                                ? java.util.stream.Stream.<VerificationFinding>empty()
+                                : bundle.contentReport().findings().stream(),
+                        bundle.assetReport() == null || bundle.assetReport().findings() == null
+                                ? java.util.stream.Stream.<VerificationFinding>empty()
+                                : bundle.assetReport().findings().stream())
+                .filter(finding -> finding.status() == VerificationFindingStatus.FAIL
+                        || finding.status() == VerificationFindingStatus.ERROR)
+                .map(VerificationFinding::code)
+                .distinct()
+                .toList();
     }
 
     /** 수정 대상 Session이 실제로 교사 소유인지 확인한다. */

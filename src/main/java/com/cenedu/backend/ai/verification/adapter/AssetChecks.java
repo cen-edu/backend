@@ -117,7 +117,7 @@ public class AssetChecks {
             if (asset == null || asset.altText() == null || asset.altText().isBlank()
                     || asset.altText().strip().equalsIgnoreCase(asset.assetKey())) {
                 return Findings.fail(VerificationCheckType.ASSET_CONSISTENCY,
-                        VerificationIssueCode.ASSET_INCONSISTENT,
+                        VerificationIssueCode.ASSET_IMAGE_REGENERATABLE,
                         "그림 설명에 학생이 확인할 수 있는 구체적인 정보가 없습니다.",
                         EvidencePrefix.of(EvidencePrefix.ALTTEXT, "GENERIC_OR_BLANK"));
             }
@@ -134,9 +134,12 @@ public class AssetChecks {
             return Findings.error(VerificationCheckType.ASSET_CONSISTENCY,
                     "자산 심사 응답의 문제 유형을 알 수 없습니다.", "issue=" + judgement.issue());
         }
+        VerificationIssueCode code = issue.equals("UNNECESSARY")
+                ? VerificationIssueCode.ASSET_INCONSISTENT
+                : VerificationIssueCode.ASSET_IMAGE_REGENERATABLE;
         return Findings.fail(
                 VerificationCheckType.ASSET_CONSISTENCY,
-                VerificationIssueCode.ASSET_INCONSISTENT,
+                code,
                 issue.equals("LEAK")
                         ? "그림 설명에 그림에 보이지 않는 정보가 있습니다."
                         : issue.equals("MISMATCH")

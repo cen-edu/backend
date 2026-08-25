@@ -32,6 +32,8 @@ public class ProblemEditOutputGuard implements OutputGuard {
             if (result.action() == null) return GuardDecision.block("PROBLEM_EDIT_ACTION_INVALID", "수정 action이 없습니다.");
             ProblemEditAgentPayload payload = objectMapper.convertValue(
                 request.payload().get(ProblemEditAgent.REQUEST_KEY), ProblemEditAgentPayload.class);
+            GuardDecision specificationDecision = validateRequestedSpecification(result);
+            if (specificationDecision.blocked()) return specificationDecision;
             if (payload.currentSemanticModel() != null) {
                 // semanticPatch가 실제로 쓰이는 지점은 REQUEST_CONFIRMATION뿐이다 — 그 결과가
                 // PendingProblemEditCommand에 저장되어 나중에 실행된다. CONTINUE_COLLECTION은
@@ -73,5 +75,25 @@ public class ProblemEditOutputGuard implements OutputGuard {
         } catch (RuntimeException exception) {
             return GuardDecision.block("PROBLEM_EDIT_RESULT_INVALID", "문제 수정 결과 형식이 올바르지 않습니다.");
         }
+    }
+
+    private GuardDecision validateRequestedSpecification(ProblemEditConversationResult result) {
+        if (result.action() != EditConversationAction.REQUEST_CONFIRMATION) {
+            return GuardDecision.allow();
+        }
+        boolean questionTypeRequested = result.instructionDeltas() != null
+                && result.instructionDeltas().stream()
+                .anyMatch(instruction -> instruction.targetType() == EditTargetType.QUESTION_TYPE);
+        boolean difficultyRequested = result.instructionDeltas() != null
+                && result.instructionDeltas().stream()
+                .anyMatch(instruction -> instruction.targetType() == EditTargetType.DIFFICULTY);
+        RequestedProblemSpecification specification = result.requestedSpecification();
+        if (questionTypeRequested && (specification == null || specification.questionType() == null)) {
+            return GuardDecision.block("PROBLEM_EDIT_QUESTION_TYPE_MISSING", "변경할 문항 유형이 없습니다.");
+        }
+        if (difficultyRequested && (specification == null || specification.difficulty() == null)) {
+            return GuardDecision.block("PROBLEM_EDIT_DIFFICULTY_MISSING", "변경할 난이도가 없습니다.");
+        }
+        return GuardDecision.allow();
     }
 }

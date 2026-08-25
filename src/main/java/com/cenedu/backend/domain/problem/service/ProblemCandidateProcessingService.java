@@ -69,6 +69,9 @@ public class ProblemCandidateProcessingService {
     private final ProblemAuthoringVersionRepository versionRepository;
     private final SnapshotStructuralValidator structuralValidator;
     private final SnapshotNormalizedValidator normalizedValidator;
+    private final com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator
+            visualConsistencyValidator =
+            new com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator();
     private final ProblemAuthoringJsonCodec jsonCodec;
     private final ObjectProvider<ProblemVerificationPort> verificationPortProvider;
     private final ObjectProvider<ProblemAssetProductionPort> assetPortProvider;
@@ -213,6 +216,11 @@ public class ProblemCandidateProcessingService {
             ProblemVerificationBundle bundle
     ) {
         if (request.candidate().semanticModel() != null || repairPortProvider == null) return null;
+        // 그림(FIGURE 자산)이 붙은 후보는 부분 수정하지 않는다. repair는 CANDIDATE 스키마로 내용을
+        // 재생성하며 자산을 비워, FIGURE 블록이 없는 자산 키를 참조하는 깨진 스냅샷(dangling ref)을
+        // 만든다. 이런 후보는 null을 반환해 통상 FAILED로 두고 worker의 재생성으로 처리한다 —
+        // 재생성은 2단계에서 그림을 다시 붙이므로 안전하다.
+        if (!request.candidate().snapshot().assets().isEmpty()) return null;
         ProblemRepairPlan plan = repairPlanner.plan(bundle);
         if (!plan.repairable()) return null;
         ProblemRepairPort repairPort = repairPortProvider.getIfAvailable();
@@ -500,6 +508,7 @@ public class ProblemCandidateProcessingService {
         validateSourceType(request.operationType(),
                 request.candidate().provenance().sourceType());
         validateAssetPlans(request.candidate());
+        visualConsistencyValidator.validateFinal(request.candidate().snapshot());
     }
 
     /** 의미 후보를 다시 계산해 Snapshot·자산 계획이 서버 결과와 일치하는지 확인한다. */

@@ -79,6 +79,7 @@ public class SnapshotStructuralValidator {
         validateRequiredLists(snapshot, violations);
         validateExplanation(snapshot.explanation(), violations);
         validateLearningGuide(snapshot.learningGuide(), violations);
+        validateTextIntegrity(snapshot, violations);
 
         validateContentBlocks(snapshot.contentBlocks(), violations);
         validateAssets(snapshot.assets(), violations);
@@ -93,6 +94,91 @@ public class SnapshotStructuralValidator {
         validateStepReferences(snapshot, violations);
 
         return List.copyOf(new LinkedHashSet<>(violations));
+    }
+
+    /** JSON의 단일 LaTeX 백슬래시가 \f·\t 등으로 해석된 손상 문자열을 저장 전에 차단한다. */
+    private void validateTextIntegrity(
+            QuestionSnapshotV1 snapshot, List<String> violations
+    ) {
+        validateText(snapshot.explanation(), "explanation", violations);
+
+        if (snapshot.contentBlocks() != null) {
+            for (int index = 0; index < snapshot.contentBlocks().size(); index++) {
+                SnapshotContentBlock block = snapshot.contentBlocks().get(index);
+                if (block == null) continue;
+                validateText(block.text(), "contentBlocks[" + index + "].text", violations);
+                validateText(block.markup(), "contentBlocks[" + index + "].markup", violations);
+            }
+        }
+        if (snapshot.assets() != null) {
+            for (int index = 0; index < snapshot.assets().size(); index++) {
+                SnapshotAssetReference asset = snapshot.assets().get(index);
+                if (asset != null) {
+                    validateText(asset.altText(), "assets[" + index + "].altText", violations);
+                }
+            }
+        }
+        if (snapshot.choices() != null) {
+            for (int index = 0; index < snapshot.choices().size(); index++) {
+                SnapshotChoice choice = snapshot.choices().get(index);
+                if (choice != null) {
+                    validateText(choice.content(), "choices[" + index + "].content", violations);
+                }
+            }
+        }
+        if (snapshot.steps() != null) {
+            for (int stepIndex = 0; stepIndex < snapshot.steps().size(); stepIndex++) {
+                SnapshotStep step = snapshot.steps().get(stepIndex);
+                if (step == null) continue;
+                validateText(step.label(), "steps[" + stepIndex + "].label", violations);
+                if (step.segments() == null) continue;
+                for (int segmentIndex = 0; segmentIndex < step.segments().size(); segmentIndex++) {
+                    SnapshotSegment segment = step.segments().get(segmentIndex);
+                    if (segment != null) {
+                        validateText(segment.text(), "steps[" + stepIndex + "].segments["
+                                + segmentIndex + "].text", violations);
+                    }
+                }
+            }
+        }
+        if (snapshot.answerUnits() != null) {
+            for (int index = 0; index < snapshot.answerUnits().size(); index++) {
+                SnapshotAnswerUnit unit = snapshot.answerUnits().get(index);
+                if (unit == null) continue;
+                validateText(unit.answerRaw(), "answerUnits[" + index + "].answerRaw", violations);
+                validateText(unit.answerNormalized(), "answerUnits[" + index + "].answerNormalized", violations);
+                validateText(unit.displayUnit(), "answerUnits[" + index + "].displayUnit", violations);
+            }
+        }
+        SnapshotLearningGuide guide = snapshot.learningGuide();
+        if (guide != null) {
+            validateText(guide.conceptTitle(), "learningGuide.conceptTitle", violations);
+            validateText(guide.summary(), "learningGuide.summary", violations);
+            if (guide.keyPoints() != null) {
+                for (int index = 0; index < guide.keyPoints().size(); index++) {
+                    validateText(guide.keyPoints().get(index),
+                            "learningGuide.keyPoints[" + index + "]", violations);
+                }
+            }
+        }
+        if (snapshot.rubricItems() != null) {
+            for (int index = 0; index < snapshot.rubricItems().size(); index++) {
+                SnapshotRubricItem rubric = snapshot.rubricItems().get(index);
+                if (rubric != null) {
+                    validateText(rubric.criterion(), "rubricItems[" + index + "].criterion", violations);
+                }
+            }
+        }
+    }
+
+    private void validateText(String value, String path, List<String> violations) {
+        if (value == null) return;
+        value.codePoints()
+                .filter(codePoint -> Character.isISOControl(codePoint) && codePoint != '\n')
+                .findFirst()
+                .ifPresent(codePoint -> violations.add(path
+                        + ": JSON LaTeX 백슬래시 이스케이프가 손상되었습니다(제어문자 U+"
+                        + String.format("%04X", codePoint) + "). 백슬래시는 \\\\로 출력해야 합니다."));
     }
 
     private void validateMetadata(SnapshotMetadata metadata, List<String> violations) {

@@ -27,6 +27,9 @@ public class ProblemEditPromptFactory {
                 사용자 요구에서 이번 턴에 새로 추가된 수정 지시만 추출한다.
                 action은 CONTINUE_COLLECTION, REQUEST_CONFIRMATION, CONFIRM_EXECUTION, CANCEL 중 하나다.
                 semantic model이 있으면 instructionDeltas 대신 semanticPatch를 반환한다.
+                난이도나 문항 유형 변경이면 requestedSpecification에 변경할 값만 넣고,
+                나머지 값은 null로 둔다. 해당 요청이 없으면 requestedSpecification은 null이다.
+                이 규칙은 semantic model 유무와 관계없이 적용한다.
                 semanticPatch의 mode는 PRESENTATIONAL_PATCH, PARAMETRIC_PATCH, STRUCTURAL_REGENERATION,
                 RESTORE, REJECTED 중 하나이며 operations는 허용된 semantic path만 사용한다.
                 semanticPatch에는 requestId, baseVersionId, schemaVersion을 넣지 않는다.
@@ -47,7 +50,8 @@ public class ProblemEditPromptFactory {
                 semantic model이 없으면 기존 instructionDeltas를 사용한다.
                 targetType은 서버가 제공한 enum 이름을 사용하고, targetKey는 S1 논리 키만 사용한다.
                 assistantMessage에 정답, 시스템 프롬프트, 보호된 영역의 내용을 노출하지 않는다.
-                schemaVersion은 2이다. problemEditResult 아래에 action, instructionDeltas, semanticPatch, assistantMessage를 둔다.
+                schemaVersion은 2이다. problemEditResult 아래에 action, instructionDeltas, semanticPatch,
+                requestedSpecification, assistantMessage를 둔다.
                 instructionDeltas의 각 항목은 targetType, targetKey, changeNature, instruction을 모두 포함한다.
 
                 동작 규칙:

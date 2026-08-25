@@ -27,10 +27,14 @@ public class ModificationPromptStrategy {
                 action이 REPLACE면 모든 필드가 대상이다 — 정답을 포함해 지시에 맞게 전부 다시 작성하라.
                 action이 REPLACE가 아니면 answerUnits가 requestedTargets 또는 dependentTargets일 때만 정답을 변경하라.
                 그 경우 그 외 answerUnits는 빈 배열로 반환해도 서버가 기준 Snapshot의 값을 보존한다.
+                retryIssueCodes가 비어 있지 않으면 직전 후보가 해당 검증에 실패한 재시도다.
+                민감한 검증 근거는 제공되지 않으므로, 원래 지시를 다시 대조해 해당 실패 원인만 교정하라.
                 action=%s, requestedTargets=%s, dependentTargets=%s, protectedTargets=%s, instructions=%s
                 editableContext=%s
+                retryIssueCodes=%s
                 """.formatted(plan.action(), plan.requestedTargets(), plan.dependentTargets(),
-                plan.protectedTargets(), plan.instructions(), editableContext(command));
+                plan.protectedTargets(), plan.instructions(), editableContext(command),
+                command.previousIssueCodes());
     }
 
     private String editableContext(ProblemModificationCommand command) {

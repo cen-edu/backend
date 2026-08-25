@@ -368,9 +368,16 @@ public final class ProblemStructuredOutputSchemas {
                       },
                       "required":["mode","operations","assistantMessage"]
                     },
+                    "requestedSpecification":{"type":["object","null"],"additionalProperties":false,
+                      "properties":{
+                        "questionType":{"type":["string","null"],"enum":["MULTIPLE_CHOICE","SHORT_INPUT","ESSAY","STEP_FILL",null]},
+                        "difficulty":{"type":["string","null"],"enum":["low","mid","high",null]}
+                      },
+                      "required":["questionType","difficulty"]
+                    },
                     "assistantMessage":{"type":"string"}
                   },
-                  "required":["action","instructionDeltas","semanticPatch","assistantMessage"]
+                  "required":["action","instructionDeltas","semanticPatch","requestedSpecification","assistantMessage"]
                 }
               },
               "required":["schemaVersion","problemEditResult"]

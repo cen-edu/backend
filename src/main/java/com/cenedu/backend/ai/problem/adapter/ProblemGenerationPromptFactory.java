@@ -23,6 +23,13 @@ public class ProblemGenerationPromptFactory {
      * "무엇이 왜 틀렸는지"를 알려, 같은 구조 실수를 근거 없이 반복하지 않도록 한다.
      */
     public ProblemGenerationPrompt create(ProblemGenerationCommand command, List<String> priorViolations) {
+        return create(command, null, priorViolations);
+    }
+
+    /** 직전 후보가 있으면 그대로 제공해 정상 부분을 보존한 교정 출력을 유도한다. */
+    public ProblemGenerationPrompt create(ProblemGenerationCommand command,
+                                          ProblemGenerationOutput previousCandidate,
+                                          List<String> priorViolations) {
         var spec = command.specification();
         var curriculum = command.curriculum();
         String systemPrompt = """
@@ -52,6 +59,11 @@ public class ProblemGenerationPromptFactory {
                 쓰지 마라. 개념과 접근 관점만 서술하고 최종 정답 수치·계산 절차는 넣지 않는다.
                 학생에게 표시되는 contentBlocks, choices, steps, explanation, learningGuide의 수식은
                 인라인 LaTeX인 $...$로 감싸라(예: $2^3$, $\\frac{1}{2}$). 일반 문장과 단위만 있는 텍스트는 감싸지 마라.
+                JSON 문자열 안의 LaTeX 백슬래시는 반드시 JSON 규칙에 맞게 두 번(\\\\) 써라.
+                예를 들어 화면에 $\\frac{3}{4}$, $2\\times3$을 표시하려면 JSON 원문은
+                {"text":"$\\\\frac{3}{4}$"}, {"text":"$2\\\\times3$"}이어야 한다.
+                {"text":"$\\frac{3}{4}$"}처럼 백슬래시를 한 번만 쓰면 \\f·\\t가 제어문자로
+                해석되어 수식이 손상되므로 절대 그렇게 출력하지 마라.
                 answerUnits의 answerRaw는 화면 표시용 구분자($, $$, \\(, \\)) 없이 비교 가능한 원시값만 작성하라.
                 assets는 항상 []다 — 그림은 이 출력이 아니라 별도 단계에서 생성한다.
                 대신 이 문항이 좌표그래프(좌표평면 위의 점·직선·정비례/반비례 함수 그래프)를 반드시
@@ -61,25 +73,84 @@ public class ProblemGenerationPromptFactory {
                 그래프가 필요 없으면 visualRequired=false, visualKind=null, visualDescription=null로 두고
                 없는 그림을 참조하지 마라. 표·도형 등 좌표그래프가 아닌 시각자료는 현재 만들지 않으므로
                 그런 문항은 visualRequired=false로 두고 텍스트로 자립하게 출제하라.
-                유형별 규칙:
+                %s유형별 규칙:
                 %s
-                """.formatted(typeRules(spec.questionType().name()));
+                """.formatted(forcedGraphInstruction(command), typeRules(spec.questionType().name()));
         List<ChatMessage> messages = new java.util.ArrayList<>();
         if (command.references() != null && !command.references().isEmpty()) {
             messages.add(ChatMessage.user("FEW_SHOT_JSON\n" + new FewShotReferenceSerializer().serialize(curriculum, command.references())));
         }
         messages.add(ChatMessage.user("CURRENT_REQUEST_JSON\n" + currentRequest(command)));
+        if (previousCandidate != null) {
+            messages.add(ChatMessage.user("PREVIOUS_CANDIDATE_JSON\n"
+                    + previousCandidate(previousCandidate)));
+        }
         if (priorViolations != null && !priorViolations.isEmpty()) {
             StringBuilder feedback = new StringBuilder("PREVIOUS_ATTEMPT_VIOLATIONS\n"
-                    + "직전 시도가 서버 검증에서 실패했다. 아래 위반을 모두 고쳐서 유효한 문항을 다시 생성하라. "
+                    + "직전 후보가 서버 검증에서 실패했다. PREVIOUS_CANDIDATE_JSON이 있으면 정상 필드는 "
+                    + "유지하고, 아래 위반과 연관된 문제·보기·정답·해설·시각 신호를 함께 교정하라. "
+                    + "부분 패치가 아니라 CANDIDATE 스키마 전체를 다시 출력하라. "
                     + "특히 빈칸(BLANK)과 answerUnits는 개수와 순서가 정확히 1:1로 대응해야 하고, "
                     + "객관식 정답 answerRaw는 반드시 존재하는 보기 키(C1, C2 …)여야 한다.\n");
             for (String violation : priorViolations) {
                 feedback.append("- ").append(violation).append('\n');
             }
+            if (priorViolations.stream().anyMatch(this::isVisualDependencyViolation)) {
+                feedback.append("""
+                        VISUAL_CONSISTENCY_REPAIR
+                        현재 후보는 시각 자료 사용 신호와 학생에게 보이는 본문이 일치하지 않는다.
+                        아래 두 방법 중 문제 의도에 맞는 정확히 하나를 선택해 전체 후보를 교정하라.
+                        1) 좌표그래프를 보고 푸는 문제를 유지한다: visualRequired=true,
+                           visualKind="COORDINATE_GRAPH"로 두고, visualDescription에 좌표축 범위와 눈금,
+                           모든 점의 정확한 좌표와 라벨, 필요한 직선/함수와 식을 구체적으로 적는다.
+                           assets는 계속 []로 둔다. 서버가 다음 단계에서 그래프를 생성해 붙인다.
+                        2) 이미지 없는 문제로 바꾼다: "다음/아래/주어진 그림·그래프·표" 같은 참조와
+                           정의되지 않은 ㉠·㉡·㉢ 기호를 모두 제거하고, 풀이에 필요한 좌표·식·수치를
+                           contentBlocks[0].text에 직접 넣는다. visualRequired=false,
+                           visualKind=null, visualDescription=null로 둔다.
+                        현재 서버는 좌표그래프 외의 표·도형 이미지를 만들지 못하므로, 표·도형이 필요한
+                        문제는 반드시 2)의 자립형 텍스트 문제로 교정하라.
+                        """);
+            }
             messages.add(ChatMessage.user(feedback.toString()));
         }
         return new ProblemGenerationPrompt(systemPrompt, messages);
+    }
+
+    private boolean isVisualDependencyViolation(String violation) {
+        return violation != null && violation.contains("visualDependency");
+    }
+
+    private String previousCandidate(ProblemGenerationOutput previousCandidate) {
+        try {
+            return new ObjectMapper().writeValueAsString(previousCandidate);
+        } catch (Exception exception) {
+            throw new IllegalStateException("직전 문제 후보 JSON을 만들 수 없습니다.", exception);
+        }
+    }
+
+    /**
+     * 생성 명령이 좌표그래프를 명시적으로 요구(REQUIRED·COORDINATE_GRAPH)하면,
+     * 모델의 선택적 판단보다 우선하는 "반드시 그래프 문항" 지시를 앞에 덧붙인다.
+     * 이때 "모든 데이터를 발문 text에 포함" 규칙은 그래프에 담기는 좌표·직선·함수 정보에는
+     * 적용하지 않는다 — 그 정보는 visualDescription에만 넣고 발문은 그래프를 참조해야 한다.
+     * 명시적 요구가 아니면 빈 문자열이라 일반 생성 프롬프트에 영향이 없다.
+     */
+    private String forcedGraphInstruction(ProblemGenerationCommand command) {
+        var visual = command.specification().visualRequirement();
+        boolean forced = visual.mode() == com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode.REQUIRED
+                && visual.requiredKind() == com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.COORDINATE_GRAPH;
+        if (!forced) return "";
+        return """
+                [필수] 이 문항은 반드시 좌표그래프를 "보고 푸는" 문항으로 출제하라. 예외 없이
+                visualRequired=true, visualKind="COORDINATE_GRAPH"로 두고 visualDescription을 채워라.
+                이 문항에 한해 "모든 데이터를 발문 text에 포함" 규칙은 그래프에 담기는 정보
+                (좌표축 범위·눈금, 점의 좌표와 라벨, 직선/함수와 그 식)에는 적용하지 않는다 —
+                그 정보는 발문 text에 나열하지 말고 오직 visualDescription에만 적어라. 발문은
+                "다음 그래프를 보고 …"처럼 그림에 의존하게 쓰고, 자체 검산 (1)단계에서 학생이
+                그래프를 함께 본다고 가정하라. 그래프에서 값을 읽거나 그래프 위의 점을 고르거나
+                주어진 그래프의 식·기울기·비례상수·사분면을 판단하는 문항으로 만들어라.
+                """;
     }
 
     private String currentRequest(ProblemGenerationCommand command) {
@@ -98,7 +169,8 @@ public class ProblemGenerationPromptFactory {
     private String typeRules(String type) {
         return switch (type) {
             case "MULTIPLE_CHOICE" -> """
-                    choices는 최소 2개이며 각 항목은 {"content":"보기 내용"} 형식이다.
+                    원본 문제은행의 객관식 형식에 맞춰 choices는 정확히 5개이며 각 항목은
+                    {"content":"보기 내용"} 형식이다. 3지·4지선다 또는 6개 이상 보기를 만들지 마라.
                     발문에는 실제 계산에 필요한 모든 값과 무엇을 구하는지 명확히 적는다.
                     보기 중 정확히 하나만 정답이 되게 검산한다. 오답 보기도 문제 조건과 모순되지 않는 수치로 만들되 정답과 중복하지 않는다.
                     JSON을 만들기 전에 문제를 직접 풀고,

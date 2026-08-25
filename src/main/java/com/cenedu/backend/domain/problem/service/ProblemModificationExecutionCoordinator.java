@@ -2,6 +2,8 @@ package com.cenedu.backend.domain.problem.service;
 
 import java.util.List;
 
+import com.cenedu.backend.domain.problem.authoring.asset.DraftAssetManifest;
+import com.cenedu.backend.domain.problem.authoring.asset.GeneratedAssetPlan;
 import com.cenedu.backend.domain.problem.authoring.edit.EditAction;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditExecutionPlan;
 import com.cenedu.backend.domain.problem.authoring.edit.ReplacementSourcePolicy;
@@ -107,15 +109,13 @@ public class ProblemModificationExecutionCoordinator {
                                     com.cenedu.backend.global.common.ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
                 } else if (plan.instructions() != null && !plan.instructions().isEmpty()) {
                     Object fallback = modificationWorker.execute(teacherId,
-                            new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
-                                    plan.requestId(), plan, baseSnapshot, semanticModel(baseVersion)));
+                            modificationCommand(plan, baseSnapshot, baseVersion));
                     return legacyFallbackResult(plan, fallback);
                 }
             }
             if (baseVersion.getSemanticModel() == null) {
                 Object fallback = modificationWorker.execute(teacherId,
-                        new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
-                                plan.requestId(), plan, baseSnapshot, semanticModel(baseVersion)));
+                        modificationCommand(plan, baseSnapshot, baseVersion));
                 return legacyFallbackResult(plan, fallback);
             }
             if (plan.semanticPatch().mode() == com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode.STRUCTURAL_REGENERATION) {
@@ -151,8 +151,7 @@ public class ProblemModificationExecutionCoordinator {
                 .findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
                 .orElseThrow();
         Object result = modificationWorker.execute(teacherId,
-                new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
-                        plan.requestId(), plan, baseSnapshot, semanticModel(executionBaseVersion)));
+                modificationCommand(plan, baseSnapshot, executionBaseVersion));
         if (plan.action() == EditAction.REPLACE && decisionEventService != null) decisionEventService.recordReplacement(
                 teacherId, plan.sessionId(), plan.baseVersionId(), plan.requestId(), plan.instructions());
         return result;
@@ -189,6 +188,28 @@ public class ProblemModificationExecutionCoordinator {
         if (version == null || version.getSemanticModel() == null) return null;
         return jsonCodec.read(version.getSemanticModel(),
                 com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1.class);
+    }
+
+    /** 수정 기준 Version의 구조화 자산 계획을 보존한 실행 명령을 만든다. */
+    private com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand modificationCommand(
+            ProblemEditExecutionPlan plan,
+            com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 snapshot,
+            ProblemAuthoringVersion version) {
+        return new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
+                plan.requestId(), plan, snapshot, semanticModel(version), assetPlans(version), List.of());
+    }
+
+    /** Version 자산 manifest를 읽고 사용할 수 있는 생성 계획만 반환한다. */
+    private List<GeneratedAssetPlan> assetPlans(ProblemAuthoringVersion version) {
+        if (version == null || version.getAssetManifest() == null
+                || version.getAssetManifest().isBlank()) return List.of();
+        try {
+            DraftAssetManifest manifest = jsonCodec.read(
+                    version.getAssetManifest(), DraftAssetManifest.class);
+            return manifest == null || manifest.plans() == null ? List.of() : manifest.plans();
+        } catch (RuntimeException exception) {
+            return List.of();
+        }
     }
 
     private ProblemModificationExecutionResult legacyFallbackResult(ProblemEditExecutionPlan plan, Object result) {

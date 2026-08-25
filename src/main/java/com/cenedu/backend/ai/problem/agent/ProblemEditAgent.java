@@ -87,7 +87,7 @@ public class ProblemEditAgent implements Agent {
                     semanticPatch.operations(), semanticPatch.assistantMessage());
         }
         return new ProblemEditConversationResult(result.action(), normalized, semanticPatch,
-                result.assistantMessage());
+                result.requestedSpecification(), result.assistantMessage());
     }
 
     private boolean keyed(EditTargetType type) {

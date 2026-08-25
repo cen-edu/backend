@@ -6,7 +6,11 @@ import com.cenedu.backend.ai.problem.*;
 import com.cenedu.backend.ai.problem.adapter.*;
 import com.cenedu.backend.domain.problem.authoring.candidate.ProblemCandidateDraft;
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification;
 import com.cenedu.backend.domain.problem.authoring.validation.*;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,22 +36,27 @@ public final class NonSemanticProblemGenerationPipeline {
     private final ProblemGenerationOutputMapper output;
     private final SnapshotStructuralValidator structural;
     private final SnapshotNormalizedValidator normalized;
-    private final com.cenedu.backend.ai.problem.adapter.ProblemVisualAugmenter visualAugmenter;
+    private final ProblemImageGenerationLoop imageGenerationLoop;
 
     public NonSemanticProblemGenerationPipeline(LlmClient client, ObjectProvider<ObjectMapper> mapper, ProblemGenerationPromptFactory prompts, ProblemGenerationOutputMapper output, SnapshotStructuralValidator structural, SnapshotNormalizedValidator normalized) {
-        this(client, mapper, prompts, output, structural, normalized, null);
+        this(client, mapper, prompts, output, structural, normalized,
+                new ProblemImageGenerationLoop(List.of(),
+                        new com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator()));
     }
 
-    /** 좌표그래프가 필요한 문항에 시각을 덧붙이는 augmenter를 연결한다(null이면 텍스트만 생성). */
+    /** 필요한 이미지 종류의 생성 전략을 실행하는 공통 루프를 연결한다. */
     @org.springframework.beans.factory.annotation.Autowired
-    public NonSemanticProblemGenerationPipeline(LlmClient client, ObjectProvider<ObjectMapper> mapper, ProblemGenerationPromptFactory prompts, ProblemGenerationOutputMapper output, SnapshotStructuralValidator structural, SnapshotNormalizedValidator normalized, com.cenedu.backend.ai.problem.adapter.ProblemVisualAugmenter visualAugmenter) {
+    public NonSemanticProblemGenerationPipeline(LlmClient client, ObjectProvider<ObjectMapper> mapper,
+            ProblemGenerationPromptFactory prompts, ProblemGenerationOutputMapper output,
+            SnapshotStructuralValidator structural, SnapshotNormalizedValidator normalized,
+            ProblemImageGenerationLoop imageGenerationLoop) {
         this.client = client;
         this.mapper = mapper.getIfAvailable(ObjectMapper::new);
         this.prompts = prompts;
         this.output = output;
         this.structural = structural;
         this.normalized = normalized;
-        this.visualAugmenter = visualAugmenter;
+        this.imageGenerationLoop = imageGenerationLoop;
     }
 
     /**
@@ -63,21 +72,21 @@ public final class NonSemanticProblemGenerationPipeline {
      */
     public ProblemCandidateDraft generate(ProblemGenerationCommand command) {
         List<String> findings = List.of();
+        ProblemGenerationOutput previousCandidate = null;
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                var p = prompts.create(command, findings);
+                ProblemGenerationCommand effectiveCommand = correctionCommand(
+                        command, previousCandidate, findings);
+                var p = prompts.create(effectiveCommand, previousCandidate, findings);
                 String json = client.completeStructured(p.systemPrompt(), p.messages(),
                         ProblemStructuredOutputSchemas.CANDIDATE).text();
                 ProblemGenerationOutput out = mapper.readValue(json, ProblemGenerationOutput.class);
-                var candidate = output.map(command, out);
+                previousCandidate = out;
+                validateBankCompatibleGenerationShape(effectiveCommand, out);
+                var candidate = output.map(effectiveCommand, out);
                 structural.validate(candidate.snapshot());
                 normalized.validate(candidate.snapshot());
-                // 문항이 좌표그래프를 필요로 하면 시각을 덧붙인다(2단계). 실패하면 예외가 나 재시도로
-                // 이어져, 그림을 참조하는 깨진 문항을 내보내지 않는다.
-                if (visualAugmenter != null && out.visualRequired()) {
-                    candidate = visualAugmenter.augment(candidate, out.visualDescription(), command);
-                }
-                return candidate;
+                return imageGenerationLoop.generate(candidate, out, effectiveCommand);
             } catch (RuntimeException e) {
                 // 전송·예산 오류는 LlmClient가 이미 재시도한 인프라 실패다. 내용 교정 대상이 아니다.
                 if (isInfrastructureFailure(e)) throw e;
@@ -89,6 +98,57 @@ public final class NonSemanticProblemGenerationPipeline {
         }
         throw new BusinessException(ErrorCode.PROBLEM_GENERATION_RETRY_EXHAUSTED,
                 "non-semantic generation retry exhausted: " + findings);
+    }
+
+    /** 그래프 누락 위반 뒤에는 다음 교정 시도를 좌표그래프 필수 계약으로 승격한다. */
+    private ProblemGenerationCommand correctionCommand(ProblemGenerationCommand original,
+                                                       ProblemGenerationOutput previousCandidate,
+                                                       List<String> findings) {
+        boolean visualDependency = findings.stream()
+                .anyMatch(finding -> finding != null && finding.contains("visualDependency"));
+        if (!visualDependency || !referencesCoordinateGraph(previousCandidate)) {
+            return original;
+        }
+
+        GenerationSpecification specification = original.specification();
+        GenerationSpecification corrected = new GenerationSpecification(
+                specification.questionType(), specification.difficulty(),
+                specification.targetEvaluationArea(), specification.targetDiagnosticTypes(),
+                specification.requiresSolutionStructure(),
+                new VisualGenerationRequirement(
+                        VisualGenerationMode.REQUIRED, VisualReferenceKind.COORDINATE_GRAPH));
+        return new ProblemGenerationCommand(original.requestId(), original.retrievalRequestId(),
+                original.purpose(), corrected, original.curriculum(), original.references(),
+                original.conceptEvidence(), original.personalizedEvidence(), original.editInstruction());
+    }
+
+    /** 지시형 그래프 문구가 있는 후보만 자동 승격하고, 표·도형은 텍스트 교정에 맡긴다. */
+    private boolean referencesCoordinateGraph(ProblemGenerationOutput candidate) {
+        if (candidate == null) return false;
+        if (containsGraph(candidate.question())) return true;
+        return candidate.contentBlocks() != null && candidate.contentBlocks().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(ProblemGenerationOutput.ContentBlockOutput::text)
+                .anyMatch(this::containsGraph);
+    }
+
+    private boolean containsGraph(String value) {
+        return value != null && (value.contains("그래프") || value.contains("좌표평면"));
+    }
+
+    /** 원본 문제은행의 지배적인 객관식 계약을 신규 AI 생성에만 적용한다. */
+    private void validateBankCompatibleGenerationShape(ProblemGenerationCommand command,
+                                                       ProblemGenerationOutput candidate) {
+        if (command.specification().questionType()
+                != com.cenedu.backend.global.common.enums.QuestionType.MULTIPLE_CHOICE) {
+            return;
+        }
+        int choiceCount = candidate.choices() == null ? 0 : candidate.choices().size();
+        if (choiceCount != 5) {
+            throw new SnapshotValidationException(List.of(
+                    "choices: 문제은행 객관식 기준에 따라 정확히 5개의 보기가 필요합니다. actual="
+                            + choiceCount));
+        }
     }
 
     /** 내용 교정으로 회복할 수 없는 전송·예산 계층 실패인지 판정한다. */

@@ -12,7 +12,9 @@ import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationC
 import com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationWorkItem;
 import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemRetrievalTracePort;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemGenerationPort;
+import com.cenedu.backend.domain.problem.authoring.port.ProblemImageRevisionPort;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemAiExecutionBudgetPort;
+import com.cenedu.backend.domain.problem.authoring.visual.ProblemImageRevisionCommand;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationExpectation;
 import com.cenedu.backend.domain.problem.authoring.verification.VerificationOperationType;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
@@ -36,6 +38,7 @@ public class ProblemGenerationWorker {
     private final ObjectProvider<ProblemRetrievalTracePort> tracePort;
     private final ProblemSemanticReferenceEnricher semanticReferenceEnricher;
     private final ProblemAiExecutionBudgetPort executionBudgetPort;
+    private final ObjectProvider<ProblemImageRevisionPort> imageRevisionPortProvider;
 
     public ProblemGenerationWorker(
             ProblemGenerationJobService jobService,
@@ -43,7 +46,8 @@ public class ProblemGenerationWorker {
             ObjectProvider<ProblemGenerationPort> generationPortProvider,
             ProblemAiConcurrencyLimiter concurrencyLimiter
     ) {
-        this(jobService, candidateProcessingService, generationPortProvider, concurrencyLimiter, null, null, null);
+        this(jobService, candidateProcessingService, generationPortProvider, concurrencyLimiter,
+                null, null, null, null);
     }
 
     /** retrieval trace 연결 Port를 선택적으로 주입한다. */
@@ -56,7 +60,7 @@ public class ProblemGenerationWorker {
             ProblemSemanticReferenceEnricher semanticReferenceEnricher
     ) {
         this(jobService, candidateProcessingService, generationPortProvider, concurrencyLimiter,
-                tracePort, semanticReferenceEnricher, null);
+                tracePort, semanticReferenceEnricher, null, null);
     }
 
     /** retrieval trace와 호출 예산 Port를 연결한다. */
@@ -68,7 +72,8 @@ public class ProblemGenerationWorker {
             ProblemAiConcurrencyLimiter concurrencyLimiter,
             ObjectProvider<ProblemRetrievalTracePort> tracePort,
             ProblemSemanticReferenceEnricher semanticReferenceEnricher,
-            ProblemAiExecutionBudgetPort executionBudgetPort
+            ProblemAiExecutionBudgetPort executionBudgetPort,
+            ObjectProvider<ProblemImageRevisionPort> imageRevisionPortProvider
     ) {
         this.jobService = jobService;
         this.candidateProcessingService = candidateProcessingService;
@@ -77,6 +82,7 @@ public class ProblemGenerationWorker {
         this.tracePort = tracePort;
         this.semanticReferenceEnricher = semanticReferenceEnricher;
         this.executionBudgetPort = executionBudgetPort;
+        this.imageRevisionPortProvider = imageRevisionPortProvider;
     }
 
     /** 선점한 Item을 생성·검증하고 의미 실패 시 최대 두 번 같은 명령으로 재생성한다. */
@@ -157,9 +163,13 @@ public class ProblemGenerationWorker {
                     return;
                 }
 
+                result = reviseImageOnceIfRecommended(
+                        workItem, candidate, attemptCommand, result, budget, attempt + 1);
+
                 if (result.promoted()) {
+                    CandidateProcessingResult promotedResult = result;
                     runStage("PROMOTION", () -> {
-                        linkAuthoringVersion(workItem.command(), result.versionId());
+                        linkAuthoringVersion(workItem.command(), promotedResult.versionId());
                         jobService.succeed(workItem);
                         return null;
                     });
@@ -181,6 +191,49 @@ public class ProblemGenerationWorker {
         } finally {
             if (budget != null) budget.close();
             restoreContext(previousContext);
+        }
+    }
+
+    /** 본문이 통과한 자산 불일치에 한해 전체 문항 대신 이미지만 한 번 다시 만들고 검증한다. */
+    private CandidateProcessingResult reviseImageOnceIfRecommended(
+            ProblemGenerationWorkItem workItem,
+            ProblemCandidateDraft candidate,
+            ProblemGenerationCommand command,
+            CandidateProcessingResult original,
+            ProblemAiExecutionBudgetPort.Scope budget,
+            int candidateAttempt
+    ) {
+        if (!original.imageRevisionRecommended() || candidate.semanticModel() != null
+                || imageRevisionPortProvider == null) {
+            return original;
+        }
+        ProblemImageRevisionPort port = imageRevisionPortProvider.getIfAvailable();
+        if (port == null) return original;
+
+        try {
+            if (budget != null) budget.stage(ProblemAiExecutionBudgetPort.Stage.GENERATION, candidateAttempt);
+            MDC.put("imageGenerationAttempt", "2");
+            ProblemCandidateDraft revised = runStage("IMAGE_GENERATION", () -> {
+                try (ProblemAiConcurrencyLimiter.Permit ignored = concurrencyLimiter.acquire()) {
+                    return port.revise(new ProblemImageRevisionCommand(candidate, command, 1,
+                            original.verificationBundle().assetReport().findings()));
+                }
+            });
+            if (revised == null) return original;
+            if (budget != null) budget.stage(ProblemAiExecutionBudgetPort.Stage.VERIFICATION, candidateAttempt);
+            CandidateProcessingResult result = runStage("IMAGE_VERIFICATION", () ->
+                    candidateProcessingService.process(processingRequest(workItem, revised)));
+            log.info("event=problem_authoring_stage operation=GENERATION stage=IMAGE_REVISION outcome={} "
+                            + "itemId={} originalVersionId={} revisedVersionId={}",
+                    result.status(), workItem.itemId(), original.versionId(), result.versionId());
+            return result;
+        } catch (RuntimeException exception) {
+            log.warn("event=problem_authoring_stage operation=GENERATION stage=IMAGE_REVISION outcome=ERROR "
+                            + "itemId={} errorType={} message={}",
+                    workItem.itemId(), exception.getClass().getSimpleName(), exception.getMessage());
+            return original;
+        } finally {
+            MDC.remove("imageGenerationAttempt");
         }
     }
 

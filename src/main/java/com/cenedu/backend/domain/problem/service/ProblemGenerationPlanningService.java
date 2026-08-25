@@ -85,7 +85,6 @@ public class ProblemGenerationPlanningService {
                 requirement.difficulty(), requirement.questionType(), Integer.MAX_VALUE, selectedIds);
             List<Long> candidateIds = bank.stream().map(ProblemQuestion::getId).toList();
             List<BankSnapshotResult> snapshotResults = snapshotQueryService.getSnapshots(candidateIds);
-            selectedIds.addAll(candidateIds);
             java.util.Map<Long, BankSnapshotResult> resultById = snapshotResults.stream()
                     .collect(java.util.stream.Collectors.toMap(BankSnapshotResult::questionId, result -> result));
             List<BankReuse> reuses = new ArrayList<>();
