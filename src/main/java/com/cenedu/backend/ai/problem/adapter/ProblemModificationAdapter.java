@@ -129,7 +129,7 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
                         ? output.learningGuide() : learningGuide(base),
                 replace || editable(plan, EditTargetType.RUBRIC_ITEM)
                         ? output.rubricItems() : rubrics(base),
-                assets(base));
+                assets(base), false, null, null);
     }
 
     private boolean editable(ProblemEditExecutionPlan plan, EditTargetType type) {

@@ -16,7 +16,11 @@ public record ProblemGenerationOutput(
         String explanation,
         LearningGuideOutput learningGuide,
         List<RubricOutput> rubricItems,
-        List<AssetOutput> assets
+        List<AssetOutput> assets,
+        // 이 문항이 좌표그래프를 필요로 하는지 모델이 판단해 표시한다(2단계 시각 생성 신호).
+        boolean visualRequired,
+        String visualKind,
+        String visualDescription
 ) {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ContentBlockOutput(String blockKind, String text, String assetRef, String markup) {}
