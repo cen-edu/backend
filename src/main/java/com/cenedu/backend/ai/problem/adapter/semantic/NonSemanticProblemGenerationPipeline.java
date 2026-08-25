@@ -32,14 +32,22 @@ public final class NonSemanticProblemGenerationPipeline {
     private final ProblemGenerationOutputMapper output;
     private final SnapshotStructuralValidator structural;
     private final SnapshotNormalizedValidator normalized;
+    private final com.cenedu.backend.ai.problem.adapter.ProblemVisualAugmenter visualAugmenter;
 
     public NonSemanticProblemGenerationPipeline(LlmClient client, ObjectProvider<ObjectMapper> mapper, ProblemGenerationPromptFactory prompts, ProblemGenerationOutputMapper output, SnapshotStructuralValidator structural, SnapshotNormalizedValidator normalized) {
+        this(client, mapper, prompts, output, structural, normalized, null);
+    }
+
+    /** 좌표그래프가 필요한 문항에 시각을 덧붙이는 augmenter를 연결한다(null이면 텍스트만 생성). */
+    @org.springframework.beans.factory.annotation.Autowired
+    public NonSemanticProblemGenerationPipeline(LlmClient client, ObjectProvider<ObjectMapper> mapper, ProblemGenerationPromptFactory prompts, ProblemGenerationOutputMapper output, SnapshotStructuralValidator structural, SnapshotNormalizedValidator normalized, com.cenedu.backend.ai.problem.adapter.ProblemVisualAugmenter visualAugmenter) {
         this.client = client;
         this.mapper = mapper.getIfAvailable(ObjectMapper::new);
         this.prompts = prompts;
         this.output = output;
         this.structural = structural;
         this.normalized = normalized;
+        this.visualAugmenter = visualAugmenter;
     }
 
     /**
@@ -60,9 +68,15 @@ public final class NonSemanticProblemGenerationPipeline {
                 var p = prompts.create(command, findings);
                 String json = client.completeStructured(p.systemPrompt(), p.messages(),
                         ProblemStructuredOutputSchemas.CANDIDATE).text();
-                var candidate = output.map(command, mapper.readValue(json, ProblemGenerationOutput.class));
+                ProblemGenerationOutput out = mapper.readValue(json, ProblemGenerationOutput.class);
+                var candidate = output.map(command, out);
                 structural.validate(candidate.snapshot());
                 normalized.validate(candidate.snapshot());
+                // 문항이 좌표그래프를 필요로 하면 시각을 덧붙인다(2단계). 실패하면 예외가 나 재시도로
+                // 이어져, 그림을 참조하는 깨진 문항을 내보내지 않는다.
+                if (visualAugmenter != null && out.visualRequired()) {
+                    candidate = visualAugmenter.augment(candidate, out.visualDescription(), command);
+                }
                 return candidate;
             } catch (RuntimeException e) {
                 // 전송·예산 오류는 LlmClient가 이미 재시도한 인프라 실패다. 내용 교정 대상이 아니다.

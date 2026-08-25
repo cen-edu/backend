@@ -53,7 +53,14 @@ public class ProblemGenerationPromptFactory {
                 학생에게 표시되는 contentBlocks, choices, steps, explanation, learningGuide의 수식은
                 인라인 LaTeX인 $...$로 감싸라(예: $2^3$, $\\frac{1}{2}$). 일반 문장과 단위만 있는 텍스트는 감싸지 마라.
                 answerUnits의 answerRaw는 화면 표시용 구분자($, $$, \\(, \\)) 없이 비교 가능한 원시값만 작성하라.
-                현재 MVP에서는 그림 자산을 만들지 않으므로 assets는 항상 []다.
+                assets는 항상 []다 — 그림은 이 출력이 아니라 별도 단계에서 생성한다.
+                대신 이 문항이 좌표그래프(좌표평면 위의 점·직선·정비례/반비례 함수 그래프)를 반드시
+                필요로 하면 visualRequired=true, visualKind="COORDINATE_GRAPH", visualDescription에
+                무엇을 그릴지 구체적으로 적어라(x·y 범위와 눈금 간격, 점의 정확한 좌표와 라벨,
+                직선/함수와 그 식). 이 경우에 한해 발문이 "그래프", "좌표평면"을 참조해도 된다.
+                그래프가 필요 없으면 visualRequired=false, visualKind=null, visualDescription=null로 두고
+                없는 그림을 참조하지 마라. 표·도형 등 좌표그래프가 아닌 시각자료는 현재 만들지 않으므로
+                그런 문항은 visualRequired=false로 두고 텍스트로 자립하게 출제하라.
                 유형별 규칙:
                 %s
                 """.formatted(typeRules(spec.questionType().name()));

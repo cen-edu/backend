@@ -223,9 +223,12 @@ public final class ProblemStructuredOutputSchemas {
                     "renderData":{"type":"object","additionalProperties":false,"properties":{}}
                   },
                   "required":["role","outputFormat","altText","visualDescription","requiredElements","forbiddenElements","renderData"]
-                }}
+                }},
+                "visualRequired":{"type":"boolean"},
+                "visualKind":{"type":["string","null"],"enum":["COORDINATE_GRAPH",null]},
+                "visualDescription":{"type":["string","null"]}
               },
-              "required":["question","contentBlocks","choices","steps","answerUnits","explanation","learningGuide","rubricItems","assets"]
+              "required":["question","contentBlocks","choices","steps","answerUnits","explanation","learningGuide","rubricItems","assets","visualRequired","visualKind","visualDescription"]
             }
             """;
 

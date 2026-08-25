@@ -165,12 +165,11 @@ public class ProblemAsyncGenerationService {
         CurriculumScope context = new CurriculumScope(path.curriculumRevision(), path.schoolLevel(),
                 path.grade(), path.semester() == null ? null : path.semester().intValue(), path.achievementStandardId(), subUnitId,
                 path.majorUnitName(), path.middleUnitName(), path.subUnitName());
-        VisualGenerationRequirement visual = (type == QuestionType.MULTIPLE_CHOICE || type == QuestionType.SHORT_INPUT)
-                ? new VisualGenerationRequirement(visualProperties.forceRequired()
-                        ? VisualGenerationMode.REQUIRED : VisualGenerationMode.AUTO,
-                        visualProperties.forceRequired()
-                                ? VisualReferenceKind.COORDINATE_GRAPH : VisualReferenceKind.UNKNOWN_FIGURE)
-                : VisualGenerationRequirement.none();
+        // 모든 유형을 안정적인 non-semantic(텍스트) 경로로 보낸다. 예전에는 MC/SHORT를 무조건
+        // 파라메트릭 semantic 파이프라인으로 보내, 시각이 필요 없는 문항까지 불안정한 경로를 타
+        // 실패율이 높았다. 시각 필요 여부는 소단원/유형/전역 flag가 아니라 문항 단위 성질이라
+        // 2단계(시각 전용 생성)에서 문항별로 판단한다. forceRequired 같은 전역 강제는 여기서 쓰지 않는다.
+        VisualGenerationRequirement visual = VisualGenerationRequirement.none();
         return new ProblemGenerationRequirement(subUnitId, difficulty, type, count, purpose,
                 new GenerationSpecification(type, difficultyLabel, null, List.of(), false, visual), context,
                 List.of(), List.of());

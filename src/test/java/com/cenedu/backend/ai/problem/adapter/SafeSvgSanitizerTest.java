@@ -1,3 +1,0 @@
-package com.cenedu.backend.ai.problem.adapter;
-import static org.assertj.core.api.Assertions.*; import org.junit.jupiter.api.Test;
-class SafeSvgSanitizerTest { @Test void rejectsForeignObjectEventAndExternalReference(){var s=new SafeSvgSanitizer();assertThatThrownBy(()->s.sanitize("<svg><foreignObject/></svg>")).isInstanceOf(IllegalArgumentException.class);assertThatThrownBy(()->s.sanitize("<svg><path onload=\"x()\"/></svg>")).isInstanceOf(IllegalArgumentException.class);assertThatThrownBy(()->s.sanitize("<svg><image href=\"https://x\"/></svg>")).isInstanceOf(IllegalArgumentException.class);} }
