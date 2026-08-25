@@ -86,6 +86,16 @@ class ProblemStructuredOutputSchemasTest {
         assertEveryObjectIsClosed(root);
     }
 
+    @Test void coordinateGraphPointMarkerIsConstrainedToPointMarkerEnum() throws Exception {
+        // marker가 자유 문자열이면 모델이 PointMarker enum 밖의 값을 내보내
+        // "Cannot deserialize PointMarker from String"으로 semantic 생성이 실패한다.
+        JsonNode root = new ObjectMapper().readTree(ProblemStructuredOutputSchemas.SEMANTIC_MODEL);
+        JsonNode marker = root.path("$defs").path("coordinatePoint").path("properties").path("marker");
+        java.util.List<String> values = new java.util.ArrayList<>();
+        marker.path("enum").forEach(value -> values.add(value.asText()));
+        assertThat(values).containsExactlyInAnyOrder("CLOSED_CIRCLE", "OPEN_CIRCLE", "CROSS");
+    }
+
     @Test void semanticSchemaDoesNotContainUnsupportedComposition() {
         String schema = ProblemStructuredOutputSchemas.SEMANTIC_MODEL;
         assertThat(schema).doesNotContain("\"allOf\"");
