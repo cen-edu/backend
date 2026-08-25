@@ -139,7 +139,7 @@ public class ProblemSemanticExtractionService {
         }
         try {
             MaterializedProblem materialized = materializer.materialize(extracted.semanticModel());
-            if (!answerCompatible(materialized, snapshot)) {
+            if (!sourceCompatible(materialized, snapshot)) {
                 return new SemanticExtractionResult(SemanticExtractionStatus.INVALID_SOURCE, null,
                         java.util.List.of("materialized snapshot이 후보와 일치하지 않습니다."));
             }
@@ -162,7 +162,7 @@ public class ProblemSemanticExtractionService {
         if (result.status() == SemanticExtractionStatus.EXTRACTED && result.semanticModel() != null) {
             try {
                 MaterializedProblem materialized = materializer.materialize(result.semanticModel());
-                if (!answerCompatible(materialized, source)) {
+                if (!sourceCompatible(materialized, source)) {
                     finalResult = new SemanticExtractionResult(SemanticExtractionStatus.INVALID_SOURCE, null,
                             java.util.List.of("materialized snapshot이 원본과 일치하지 않습니다."));
                 }
@@ -193,6 +193,30 @@ public class ProblemSemanticExtractionService {
         String message = exception.getMessage();
         return message != null && (message.contains("지원하지") || message.contains("operation")
                 || message.contains("diagram"));
+    }
+
+    /** 추출된 model이 원본과 같은 문항인지 정답과 구조 양쪽으로 확인한다. */
+    private boolean sourceCompatible(MaterializedProblem materialized, QuestionSnapshotV1 source) {
+        return answerCompatible(materialized, source) && structureCompatible(materialized, source);
+    }
+
+    /**
+     * 원본에 없던 채점 기준·단계·보기를 추출이 지어내지 않았는지 확인한다.
+     *
+     * <p>채점 기준이 비어 있는 서술형 문항을 추출하면 LLM이 그럴듯한 기준을 만들어 낼 수 있다.
+     * 그 model이 materialize에 성공하면 EXTRACTED로 저장되고, 이후 교사가 값 하나만 바꿔도
+     * 원본에 없던 채점 기준이 문항에 조용히 생겨난다. 단계 수가 달라지는 빈칸형도 같은 문제다.
+     * 정답만 비교해서는 이 차이를 잡을 수 없다.
+     */
+    private boolean structureCompatible(MaterializedProblem materialized, QuestionSnapshotV1 source) {
+        QuestionSnapshotV1 generated = materialized.snapshot();
+        return size(generated.choices()) == size(source.choices())
+                && size(generated.steps()) == size(source.steps())
+                && size(generated.rubricItems()) == size(source.rubricItems());
+    }
+
+    private int size(java.util.List<?> values) {
+        return values == null ? 0 : values.size();
     }
 
     private boolean answerCompatible(MaterializedProblem materialized, QuestionSnapshotV1 source) {
