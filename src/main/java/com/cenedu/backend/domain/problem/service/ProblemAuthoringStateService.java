@@ -55,6 +55,18 @@ public class ProblemAuthoringStateService {
         session.failOperation(errorCode);
     }
 
+    /**
+     * 수정 실행이 예외로 중단됐을 때 Session을 재시도 가능한 실패 상태로 회수한다.
+     *
+     * <p>{@link #failOperation}은 pending Version이 남아 있으면 스스로 예외를 던져 원래 실패
+     * 원인을 덮어쓴다. 이 메서드는 예외 처리 경로 전용이라 어떤 상태에서도 조용히 끝난다.
+     */
+    @Transactional
+    public void abortActiveExecution(long ownerTeacherId, long sessionId, String errorCode) {
+        sessionRepository.findByIdAndOwnerTeacherId(sessionId, ownerTeacherId)
+                .ifPresent(session -> session.abortActiveExecution(errorCode));
+    }
+
     /** 같은 Session의 이전 PASSED Version을 현재 표시 문항으로 복원한다. */
     @Transactional
     public void restorePassedVersion(long ownerTeacherId, long sessionId, long versionId) {

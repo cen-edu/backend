@@ -13,6 +13,7 @@ import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditAgentResultEn
 import com.cenedu.backend.domain.problem.authoring.edit.EditTargetType;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditConversationResult;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditInstruction;
+import com.cenedu.backend.domain.problem.authoring.edit.RequestedProblemSpecification;
 import com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemSemanticPatch;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
@@ -87,7 +88,13 @@ public class ProblemEditAgent implements Agent {
                     semanticPatch.operations(), semanticPatch.assistantMessage());
         }
         return new ProblemEditConversationResult(result.action(), normalized, semanticPatch,
-                result.requestedSpecification(), result.assistantMessage());
+                requestedSpecification(result), result.assistantMessage());
+    }
+
+    /** 바꿀 값이 없는 빈 스펙을 "요청 없음"으로 되돌린다. */
+    private RequestedProblemSpecification requestedSpecification(ProblemEditConversationResult result) {
+        RequestedProblemSpecification specification = result.requestedSpecification();
+        return specification == null || specification.isEmpty() ? null : specification;
     }
 
     private boolean keyed(EditTargetType type) {

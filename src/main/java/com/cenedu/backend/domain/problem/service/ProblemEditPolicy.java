@@ -38,6 +38,7 @@ public class ProblemEditPolicy {
             if (patch.mode() == SemanticEditMode.REJECTED)
                 throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_EDIT_REJECTED);
         }
+        ProblemSemanticPatch effectivePatch = effectivePatch(command);
         EditAction action = action(command);
         if (action == EditAction.RESTORE) {
             return new ProblemEditExecutionPlan(
@@ -50,7 +51,7 @@ public class ProblemEditPolicy {
                     command.requestId(), command.sessionId(), command.baseVersionId(),
                     action, command.replacementSourcePolicy(), null,
                 safeInstructions(command.instructions()),
-                    command.semanticPatch(),
+                    effectivePatch,
                     List.of(new ProblemEditTargetRef(EditTargetType.WHOLE_QUESTION, null)),
                     List.of(), List.of(), command.requestedSpecification());
         }
@@ -65,14 +66,37 @@ public class ProblemEditPolicy {
                 command.requestId(), command.sessionId(), command.baseVersionId(),
                 action, ReplacementSourcePolicy.NONE, null,
                 safeInstructions(command.instructions()),
-                command.semanticPatch(),
+                effectivePatch,
                 List.copyOf(requested), List.copyOf(dependent),
                 List.copyOf(protectedTargets), command.requestedSpecification());
+    }
+
+    /**
+     * 난이도·문항 유형 변경은 patch mode와 무관하게 문항 전체 재생성으로 정규화한다.
+     *
+     * <p>이 요청은 semantic model의 어떤 허용 path로도 표현할 수 없다(/intent/*는 structural).
+     * 그런데 Agent는 semantic model이 있으면 무엇이든 semanticPatch로 답하도록 지시받으므로
+     * PARAMETRIC_PATCH나 PRESENTATIONAL_PATCH가 섞여 들어온다. 그대로 두면 EditAction이
+     * MODIFY가 되어 ProblemSemanticModificationService가 patch만 적용하고 끝나, 교사가 요청한
+     * 난이도·유형은 metadata에도 내용에도 반영되지 않은 채 요청이 조용히 사라진다.
+     */
+    private ProblemSemanticPatch effectivePatch(ConfirmedProblemEditCommand command) {
+        ProblemSemanticPatch patch = command.semanticPatch();
+        if (patch == null || command.requestedSpecification() == null
+                || patch.mode() == SemanticEditMode.STRUCTURAL_REGENERATION) {
+            return patch;
+        }
+        return new ProblemSemanticPatch(patch.schemaVersion(), patch.requestId(),
+                patch.baseVersionId(), SemanticEditMode.STRUCTURAL_REGENERATION,
+                List.of(), patch.assistantMessage());
     }
 
     private EditAction action(ConfirmedProblemEditCommand command) {
         if (command.restoreReference() != null) {
             return EditAction.RESTORE;
+        }
+        if (command.requestedSpecification() != null) {
+            return EditAction.REPLACE;
         }
         if (command.semanticPatch() != null) {
             return command.semanticPatch().mode() == SemanticEditMode.STRUCTURAL_REGENERATION

@@ -80,8 +80,31 @@ public class ProblemModificationExecutionCoordinator {
         this.curriculumUnitQueryService = service;
     }
 
-    /** RESTORE는 AI 호출 없이 즉시 전환하고 나머지는 수정 Worker에 위임한다. */
+    /**
+     * 확정 계획을 실행하고, 실패하면 Session을 재시도 가능한 상태로 되돌린 뒤 원인을 그대로 올린다.
+     *
+     * <p>ProblemEditConversationService.confirm의 activateEdit이 이미 별도 transaction에서
+     * operationStatus=MODIFYING을 커밋한 뒤에 이 실행이 시작된다. 여기서 예외가 나가면
+     * 그 MODIFYING이 그대로 남아, 같은 Session의 다음 수정 턴이 startCollecting의
+     * requireDraftIdle에 막혀 전부 실패한다(한 번 실패한 Session이 영구히 죽는다).
+     * 회수 자체가 또 실패해도 원래 원인을 가리지 않도록 suppressed로만 덧붙인다.
+     */
     public Object execute(long teacherId, ProblemEditExecutionPlan plan,
+                          com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 baseSnapshot) {
+        try {
+            return doExecute(teacherId, plan, baseSnapshot);
+        } catch (RuntimeException failure) {
+            try {
+                stateService.abortActiveExecution(teacherId, plan.sessionId(), "MODIFICATION_FAILED");
+            } catch (RuntimeException recoveryFailure) {
+                failure.addSuppressed(recoveryFailure);
+            }
+            throw failure;
+        }
+    }
+
+    /** RESTORE는 AI 호출 없이 즉시 전환하고 나머지는 수정 Worker에 위임한다. */
+    private Object doExecute(long teacherId, ProblemEditExecutionPlan plan,
                           com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 baseSnapshot) {
         if (plan.action() == EditAction.RESTORE) {
             stateService.restorePassedVersion(teacherId, plan.sessionId(), plan.restoreVersionId());

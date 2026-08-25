@@ -6,6 +6,7 @@ import com.cenedu.backend.domain.problem.authoring.edit.semantic.*;
 import com.cenedu.backend.domain.problem.authoring.generation.*;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemGenerationPort;
+import com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionStatus;
 import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
 import com.cenedu.backend.domain.problem.authoring.verification.*;
 import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode;
@@ -27,6 +28,7 @@ public class ProblemStructuralRegenerationService {
     private final ProblemCandidateProcessingService processingService;
     private final ProblemAuthoringJsonCodec jsonCodec;
     private final ProblemAuthoringVersionRepository versionRepository;
+    private ProblemSemanticExtractionService semanticExtractionService;
 
     public ProblemStructuralRegenerationService(ObjectProvider<ProblemGenerationPort> generationPortProvider,
             ProblemCandidateProcessingService processingService, ProblemAuthoringJsonCodec jsonCodec,
@@ -35,6 +37,12 @@ public class ProblemStructuralRegenerationService {
         this.processingService = processingService;
         this.jsonCodec = jsonCodec;
         this.versionRepository = versionRepository;
+    }
+
+    /** 재생성 후보에 semantic model을 붙이기 위한 추출 경계를 선택적으로 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSemanticExtractionService(ProblemSemanticExtractionService service) {
+        this.semanticExtractionService = service;
     }
 
     /** 현재 문항을 ORIGIN으로만 전달해 구조 변경 후보를 생성·검증한다. */
@@ -56,8 +64,8 @@ public class ProblemStructuralRegenerationService {
                         baseVersion.getSourceQuestionId(), baseSnapshot, baseModel)), java.util.List.of(),
                 null, editInstruction(plan));
         ProblemCandidateDraft candidate = port.generate(command);
-        if (candidate == null || candidate.semanticModel() == null)
-            throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID);
+        if (candidate == null) throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID);
+        candidate = withSemanticModel(candidate, baseModel);
         // generation port는 항상 AI_GENERATE 출처로 후보를 만든다. 이 서비스는 그 결과를
         // AuthoringOperationType.AI_MODIFY Version으로 등록하므로, validateSourceType의
         // operationType-sourceType 일치 검사를 통과하도록 출처를 이 흐름에 맞게 다시 붙인다.
@@ -99,6 +107,32 @@ public class ProblemStructuralRegenerationService {
      */
     private String editInstruction(ProblemEditExecutionPlan plan) {
         return plan.semanticPatch() == null ? null : plan.semanticPatch().assistantMessage();
+    }
+
+    /**
+     * 재생성 후보에 semantic model이 없으면 후보 snapshot에서 한 번 추출해 붙인다.
+     *
+     * <p>{@link #visualRequirement}가 원본 기준으로 계산되므로, 도형이 없는 문항(대부분의
+     * 객관식·주관식·빈칸형·서술형)은 mode=NONE으로 나가 SpringAiProblemGenerationAdapter가
+     * semantic model을 만들지 않는 NonSemanticProblemGenerationPipeline으로 보낸다. 그 결과를
+     * 그대로 실패로 처리하면 도형 없는 문항의 구조 재생성이 항상
+     * PROBLEM_SEMANTIC_MODEL_INVALID로 죽는다 — 난이도·문항 유형 변경과 문제 교체가 전부
+     * 여기로 들어오므로 사실상 수정 기능 전체가 막힌다. 추출까지 실패한 경우에만 원래대로
+     * 실패시킨다. 후보 검증(validateSemanticCandidate)이 semantic model 있는 부모의 AI_MODIFY
+     * 후보에는 model을 요구하므로 여기서 조용히 없는 채로 넘길 수는 없다.
+     */
+    private ProblemCandidateDraft withSemanticModel(ProblemCandidateDraft candidate,
+            ProblemSemanticModelV1 baseModel) {
+        if (candidate.semanticModel() != null) return candidate;
+        if (semanticExtractionService == null)
+            throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID);
+        var extraction = semanticExtractionService.extractForCandidate(
+                baseModel.curriculum(), candidate.snapshot());
+        if (extraction.status() != SemanticExtractionStatus.EXTRACTED
+                || extraction.semanticModel() == null)
+            throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID);
+        return new ProblemCandidateDraft(candidate.requestId(), candidate.snapshot(),
+                candidate.assetPlans(), extraction.semanticModel(), candidate.provenance());
     }
 
     private VisualGenerationRequirement visualRequirement(ProblemSemanticModelV1 baseModel) {

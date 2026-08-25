@@ -40,6 +40,12 @@ public class ProblemEditPromptFactory {
                 말을 더 간결하게 => PRESENTATIONAL_PATCH와 placeholder를 유지하는 정확한 template path,
                   expectedOldValue=currentSemanticValues.presentation의 해당 template 전체 텍스트.
                 문항 유형·도형 종류 변경 => STRUCTURAL_REGENERATION, 빈 operations.
+                난이도 변경(더 쉽게·더 어렵게·상·중·하) => STRUCTURAL_REGENERATION, 빈 operations,
+                  requestedSpecification.difficulty에 low·mid·high 중 목표값. 난이도는 semantic
+                  operation으로 표현할 수 없으므로 PARAMETRIC_PATCH나 PRESENTATIONAL_PATCH로 만들지 않는다.
+                같은 조건의 다른 문제로 교체 => STRUCTURAL_REGENERATION, 빈 operations.
+                STRUCTURAL_REGENERATION일 때는 assistantMessage에 교사가 요청한 변경 내용을 그대로
+                  담는다 — operations가 비어 있어 이 문장만 재생성에 전달된다.
                 지난 버전으로 => RESTORE, 빈 operations. 지원하지 않는 요청 => REJECTED, 빈 operations.
                 PARAMETRIC_PATCH를 쓰기 전에 반드시 currentSemanticValues.parameters에서 해당 값의
                 editable을 확인한다. editable이 false인 파라미터는 patch로 바꿀 수 없다 — 이런 값을

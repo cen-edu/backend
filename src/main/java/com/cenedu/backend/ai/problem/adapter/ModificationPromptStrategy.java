@@ -1,5 +1,6 @@
 package com.cenedu.backend.ai.problem.adapter;
 
+import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditExecutionPlan;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand;
 import com.cenedu.backend.domain.problem.authoring.edit.EditAction;
 import com.cenedu.backend.domain.problem.authoring.edit.EditTargetType;
@@ -27,14 +28,32 @@ public class ModificationPromptStrategy {
                 action이 REPLACE면 모든 필드가 대상이다 — 정답을 포함해 지시에 맞게 전부 다시 작성하라.
                 action이 REPLACE가 아니면 answerUnits가 requestedTargets 또는 dependentTargets일 때만 정답을 변경하라.
                 그 경우 그 외 answerUnits는 빈 배열로 반환해도 서버가 기준 Snapshot의 값을 보존한다.
+                targetSpecification은 교사가 요청한 목표 난이도·문항 유형이다. null이 아닌 값은
+                반드시 그 값에 맞춰 문항을 다시 작성하라. editableContext.classification은 현재 문항의
+                값일 뿐 목표가 아니다 — 둘이 다르면 targetSpecification이 우선한다.
+                난이도 low는 한 단계 계산·단순 수치, mid는 두 단계 추론, high는 다단계 추론이나
+                조건 결합을 뜻한다. 문항 유형이 바뀌면 그 유형의 구조 규칙(객관식은 보기,
+                빈칸형은 steps, 서술형은 rubricItems)에 맞춰 전부 새로 만들어라.
                 retryIssueCodes가 비어 있지 않으면 직전 후보가 해당 검증에 실패한 재시도다.
                 민감한 검증 근거는 제공되지 않으므로, 원래 지시를 다시 대조해 해당 실패 원인만 교정하라.
                 action=%s, requestedTargets=%s, dependentTargets=%s, protectedTargets=%s, instructions=%s
+                targetSpecification=%s
                 editableContext=%s
                 retryIssueCodes=%s
                 """.formatted(plan.action(), plan.requestedTargets(), plan.dependentTargets(),
-                plan.protectedTargets(), plan.instructions(), editableContext(command),
-                command.previousIssueCodes());
+                plan.protectedTargets(), plan.instructions(), targetSpecification(plan),
+                editableContext(command), command.previousIssueCodes());
+    }
+
+    /** 교사가 바꾸라고 한 난이도·문항 유형만 목표로 드러내고, 없으면 현재 분류를 유지시킨다. */
+    private String targetSpecification(ProblemEditExecutionPlan plan) {
+        var requested = plan.requestedSpecification();
+        if (requested == null) return "null (현재 분류 유지)";
+        java.util.Map<String, Object> target = new java.util.LinkedHashMap<>();
+        if (requested.questionType() != null) target.put("questionType", requested.questionType());
+        if (requested.difficulty() != null) target.put("difficulty", requested.difficulty());
+        try { return objectMapper.writeValueAsString(target); }
+        catch (Exception exception) { throw new IllegalArgumentException("목표 스펙을 직렬화할 수 없습니다.", exception); }
     }
 
     private String editableContext(ProblemModificationCommand command) {
