@@ -267,9 +267,18 @@ public final class ProblemStructuredOutputSchemas {
         if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.EXPLANATION)) fields.add("explanation");
         if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.LEARNING_GUIDE)) fields.add("learningGuide");
         if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.RUBRIC_ITEM)) fields.add("rubricItems");
-        String props = fields.stream().map(field -> "\"" + field + "\":{\"type\":[\"object\",\"array\",\"string\",\"null\"]}")
-                .collect(java.util.stream.Collectors.joining(","));
-        return "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{" + props + "}}";
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var candidateProps = CANDIDATE_NODE.path("properties");
+        var root = mapper.createObjectNode();
+        root.put("type", "object");
+        root.put("additionalProperties", false);
+        var required = root.putArray("required");
+        var properties = root.putObject("properties");
+        for (String field : fields) {
+            properties.set(field, candidateProps.path(field).deepCopy());
+            required.add(field);
+        }
+        return root.toString();
     }
 
     /** CANDIDATE 스키마를 한 번만 파싱해 하위 스키마 재사용에 쓴다. */
