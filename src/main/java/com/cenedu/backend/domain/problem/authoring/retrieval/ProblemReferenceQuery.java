@@ -13,12 +13,19 @@ public record ProblemReferenceQuery(
         UUID retrievalRequestId, GenerationPurpose purpose, CurriculumScope curriculum,
         QuestionType questionType, String difficulty, Long originQuestionId,
         QuestionSnapshotV1 originSnapshot, int candidateLimit, int selectionLimit,
-        Set<Long> excludedQuestionIds, VisualReferenceKind requiredVisualKind) {
+        Set<Long> excludedQuestionIds, VisualReferenceKind requiredVisualKind, String queryHint) {
     public ProblemReferenceQuery(UUID retrievalRequestId, GenerationPurpose purpose, CurriculumScope curriculum,
             QuestionType questionType, String difficulty, Long originQuestionId, QuestionSnapshotV1 originSnapshot,
             int candidateLimit, int selectionLimit, Set<Long> excludedQuestionIds) {
         this(retrievalRequestId, purpose, curriculum, questionType, difficulty, originQuestionId, originSnapshot,
-                candidateLimit, selectionLimit, excludedQuestionIds, visualKind(originSnapshot));
+                candidateLimit, selectionLimit, excludedQuestionIds, visualKind(originSnapshot), null);
+    }
+    public ProblemReferenceQuery(UUID retrievalRequestId, GenerationPurpose purpose, CurriculumScope curriculum,
+            QuestionType questionType, String difficulty, Long originQuestionId, QuestionSnapshotV1 originSnapshot,
+            int candidateLimit, int selectionLimit, Set<Long> excludedQuestionIds,
+            VisualReferenceKind requiredVisualKind) {
+        this(retrievalRequestId, purpose, curriculum, questionType, difficulty, originQuestionId, originSnapshot,
+                candidateLimit, selectionLimit, excludedQuestionIds, requiredVisualKind, null);
     }
     public static ProblemReferenceQuery withVisualKind(UUID retrievalRequestId, GenerationPurpose purpose,
             CurriculumScope curriculum, QuestionType questionType, String difficulty, Long originQuestionId,
@@ -26,7 +33,15 @@ public record ProblemReferenceQuery(
             Set<Long> excludedQuestionIds, VisualReferenceKind requiredVisualKind) {
         return new ProblemReferenceQuery(retrievalRequestId, purpose, curriculum, questionType, difficulty,
                 originQuestionId, originSnapshot, candidateLimit, selectionLimit, excludedQuestionIds,
-                requiredVisualKind);
+                requiredVisualKind, null);
+    }
+    public static ProblemReferenceQuery withQueryHint(UUID retrievalRequestId, GenerationPurpose purpose,
+            CurriculumScope curriculum, QuestionType questionType, String difficulty, Long originQuestionId,
+            QuestionSnapshotV1 originSnapshot, int candidateLimit, int selectionLimit,
+            Set<Long> excludedQuestionIds, String queryHint) {
+        return new ProblemReferenceQuery(retrievalRequestId, purpose, curriculum, questionType, difficulty,
+                originQuestionId, originSnapshot, candidateLimit, selectionLimit, excludedQuestionIds,
+                VisualReferenceKind.NONE, queryHint);
     }
     public ProblemReferenceQuery {
         if (retrievalRequestId == null || purpose == null || curriculum == null || questionType == null
@@ -49,6 +64,7 @@ public record ProblemReferenceQuery(
         }
         excludedQuestionIds = excludedQuestionIds == null ? Set.of() : Set.copyOf(excludedQuestionIds);
         if (requiredVisualKind == null) requiredVisualKind = VisualReferenceKind.NONE;
+        queryHint = normalizeQueryHint(queryHint);
     }
     private static VisualReferenceKind visualKind(QuestionSnapshotV1 snapshot) {
         if (snapshot == null) return VisualReferenceKind.NONE;
@@ -57,5 +73,11 @@ public record ProblemReferenceQuery(
             case "WITH_FIGURE" -> VisualReferenceKind.UNKNOWN_FIGURE;
             default -> VisualReferenceKind.NONE;
         };
+    }
+
+    private static String normalizeQueryHint(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.replaceAll("\\s+", " ").trim();
+        return normalized.length() <= 500 ? normalized : normalized.substring(0, 500);
     }
 }

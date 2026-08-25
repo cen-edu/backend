@@ -12,16 +12,25 @@ import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
 import com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionStatus;
 import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationReference;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole;
+import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceQuery;
+import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceRetrievalPort;
+import com.cenedu.backend.domain.problem.config.ProblemRagProperties;
 import com.cenedu.backend.domain.curriculum.service.CurriculumUnitQueryService;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringSessionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringVersionRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** 확정 수정 계획을 RESTORE 또는 AI 수정 실행으로 분기한다. */
 @Component
 public class ProblemModificationExecutionCoordinator {
+    private static final Logger log = LoggerFactory.getLogger(ProblemModificationExecutionCoordinator.class);
     /** 구조 검증·자료 조건에 걸리는 후보가 있어도 교체가 성사되도록 확보하는 후보 수다. */
     private static final int BANK_CANDIDATE_LIMIT = 8;
 
@@ -39,6 +48,8 @@ public class ProblemModificationExecutionCoordinator {
     private CurriculumUnitQueryService curriculumUnitQueryService;
     private ProblemTeacherDecisionEventService decisionEventService;
     private com.cenedu.backend.domain.problem.authoring.edit.ReplacementExclusionPort replacementExclusionPort;
+    private ProblemReferenceRetrievalPort referenceRetrievalPort;
+    private ProblemRagProperties ragProperties;
 
     public ProblemModificationExecutionCoordinator(ProblemModificationWorker modificationWorker,
             ProblemAuthoringStateService stateService, ProblemQuestionSelector questionSelector,
@@ -91,6 +102,18 @@ public class ProblemModificationExecutionCoordinator {
         this.curriculumUnitQueryService = service;
     }
 
+    /** 은행 교체 미스 후 생성에 쓸 유사 문항 검색기를 선택적으로 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setReferenceRetrievalPort(ProblemReferenceRetrievalPort port) {
+        this.referenceRetrievalPort = port;
+    }
+
+    /** RAG 활성화와 후보 수 정책을 선택적으로 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setRagProperties(ProblemRagProperties properties) {
+        this.ragProperties = properties;
+    }
+
     /**
      * 확정 계획을 실행하고, 실패하면 Session을 재시도 가능한 상태로 되돌린 뒤 원인을 그대로 올린다.
      *
@@ -141,11 +164,15 @@ public class ProblemModificationExecutionCoordinator {
                 return bankResult;
             }
         }
-        if (plan.semanticPatch() != null) {
-            ProblemAuthoringVersion baseVersion = versionRepository
-                    .findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
-                    .orElseThrow(() -> new com.cenedu.backend.global.common.BusinessException(
+        ProblemAuthoringVersion executionBaseVersion = versionRepository
+                .findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
+                .orElseThrow(() -> new com.cenedu.backend.global.common.BusinessException(
                         com.cenedu.backend.global.common.ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
+        CurriculumScope referenceCurriculum = referenceCurriculum(baseSnapshot, executionBaseVersion);
+        List<GenerationReference> replacementReferences = replacementReferences(
+                plan, baseSnapshot, executionBaseVersion, referenceCurriculum);
+        if (plan.semanticPatch() != null) {
+            ProblemAuthoringVersion baseVersion = executionBaseVersion;
             if (baseVersion.getSemanticModel() == null && semanticExtractionService != null) {
                 var extraction = baseVersion.getSourceQuestionId() != null
                         ? semanticExtractionService.ensureVersionSemantic(
@@ -157,13 +184,15 @@ public class ProblemModificationExecutionCoordinator {
                                     com.cenedu.backend.global.common.ErrorCode.PROBLEM_AUTHORING_VERSION_NOT_FOUND));
                 } else if (plan.instructions() != null && !plan.instructions().isEmpty()) {
                     Object fallback = modificationWorker.execute(teacherId,
-                            modificationCommand(plan, baseSnapshot, baseVersion));
+                            modificationCommand(plan, baseSnapshot, baseVersion,
+                                    referenceCurriculum, replacementReferences));
                     return legacyFallbackResult(plan, fallback);
                 }
             }
             if (baseVersion.getSemanticModel() == null) {
                 Object fallback = modificationWorker.execute(teacherId,
-                        modificationCommand(plan, baseSnapshot, baseVersion));
+                        modificationCommand(plan, baseSnapshot, baseVersion,
+                                referenceCurriculum, replacementReferences));
                 return legacyFallbackResult(plan, fallback);
             }
             if (plan.semanticPatch().mode() == com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode.STRUCTURAL_REGENERATION) {
@@ -175,7 +204,8 @@ public class ProblemModificationExecutionCoordinator {
                             com.cenedu.backend.global.common.ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
                 var baseModel = new com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemSemanticDocumentCodec(
                         new tools.jackson.databind.ObjectMapper()).readSemanticModel(baseVersion.getSemanticModel());
-                return structuralRegenerationService.regenerate(teacherId, baseVersion, plan, baseModel);
+                return structuralRegenerationService.regenerate(
+                        teacherId, baseVersion, plan, baseModel, replacementReferences);
             }
             if (baseVersion.getSemanticModel() == null) {
                 throw new com.cenedu.backend.global.common.BusinessException(
@@ -186,11 +216,9 @@ public class ProblemModificationExecutionCoordinator {
                         com.cenedu.backend.global.common.ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
             return semanticModificationService.apply(teacherId, plan.sessionId(), baseVersion, plan.semanticPatch());
         }
-        ProblemAuthoringVersion executionBaseVersion = versionRepository
-                .findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
-                .orElseThrow();
         Object result = modificationWorker.execute(teacherId,
-                modificationCommand(plan, baseSnapshot, executionBaseVersion));
+                modificationCommand(plan, baseSnapshot, executionBaseVersion,
+                        referenceCurriculum, replacementReferences));
         if (plan.action() == EditAction.REPLACE && decisionEventService != null) decisionEventService.recordReplacement(
                 teacherId, plan.sessionId(), plan.baseVersionId(), plan.requestId(), plan.instructions());
         return result;
@@ -233,9 +261,68 @@ public class ProblemModificationExecutionCoordinator {
     private com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand modificationCommand(
             ProblemEditExecutionPlan plan,
             com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 snapshot,
-            ProblemAuthoringVersion version) {
+            ProblemAuthoringVersion version,
+            CurriculumScope curriculum,
+            List<GenerationReference> references) {
         return new com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand(
-                plan.requestId(), plan, snapshot, semanticModel(version), assetPlans(version), List.of());
+                plan.requestId(), plan, snapshot, semanticModel(version), assetPlans(version),
+                curriculum, references, List.of());
+    }
+
+    /** 현재 소단원 정보를 우선하고 없으면 저장된 semantic 교육과정을 사용한다. */
+    private CurriculumScope referenceCurriculum(
+            com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 snapshot,
+            ProblemAuthoringVersion version) {
+        CurriculumScope current = currentCurriculum(snapshot);
+        if (current != null) return current;
+        var model = semanticModel(version);
+        return model == null ? null : model.curriculum();
+    }
+
+    /** 문제은행 교체 미스 후에만 교사 지시와 현재 문항으로 EXAMPLE을 검색한다. */
+    List<GenerationReference> replacementReferences(
+            ProblemEditExecutionPlan plan,
+            com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 snapshot,
+            ProblemAuthoringVersion version,
+            CurriculumScope curriculum) {
+        if (plan.action() != EditAction.REPLACE || referenceRetrievalPort == null
+                || ragProperties == null || !ragProperties.enabled() || curriculum == null) {
+            return List.of();
+        }
+        Long originQuestionId = version == null ? null : version.getSourceQuestionId();
+        if (originQuestionId == null) originQuestionId = snapshot.metadata().derivedFromQuestionId();
+        if (originQuestionId == null) return List.of();
+        var requested = plan.requestedSpecification();
+        var questionType = requested != null && requested.questionType() != null
+                ? requested.questionType() : snapshot.metadata().questionType();
+        String difficulty = requested != null && requested.difficulty() != null
+                ? requested.difficulty() : snapshot.metadata().difficulty();
+        int candidateLimit = Math.max(1, Math.min(40, ragProperties.candidateLimit()));
+        int selectionLimit = Math.min(4, candidateLimit);
+        ProblemReferenceQuery query = ProblemReferenceQuery.withQueryHint(
+                java.util.UUID.randomUUID(), GenerationPurpose.PERSONALIZED_APPLICATION,
+                curriculum, questionType, difficulty, originQuestionId, snapshot,
+                candidateLimit, selectionLimit, usedQuestionIds(plan, snapshot), queryHint(plan));
+        try {
+            List<com.cenedu.backend.domain.problem.authoring.retrieval.RetrievedProblemReference> retrieved =
+                    referenceRetrievalPort.retrieve(query);
+            log.info("event=problem_edit_retrieval outcome=SUCCESS requestId={} referenceCount={}",
+                    query.retrievalRequestId(), retrieved.size());
+            return retrieved.stream().map(reference -> new GenerationReference(
+                    GenerationReferenceRole.EXAMPLE, reference.questionId(), reference.snapshot())).toList();
+        } catch (RuntimeException exception) {
+            log.warn("event=problem_edit_retrieval outcome=FALLBACK requestId={} exceptionType={}",
+                    query.retrievalRequestId(), exception.getClass().getSimpleName());
+            return List.of();
+        }
+    }
+
+    private String queryHint(ProblemEditExecutionPlan plan) {
+        if (plan.instructions() == null) return null;
+        return plan.instructions().stream()
+                .map(com.cenedu.backend.domain.problem.authoring.edit.ProblemEditInstruction::instruction)
+                .filter(value -> value != null && !value.isBlank())
+                .distinct().collect(java.util.stream.Collectors.joining(" | "));
     }
 
     /** Version 자산 manifest를 읽고 사용할 수 있는 생성 계획만 반환한다. */

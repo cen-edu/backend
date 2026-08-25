@@ -11,9 +11,17 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ModificationPromptStrategy {
     private final ObjectMapper objectMapper;
+    private final FewShotReferenceSerializer referenceSerializer;
 
     public ModificationPromptStrategy(ObjectMapper objectMapper) {
+        this(objectMapper, new FewShotReferenceSerializer());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ModificationPromptStrategy(ObjectMapper objectMapper,
+            FewShotReferenceSerializer referenceSerializer) {
         this.objectMapper = objectMapper;
+        this.referenceSerializer = referenceSerializer;
     }
 
     /** 수정 지시·protected target·기준 Version을 프롬프트로 조립한다. */
@@ -36,13 +44,15 @@ public class ModificationPromptStrategy {
                 빈칸형은 steps, 서술형은 rubricItems)에 맞춰 전부 새로 만들어라.
                 retryIssueCodes가 비어 있지 않으면 직전 후보가 해당 검증에 실패한 재시도다.
                 민감한 검증 근거는 제공되지 않으므로, 원래 지시를 다시 대조해 해당 실패 원인만 교정하라.
+                fewShotExamples는 유사한 문항의 구조를 참고하기 위한 예시다. 문구나 수치를 그대로 복사하지 마라.
                 action=%s, requestedTargets=%s, dependentTargets=%s, protectedTargets=%s, instructions=%s
                 targetSpecification=%s
                 editableContext=%s
+                fewShotExamples=%s
                 retryIssueCodes=%s
                 """.formatted(plan.action(), plan.requestedTargets(), plan.dependentTargets(),
                 plan.protectedTargets(), plan.instructions(), targetSpecification(plan),
-                editableContext(command), command.previousIssueCodes());
+                editableContext(command), fewShotExamples(command), command.previousIssueCodes());
     }
 
     /** 교사가 바꾸라고 한 난이도·문항 유형만 목표로 드러내고, 없으면 현재 분류를 유지시킨다. */
@@ -79,5 +89,10 @@ public class ModificationPromptStrategy {
         if (replace || types.contains(EditTargetType.ASSET)) context.put("assets", snapshot.assets());
         try { return objectMapper.writeValueAsString(context); }
         catch (Exception exception) { throw new IllegalArgumentException("수정 문맥을 직렬화할 수 없습니다.", exception); }
+    }
+
+    private String fewShotExamples(ProblemModificationCommand command) {
+        if (command.curriculum() == null || command.references().isEmpty()) return "[]";
+        return referenceSerializer.serialize(command.curriculum(), command.references());
     }
 }

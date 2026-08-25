@@ -119,7 +119,8 @@ public class ProblemModificationWorker {
                         .getBytes(StandardCharsets.UTF_8));
         return new ProblemModificationCommand(
                 requestId, command.plan(), command.baseSnapshot(), command.baseSemanticModel(),
-                command.baseAssetPlans(), failedIssueCodes(previousResult));
+                command.baseAssetPlans(), command.curriculum(), command.references(),
+                failedIssueCodes(previousResult));
     }
 
     /** 직전 검증에서 실패한 코드만 추려 민감한 근거 없이 재시도 방향을 전달한다. */

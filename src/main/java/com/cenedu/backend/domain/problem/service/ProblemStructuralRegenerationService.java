@@ -49,6 +49,13 @@ public class ProblemStructuralRegenerationService {
     public ProblemModificationExecutionResult regenerate(long ownerTeacherId,
             ProblemAuthoringVersion baseVersion, ProblemEditExecutionPlan plan,
             ProblemSemanticModelV1 baseModel) {
+        return regenerate(ownerTeacherId, baseVersion, plan, baseModel, java.util.List.of());
+    }
+
+    /** 은행 교체 미스 시 검색한 유사 문항을 EXAMPLE로 함께 전달한다. */
+    public ProblemModificationExecutionResult regenerate(long ownerTeacherId,
+            ProblemAuthoringVersion baseVersion, ProblemEditExecutionPlan plan,
+            ProblemSemanticModelV1 baseModel, java.util.List<GenerationReference> examples) {
         ProblemGenerationPort port = generationPortProvider.getIfAvailable();
         if (port == null) throw new BusinessException(ErrorCode.PROBLEM_AI_PORT_NOT_CONFIGURED);
         QuestionSnapshotV1 baseSnapshot = jsonCodec.read(baseVersion.getSnapshot(), QuestionSnapshotV1.class);
@@ -58,10 +65,13 @@ public class ProblemStructuralRegenerationService {
                 requested != null && requested.questionType() != null ? requested.questionType() : intent.questionType(),
                 requested != null && requested.difficulty() != null ? requested.difficulty() : intent.difficulty(),
                 intent.evaluationArea(), java.util.List.of(), true, visualRequirement(baseModel));
+        java.util.List<GenerationReference> references = new java.util.ArrayList<>();
+        references.add(new GenerationReference(GenerationReferenceRole.ORIGIN,
+                baseVersion.getSourceQuestionId(), baseSnapshot, baseModel));
+        if (examples != null) references.addAll(examples);
         var command = new ProblemGenerationCommand(plan.requestId(), java.util.UUID.randomUUID(),
                 GenerationPurpose.GENERAL_LEARNING_SHORTAGE, specification, baseModel.curriculum(),
-                java.util.List.of(new GenerationReference(GenerationReferenceRole.ORIGIN,
-                        baseVersion.getSourceQuestionId(), baseSnapshot, baseModel)), java.util.List.of(),
+                references, java.util.List.of(),
                 null, editInstruction(plan));
         ProblemCandidateDraft candidate = port.generate(command);
         if (candidate == null) throw new BusinessException(ErrorCode.PROBLEM_SEMANTIC_MODEL_INVALID);
