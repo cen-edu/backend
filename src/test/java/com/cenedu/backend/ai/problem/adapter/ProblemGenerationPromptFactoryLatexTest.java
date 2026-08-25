@@ -27,6 +27,18 @@ class ProblemGenerationPromptFactoryLatexTest {
     }
 
     @Test
+    void 그래프_문항은_시각_정보를_본문에_중복하지_않도록_지시한다() {
+        String systemPrompt = new ProblemGenerationPromptFactory().create(command()).systemPrompt();
+
+        assertThat(systemPrompt)
+                .contains("visualDescription에만 적고 text에 장황하게 중복하지 마라")
+                .contains("true이면 text와")
+                .contains("visualDescription을 함께 보아")
+                .contains("풀이에 필요한 모든 정보를 확인한다")
+                .contains("그래프에 표시할 정보를 text에 다시 설명하지 마라");
+    }
+
+    @Test
     void 검증실패_재시도에는_직전후보와_교정규칙을_함께_제공한다() {
         ProblemGenerationOutput previous = new ProblemGenerationOutput(
                 "이전 문제", List.of(), List.of(), List.of(), List.of(), "이전 해설",

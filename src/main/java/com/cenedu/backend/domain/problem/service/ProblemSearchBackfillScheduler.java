@@ -18,6 +18,8 @@ public class ProblemSearchBackfillScheduler {
     private final ProblemSearchBackfillStateRepository stateRepository;
     private final SearchIndexMaintenancePort maintenancePort;
     private static final String STATE_KEY = "problem-search";
+    private static final String VISUAL_STATE_KEY = "problem-search-visual-coordinate-v1";
+    private static final int MAX_VISUAL_BATCHES_PER_RUN = 100;
     private static final Logger log = LoggerFactory.getLogger(ProblemSearchBackfillScheduler.class);
     public ProblemSearchBackfillScheduler(ProblemSearchBackfillService service, ProblemRagProperties properties,
             ProblemSearchBackfillStateRepository stateRepository, SearchIndexMaintenancePort maintenancePort) {
@@ -40,9 +42,42 @@ public class ProblemSearchBackfillScheduler {
         var result = service.enqueueBatch(cursor, properties.indexing().backfillBatchSize());
         long nextCursor = result.nextQuestionId();
         state.advance(nextCursor, OffsetDateTime.now());
+        var visualResult = runVisualReclassification();
         log.info("event=problem_search_backfill cursorBefore={} cursorAfter={} scanned={} enqueued={} unchanged={} rejected={} exhausted={} deletedIndexes={} reactivatedTasks={} elapsedMs={}",
                 before, nextCursor, result.scanned(), result.enqueued(), result.unchanged(), result.rejected(),
                 result.exhausted(), reconciliation.deletedIndexes(), reconciliation.reactivatedTasks(),
                 (System.nanoTime() - started) / 1_000_000);
+        log.info("event=problem_search_visual_reclassification cursorBefore={} cursorAfter={} scanned={} enqueued={} unchanged={} rejected={} exhausted={}",
+                visualResult.cursorBefore(), visualResult.cursorAfter(), visualResult.scanned(),
+                visualResult.enqueued(), visualResult.unchanged(), visualResult.rejected(),
+                visualResult.exhausted());
     }
+
+    private VisualBackfillResult runVisualReclassification() {
+        var state = stateRepository.findByStateKeyForUpdate(VISUAL_STATE_KEY)
+                .orElseGet(() -> stateRepository.save(new ProblemSearchBackfillState(
+                        VISUAL_STATE_KEY, 0, OffsetDateTime.now())));
+        long before = state.getCursor();
+        long cursor = before;
+        int scanned = 0, enqueued = 0, unchanged = 0, rejected = 0;
+        boolean exhausted = false;
+        for (int batch = 0; batch < MAX_VISUAL_BATCHES_PER_RUN && !exhausted; batch++) {
+            var result = service.enqueueVisualReclassificationBatch(cursor,
+                    properties.indexing().backfillBatchSize());
+            scanned += result.scanned();
+            enqueued += result.enqueued();
+            unchanged += result.unchanged();
+            rejected += result.rejected();
+            exhausted = result.exhausted();
+            long next = result.nextQuestionId();
+            if (next == cursor) break;
+            cursor = next;
+        }
+        state.advance(cursor, OffsetDateTime.now());
+        return new VisualBackfillResult(before, cursor, scanned, enqueued, unchanged, rejected,
+                exhausted);
+    }
+
+    private record VisualBackfillResult(long cursorBefore, long cursorAfter, int scanned,
+            int enqueued, int unchanged, int rejected, boolean exhausted) {}
 }

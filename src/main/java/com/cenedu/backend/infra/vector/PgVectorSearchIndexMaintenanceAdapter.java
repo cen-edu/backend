@@ -27,4 +27,10 @@ public class PgVectorSearchIndexMaintenanceAdapter implements SearchIndexMainten
     public List<Long> findActiveMissingQuestionIds(long afterQuestionId, int limit) {
         return repository.findActiveMissingQuestionIds(afterQuestionId, limit);
     }
+
+    /** 커서 뒤에서 v1 또는 미분류 그림인 활성 인덱스 문항 ID를 반환한다. */
+    @Override
+    public List<Long> findVisualReclassificationQuestionIds(long afterQuestionId, int limit) {
+        return repository.findVisualReclassificationQuestionIds(afterQuestionId, limit);
+    }
 }

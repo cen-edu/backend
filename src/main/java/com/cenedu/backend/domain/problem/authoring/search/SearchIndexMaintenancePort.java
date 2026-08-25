@@ -11,5 +11,8 @@ public interface SearchIndexMaintenancePort {
     /** 커서 뒤의 활성·비서술형·미인덱싱 문항 ID를 일정 크기로 반환한다. */
     List<Long> findActiveMissingQuestionIds(long afterQuestionId, int limit);
 
+    /** 커서 뒤에서 v1 또는 미분류 그림인 활성 인덱스 문항 ID를 반환한다. */
+    List<Long> findVisualReclassificationQuestionIds(long afterQuestionId, int limit);
+
     record SearchIndexReconciliationResult(int deletedIndexes, int reactivatedTasks) {}
 }

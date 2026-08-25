@@ -62,7 +62,7 @@ public class PgVectorProblemReferenceRetrievalAdapter implements ProblemReferenc
                 .toList();
         int quarantined = candidates.size() - reusableCandidates.size();
         if (quarantined > 0) {
-            log.info("pgvector Retrieval 시각 무결성 격리 — requestId={} quarantinedCount={}",
+            log.info("pgvector Retrieval 문항 참조 무결성 격리 — requestId={} quarantinedCount={}",
                     query.retrievalRequestId(), quarantined);
         }
         if (reusableCandidates.isEmpty()) {
@@ -75,6 +75,8 @@ public class PgVectorProblemReferenceRetrievalAdapter implements ProblemReferenc
         List<ProblemSearchCandidate> selected = selector.select(reusableCandidates, embedding.vector(),
                 query.selectionLimit(), lambda, query.questionType(), query.difficulty());
         trace.insertCandidates(query.retrievalRequestId(), candidates, selected.stream().map(ProblemSearchCandidate::questionId).collect(java.util.stream.Collectors.toSet()));
-        return selected.stream().map(c -> new RetrievedProblemReference(c.questionId(), c.snapshot(), c.denseScore(), c.denseRank(), c.documentHash(), c.duplicateClusterKey(), java.util.Set.of())).toList();
+        return selected.stream().map(c -> new RetrievedProblemReference(c.questionId(), c.snapshot(),
+                c.denseScore(), c.denseRank(), c.documentHash(), c.duplicateClusterKey(),
+                java.util.Set.of(), c.visualKind())).toList();
     }
 }

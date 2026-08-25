@@ -36,6 +36,17 @@ public class ProblemSearchBackfillService {
     public BackfillBatchResult enqueueBatch(long afterQuestionId, int batchSize) {
         if (batchSize < 1) throw new IllegalArgumentException("backfill batch size는 1 이상이어야 합니다.");
         List<Long> ids = maintenancePort.findActiveMissingQuestionIds(afterQuestionId, batchSize);
+        return enqueueQuestionIds(afterQuestionId, batchSize, ids);
+    }
+
+    /** 커서 뒤의 v1또는 미분류 그림 문항을 현재 시각 기준으로 다시 큐에 넣는다. */
+    public BackfillBatchResult enqueueVisualReclassificationBatch(long afterQuestionId, int batchSize) {
+        if (batchSize < 1) throw new IllegalArgumentException("backfill batch size는 1 이상이어야 합니다.");
+        List<Long> ids = maintenancePort.findVisualReclassificationQuestionIds(afterQuestionId, batchSize);
+        return enqueueQuestionIds(afterQuestionId, batchSize, ids);
+    }
+
+    private BackfillBatchResult enqueueQuestionIds(long afterQuestionId, int batchSize, List<Long> ids) {
         if (ids.isEmpty()) return new BackfillBatchResult(afterQuestionId, 0, 0, 0, 0, true);
         var questionById = questionRepository.findAllById(ids).stream()
                 .collect(java.util.stream.Collectors.toMap(ProblemQuestion::getId, question -> question));

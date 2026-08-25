@@ -40,10 +40,14 @@ public class ProblemGenerationPromptFactory {
                 contentBlocks의 첫 항목은 blockKind=TEXT, assetRef=null, markup=null로 작성한다.
                 text에는 학생에게 실제로 보여줄 완결된 문제 문장을 넣는다.
                 "발문", "문제", "문제 내용", "정답을 구하시오" 같은 자리표시자만 쓰면 안 된다.
-                문제를 푸는 데 필요한 수치·조건·데이터는 모두 text 안에 직접 포함한다.
-                포함하지 않은 그림·표·데이터를 "주어진", "다음", "아래"라고 참조하지 마라.
+                visualRequired=false인 문항은 문제를 푸는 데 필요한 수치·조건·데이터를 모두 text 안에
+                직접 포함하고, 포함하지 않은 그림·표·데이터를 "주어진", "다음", "아래"라고 참조하지 마라.
+                visualRequired=true인 좌표그래프 문항은 그래프에 실제로 표시할 좌표·식·수치를
+                visualDescription에만 적고 text에 장황하게 중복하지 마라. text는 학생이 그래프와 함께
+                읽을 완결된 질문이어야 한다.
                 문제를 출력하기 전에 반드시 다음 순서로 자체 검산하라:
-                (1) 학생이 보는 contentBlocks[0].text만 읽고 풀이에 필요한 모든 정보를 확인한다.
+                (1) visualRequired=false이면 contentBlocks[0].text만으로, true이면 text와
+                    visualDescription을 함께 보아 풀이에 필요한 모든 정보를 확인한다.
                 (2) 문제를 처음부터 직접 풀어 최종값을 계산한다.
                 (3) answerUnits, choices의 정답, explanation의 마지막 결론 값이 서로 문자 단위로 일치하는지 대조한다.
                 어느 하나라도 계산 불가·정보 부족·값 불일치이면 그 문항을 출력하지 말고 조건을 만족하는 새 문항을 만든다.
@@ -69,7 +73,8 @@ public class ProblemGenerationPromptFactory {
                 대신 이 문항이 좌표그래프(좌표평면 위의 점·직선·정비례/반비례 함수 그래프)를 반드시
                 필요로 하면 visualRequired=true, visualKind="COORDINATE_GRAPH", visualDescription에
                 무엇을 그릴지 구체적으로 적어라(x·y 범위와 눈금 간격, 점의 정확한 좌표와 라벨,
-                직선/함수와 그 식). 이 경우에 한해 발문이 "그래프", "좌표평면"을 참조해도 된다.
+                직선/함수와 그 식). 그래프에 표시할 정보를 text에 다시 설명하지 마라. 이 경우에 한해
+                발문이 "그래프", "좌표평면"을 참조해도 된다.
                 그래프가 필요 없으면 visualRequired=false, visualKind=null, visualDescription=null로 두고
                 없는 그림을 참조하지 마라. 표·도형 등 좌표그래프가 아닌 시각자료는 현재 만들지 않으므로
                 그런 문항은 visualRequired=false로 두고 텍스트로 자립하게 출제하라.
@@ -102,7 +107,8 @@ public class ProblemGenerationPromptFactory {
                         아래 두 방법 중 문제 의도에 맞는 정확히 하나를 선택해 전체 후보를 교정하라.
                         1) 좌표그래프를 보고 푸는 문제를 유지한다: visualRequired=true,
                            visualKind="COORDINATE_GRAPH"로 두고, visualDescription에 좌표축 범위와 눈금,
-                           모든 점의 정확한 좌표와 라벨, 필요한 직선/함수와 식을 구체적으로 적는다.
+                           모든 점의 정확한 좌표와 라벨, 필요한 직선/함수와 식을 구체적으로 적고,
+                           그 그래프 정보를 본문 text에 중복해서 나열하지 않는다.
                            assets는 계속 []로 둔다. 서버가 다음 단계에서 그래프를 생성해 붙인다.
                         2) 이미지 없는 문제로 바꾼다: "다음/아래/주어진 그림·그래프·표" 같은 참조와
                            정의되지 않은 ㉠·㉡·㉢ 기호를 모두 제거하고, 풀이에 필요한 좌표·식·수치를

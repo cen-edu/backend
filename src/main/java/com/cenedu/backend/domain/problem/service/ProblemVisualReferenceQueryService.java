@@ -1,7 +1,6 @@
 package com.cenedu.backend.domain.problem.service;
 
 import com.cenedu.backend.domain.problem.authoring.visual.*;
-import com.cenedu.backend.domain.problem.entity.enums.AssetRole;
 import com.cenedu.backend.domain.problem.entity.enums.QuestionPresentation;
 import com.cenedu.backend.domain.problem.repository.*;
 import com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemSemanticDocumentCodec;
@@ -17,6 +16,7 @@ public class ProblemVisualReferenceQueryService {
     private final ProblemQuestionRepository questions;
     private final ProblemAssetRepository assets;
     private final ProblemSemanticDocumentCodec codec;
+    private final VisualReferenceClassifier classifier = new VisualReferenceClassifier();
 
     public ProblemVisualReferenceQueryService(ProblemQuestionRepository questions, ProblemAssetRepository assets,
                                               ObjectMapper objectMapper) {
@@ -28,8 +28,13 @@ public class ProblemVisualReferenceQueryService {
         var question = questions.findById(questionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PROBLEM_DETAIL_DATA_INVALID));
         var values = assets.findAllByQuestionIdOrderByDisplayOrderAscIdAsc(questionId);
-        if (question.getPresentation() == QuestionPresentation.TEXT_ONLY || values.isEmpty())
+        if (question.getPresentation() == QuestionPresentation.TEXT_ONLY)
             return new VisualReferenceDescriptor(null, VisualReferenceKind.NONE, null, "", null);
+        if (values.isEmpty()) {
+            VisualReferenceKind kind = classifier.classify(question.getPresentation(), null,
+                    question.getPromptText(), null);
+            return new VisualReferenceDescriptor(null, kind, null, "", null);
+        }
         if (values.size() != 1) return unknown(values.get(0));
         var asset = values.get(0);
         var semanticJson = question.getSemanticModel();
@@ -42,9 +47,11 @@ public class ProblemVisualReferenceQueryService {
                 return unknown(asset);
             return new VisualReferenceDescriptor(asset.getAssetKey(), semanticKind, asset.getRole(), asset.getAltText(), semantic);
         }
-        if (asset.getRole() == AssetRole.TABLE || question.getPresentation() == QuestionPresentation.WITH_TABLE)
-            return new VisualReferenceDescriptor(asset.getAssetKey(), VisualReferenceKind.DATA_TABLE, asset.getRole(), asset.getAltText(), null);
         VisualReferenceKind kind = kindFromRenderSpec(asset.getRenderSpec());
+        if (kind == VisualReferenceKind.UNKNOWN_FIGURE) {
+            kind = classifier.classify(question.getPresentation(), asset.getRole(),
+                    question.getPromptText(), asset.getAltText());
+        }
         return new VisualReferenceDescriptor(asset.getAssetKey(), kind, asset.getRole(), asset.getAltText(), null);
     }
 

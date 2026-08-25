@@ -80,10 +80,13 @@ final class VerificationPrompts {
                 - 해설의 결론이 정답과 모순되는가.
                 - 해설이 스냅샷에 없는 값·조건을 끌어다 쓰는가.
 
-                [LEAKAGE] 개념 안내(learningGuide)를 본다. 학생이 문제를 푸는 동안 보는 화면이다.
+                [LEAKAGE] 문제 본문(TEXT contentBlocks)과 개념 안내(learningGuide)를 본다.
+                choices에는 정답 보기가 존재하는 것이 정상이고, altText·표에는 자산에 실제로 표시된
+                좌표·식·수치·보기가 들어갈 수 있으므로 이 항목의 노출 검사 대상이 아니다.
                 - kind=ANSWER_VALUE: 정답 값이나 최종 계산 결과를 그대로 담았다.
                 - kind=SOLUTION_DIRECTION: 값은 없지만 어떤 순서로 풀라고 방향을 지정했다.
-                learningGuide 가 없으면 이 항목은 건너뛴다.
+                단, 본문에 풀이 조건으로 주어진 값이 우연히 정답과 같다는 이유만으로 결함으로 판정하지
+                않는다. 정답이라고 명시하거나 계산이 끝난 결론을 미리 제공한 경우만 결함이다.
 
                 [CURRICULUM] 요청한 교육과정과 발문이 실제로 다루는 수학 개념을 비교한다.
                 - 메타데이터 ID가 같아도 문제의 핵심 풀이가 소단원 개념과 명백히 다르면 결함이다.
@@ -146,6 +149,16 @@ final class VerificationPrompts {
                         .append(block.assetRef()).append(")\n");
             }
         });
+
+        if (!snapshot.assets().isEmpty()) {
+            builder.append("\n[그림 설명 — 학생이 그림 대신 확인하는 접근성 정보]\n");
+            snapshot.assets().forEach(asset -> {
+                if (asset != null) {
+                    builder.append(asset.assetKey()).append(": ")
+                            .append(asset.altText()).append('\n');
+                }
+            });
+        }
 
         if (!snapshot.choices().isEmpty()) {
             builder.append("\n[보기]\n");
@@ -234,23 +247,22 @@ final class VerificationPrompts {
         return """
                 당신은 문항의 그림 설명(altText)을 심사한다.
 
-                두 가지를 본다.
-                - LEAK: altText 에 그림에 보이지 않는 것이 들어 있다. 정답, 계산 결과, 풀이 추론이 그렇다.
-                  altText 는 그림에 실제로 보이는 것만 설명해야 한다.
-                - MISMATCH: altText 가 발문과 어긋난다. 발문이 전제하는 그림과 다른 그림을 설명한다.
+                altText는 그림을 볼 수 없는 학생에게 같은 정보를 제공하는 접근성 설명이다.
+                그림에 표시된 좌표·함수식·수치·보기는 정답과 일치하거나 풀이의 결정적 정보여도
+                altText에 그대로 포함할 수 있다. 이를 정답 유출로 판정하지 마라.
+
+                오직 MISMATCH만 본다.
+                - MISMATCH: altText가 발문이 전제하는 그림과 명백히 다른 자산을 설명한다.
 
                 문제가 없으면 issue 를 빈 문자열로 둔다.
-                문제가 있으면 issue 에 LEAK 또는 MISMATCH 를 적고 detail 에 어느 assetKey 인지 한 줄로 적는다.
+                문제가 있으면 issue 에 MISMATCH를 적고 detail 에 어느 assetKey 인지 한 줄로 적는다.
 
                 오직 아래 JSON 만 출력한다.
-                {"issue": "LEAK", "detail": "F1 의 altText 가 넓이 계산 결과를 담고 있습니다."}
+                {"issue": "MISMATCH", "detail": "F1은 거리 그래프를 요구하지만 원의 도형을 설명합니다."}
                 """;
     }
 
-    /**
-     * altText 검사는 <b>Blind 가 아닌 원본</b>으로 한다. Blind 에는 정답이 없어서
-     * "altText 에 정답이 새어 있는지"를 판정할 수 없다.
-     */
+    /** altText와 학생용 발문이 같은 시각 자산을 설명하는지 대조한다. */
     static String assetUserPrompt(QuestionSnapshotV1 snapshot) {
         StringBuilder builder = new StringBuilder("[발문]\n");
         snapshot.contentBlocks().forEach(block -> {

@@ -42,7 +42,7 @@ public record BlindQuestion(
     ) {
     }
 
-    /** 그림의 논리 키와 대체 텍스트. altText 는 그림에 보이는 것만 설명하도록 저작측이 제약한다. */
+    /** 그림의 논리 키와 대체 텍스트. 좌표·식·수치·보기 등 그림에 보이는 풀이 필수 정보도 그대로 옮긴다. */
     public record BlindAsset(String assetKey, String altText) {
     }
 

@@ -24,15 +24,21 @@ public class ProblemSearchIndexJdbcRepository {
         this.jdbc = jdbc; this.objectMapper = objectMapper;
     }
 
-    /** questionId 멱등 키로 PENDING 작업을 만들며 이미 존재하면 false를 반환한다. */
+    /** 새 명령을 등록하거나 종료된 동일 스키마 작업의 내용이 달라졌으면 다시 PENDING으로 만든다. */
     public boolean insertPending(SearchIndexingCommand command) {
         String json;
         try { json = objectMapper.writeValueAsString(command); }
         catch (Exception e) { throw new IllegalArgumentException("검색 인덱싱 명령을 직렬화할 수 없습니다.", e); }
         int count = jdbc.update("""
-                INSERT INTO problem_search_index_task(question_id, index_schema_version, idempotency_key, command, status, next_attempt_at)
+                INSERT INTO problem_search_index_task AS current_task
+                    (question_id, index_schema_version, idempotency_key, command, status, next_attempt_at)
                 VALUES (:questionId, :schemaVersion, :key, CAST(:command AS jsonb), 'PENDING', CURRENT_TIMESTAMP)
-                ON CONFLICT DO NOTHING
+                ON CONFLICT (question_id, index_schema_version) DO UPDATE
+                SET command=EXCLUDED.command, idempotency_key=EXCLUDED.idempotency_key,
+                    status='PENDING', attempt_count=0, next_attempt_at=CURRENT_TIMESTAMP,
+                    last_error=NULL, updated_at=CURRENT_TIMESTAMP
+                WHERE current_task.status IN ('READY','SKIPPED','FAILED')
+                  AND current_task.command IS DISTINCT FROM EXCLUDED.command
                 """, new MapSqlParameterSource().addValue("questionId", command.questionId())
                 .addValue("schemaVersion", command.indexSchemaVersion())
                 .addValue("key", command.idempotencyKey().toString()).addValue("command", json));
@@ -157,6 +163,25 @@ public class ProblemSearchIndexJdbcRepository {
                 WHERE source_question.deleted_at IS NULL
                   AND source_question.question_type <> 'ESSAY'
                   AND search_index.question_id IS NULL
+                  AND source_question.id > :afterQuestionId
+                ORDER BY source_question.id
+                LIMIT :limit
+                """, new MapSqlParameterSource().addValue("afterQuestionId", afterQuestionId)
+                .addValue("limit", limit), (rs, row) -> rs.getLong("id"));
+    }
+
+    /** 커서 뒤에서 v1 또는 미분류 그림인 활성 인덱스 문항 ID를 반환한다. */
+    public List<Long> findVisualReclassificationQuestionIds(long afterQuestionId, int limit) {
+        return jdbc.query("""
+                SELECT source_question.id
+                FROM problem_question source_question
+                JOIN problem_search_index search_index
+                  ON search_index.question_id=source_question.id
+                 AND search_index.index_status='READY' AND search_index.deleted=false
+                WHERE source_question.deleted_at IS NULL
+                  AND source_question.question_type <> 'ESSAY'
+                  AND (search_index.index_schema_version < 2
+                       OR search_index.visual_kind='UNKNOWN_FIGURE')
                   AND source_question.id > :afterQuestionId
                 ORDER BY source_question.id
                 LIMIT :limit

@@ -23,15 +23,22 @@ class ProblemSearchBackfillSchedulerTest {
                 mock(ProblemSearchBackfillStateRepository.class);
         SearchIndexMaintenancePort maintenancePort = mock(SearchIndexMaintenancePort.class);
         ProblemSearchBackfillState state = mock(ProblemSearchBackfillState.class);
+        ProblemSearchBackfillState visualState = mock(ProblemSearchBackfillState.class);
 
         when(stateRepository.findByStateKeyForUpdate("problem-search"))
                 .thenReturn(Optional.of(state));
+        when(stateRepository.findByStateKeyForUpdate("problem-search-visual-coordinate-v1"))
+                .thenReturn(Optional.of(visualState));
         when(state.getCursor()).thenReturn(0L);
+        when(visualState.getCursor()).thenReturn(0L);
         when(maintenancePort.reconcile()).thenReturn(
                 new SearchIndexMaintenancePort.SearchIndexReconciliationResult(0, 0));
         when(service.enqueueBatch(0L, 50)).thenReturn(
                 new ProblemSearchBackfillService.BackfillBatchResult(
                         5598L, 40, 0, 0, 40, true));
+        when(service.enqueueVisualReclassificationBatch(0L, 50)).thenReturn(
+                new ProblemSearchBackfillService.BackfillBatchResult(
+                        5598L, 0, 0, 0, 0, true));
 
         var scheduler = new ProblemSearchBackfillScheduler(service, properties(), stateRepository,
                 maintenancePort);

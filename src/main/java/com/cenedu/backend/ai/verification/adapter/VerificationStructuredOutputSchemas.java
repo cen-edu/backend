@@ -26,6 +26,6 @@ public final class VerificationStructuredOutputSchemas {
 
     public static final String ASSET = """
             {"type":"object","additionalProperties":false,"required":["issue","detail"],"properties":{
-              "issue":{"type":"string"},"detail":{"type":"string"}}}
+              "issue":{"type":"string","enum":["","MISMATCH"]},"detail":{"type":"string"}}}
             """;
 }
