@@ -100,7 +100,7 @@ public final class CoordinateGraphImageGenerator implements ProblemImageGenerato
         // altText는 visualDescription이 아니라 그래프 기하에서 사실만 조합한다. visualDescription은
         // "곡선 위가 아닌 점이 D" 처럼 정답을 드러내는 편집적 서술이 섞여 자산 검증에서 누출(LEAK)로
         // FAIL 처리되기 때문이다. 좌표·직선·곡선 등 화면에 실제로 보이는 사실만 적어 누출을 원천 차단한다.
-        return attach(candidate, command, spec, values, factualAltText(graph));
+        return attach(candidate, command, spec, values, visualDescription, factualAltText(graph));
     }
 
     private LiteralGraph requestGraph(String prompt, String description, int attempt, RuntimeException prior) {
@@ -186,16 +186,26 @@ public final class CoordinateGraphImageGenerator implements ProblemImageGenerato
 
     /** 검증·렌더가 끝난 스펙을 asset plan과 스냅샷(FIGURE 블록·asset)으로 후보에 부착한다. */
     private ProblemCandidateDraft attach(ProblemCandidateDraft candidate, ProblemGenerationCommand command,
-            CoordinateGraphDiagramSpecV1 spec, Map<String, SemanticResolvedValue> values, String description) {
+            CoordinateGraphDiagramSpecV1 spec, Map<String, SemanticResolvedValue> values,
+            String visualDescription, String altText) {
         var plans = assetPlanFactory.create(List.<DiagramSpecV1>of(spec), values,
-                Map.of(ASSET_KEY, description == null ? "좌표그래프" : description));
+                Map.of(ASSET_KEY, altText == null ? "좌표그래프" : altText));
+        var plan = plans.getFirst();
+        var generation = plan.specification();
+        plans = List.of(new com.cenedu.backend.domain.problem.authoring.asset.GeneratedAssetPlan(
+                plan.assetKey(), plan.role(), plan.productionMode(), plan.outputFormat(), plan.altText(),
+                new com.cenedu.backend.domain.problem.authoring.asset.AssetGenerationSpecification(
+                        generation.schemaVersion(),
+                        visualDescription == null ? generation.visualDescription() : visualDescription,
+                        generation.requiredElements(), generation.forbiddenElements(), generation.renderData(),
+                        generation.resolvedValues(), generation.diagramSpec())));
         QuestionSnapshotV1 base = candidate.snapshot();
         List<SnapshotContentBlock> blocks = new ArrayList<>(base.contentBlocks());
         int nextOrder = blocks.stream().mapToInt(SnapshotContentBlock::displayOrder).max().orElse(-1) + 1;
         blocks.add(new SnapshotContentBlock("CB" + (blocks.size() + 1), SnapshotBlockKind.FIGURE,
                 nextOrder, null, ASSET_KEY, null));
         List<SnapshotAssetReference> assets = List.of(
-                new SnapshotAssetReference(ASSET_KEY, description == null ? "좌표그래프" : description));
+                new SnapshotAssetReference(ASSET_KEY, altText == null ? "좌표그래프" : altText));
         SnapshotMetadata metadata = new SnapshotMetadata(base.metadata().questionType(),
                 QuestionPresentation.WITH_FIGURE, base.metadata().difficulty(), base.metadata().subUnitId(),
                 base.metadata().topicCode(), base.metadata().evaluationArea(), base.metadata().derivedFromQuestionId());
