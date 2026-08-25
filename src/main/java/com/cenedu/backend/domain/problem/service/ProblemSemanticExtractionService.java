@@ -113,6 +113,47 @@ public class ProblemSemanticExtractionService {
         return persistResult(questionId, snapshot, extracted);
     }
 
+    /**
+     * 아직 저장되지 않은 후보 snapshot에서 semantic model만 추출한다.
+     *
+     * <p>{@link #ensureQuestionSemantic}과 달리 problem_question 행이 없어도 되고 어떤 영속 상태도
+     * 바꾸지 않는다. 구조 재생성처럼 방금 만들어진 후보에 semantic model을 붙여야 하는 경로에서
+     * 쓴다. 추출 결과가 원본 후보와 다른 답을 내면 EXTRACTED로 인정하지 않는다.
+     */
+    public SemanticExtractionResult extractForCandidate(CurriculumScope curriculum,
+            QuestionSnapshotV1 snapshot) {
+        SemanticExtractionResult extracted;
+        try {
+            extracted = extractionPort.extract(new SemanticExtractionCommand(
+                    UUID.randomUUID(), null, curriculum, snapshot));
+        } catch (RuntimeException exception) {
+            return new SemanticExtractionResult(SemanticExtractionStatus.TECHNICAL_ERROR, null,
+                    java.util.List.of("provider 호출 실패"));
+        }
+        if (extracted == null) {
+            return new SemanticExtractionResult(SemanticExtractionStatus.TECHNICAL_ERROR, null,
+                    java.util.List.of("empty extraction result"));
+        }
+        if (extracted.status() != SemanticExtractionStatus.EXTRACTED || extracted.semanticModel() == null) {
+            return extracted;
+        }
+        try {
+            MaterializedProblem materialized = materializer.materialize(extracted.semanticModel());
+            if (!answerCompatible(materialized, snapshot)) {
+                return new SemanticExtractionResult(SemanticExtractionStatus.INVALID_SOURCE, null,
+                        java.util.List.of("materialized snapshot이 후보와 일치하지 않습니다."));
+            }
+        } catch (RuntimeException exception) {
+            SemanticExtractionStatus status = unsupported(exception)
+                    ? SemanticExtractionStatus.UNSUPPORTED : SemanticExtractionStatus.INVALID_SOURCE;
+            return new SemanticExtractionResult(status, null,
+                    java.util.List.of(status == SemanticExtractionStatus.UNSUPPORTED
+                            ? "지원하지 않는 semantic operation 또는 diagram입니다."
+                            : "semantic model이 후보 snapshot과 일치하지 않습니다."));
+        }
+        return extracted;
+    }
+
     private SemanticExtractionResult persistResult(long questionId, QuestionSnapshotV1 source,
             SemanticExtractionResult result) {
         if (result == null) result = new SemanticExtractionResult(SemanticExtractionStatus.TECHNICAL_ERROR,

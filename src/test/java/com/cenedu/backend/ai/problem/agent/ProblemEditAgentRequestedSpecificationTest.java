@@ -65,6 +65,36 @@ class ProblemEditAgentRequestedSpecificationTest {
         assertThat(result.requestedSpecification().questionType()).isNull();
     }
 
+    @Test
+    void 바꿀_값이_없는_빈_스펙은_요청_없음으로_정규화한다() {
+        LlmClient client = mock(LlmClient.class);
+        when(client.completeStructured(anyString(), anyList(), anyString())).thenReturn(new LlmResponse("""
+                {"schemaVersion":2,"problemEditResult":{
+                  "action":"REQUEST_CONFIRMATION",
+                  "instructionDeltas":[{"targetType":"EXPLANATION","targetKey":null,
+                    "changeNature":"PRESENTATIONAL","instruction":"해설을 더 짧게"}],
+                  "semanticPatch":null,
+                  "requestedSpecification":{"questionType":null,"difficulty":null},
+                  "assistantMessage":"해설을 줄일까요?"}}
+                """, 0, 0, 0));
+        ObjectMapper mapper = new ObjectMapper();
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ObjectMapper> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable(any())).thenReturn(mapper);
+        ProblemEditAgent agent = new ProblemEditAgent(client, provider, new ProblemEditPromptFactory(provider));
+        var payload = new ProblemEditAgentPayload(ProblemEditAgentPayload.CURRENT_SCHEMA_VERSION,
+                UUID.randomUUID(), 1L, 2L, AuthoringInteractionStatus.COLLECTING,
+                null, snapshot(), null, List.of());
+
+        var response = agent.handle(AgentRequest.of(AgentKind.PROBLEM_EDIT,
+                new Actor(7L, Actor.Role.TEACHER), "해설을 더 짧게 해줘",
+                Map.of(ProblemEditAgent.REQUEST_KEY, payload)));
+
+        var result = (ProblemEditConversationResult) response.data()
+                .get(ProblemEditAgentResultEnvelope.RESPONSE_KEY);
+        assertThat(result.requestedSpecification()).isNull();
+    }
+
     private QuestionSnapshotV1 snapshot() {
         return new QuestionSnapshotV1(1,
                 new SnapshotMetadata(QuestionType.SHORT_INPUT, QuestionPresentation.TEXT_ONLY,

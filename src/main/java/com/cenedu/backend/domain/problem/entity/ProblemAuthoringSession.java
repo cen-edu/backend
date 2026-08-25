@@ -122,7 +122,12 @@ public class ProblemAuthoringSession extends BaseTimeEntity {
     public void startCollecting() {
         // 실패한 후보는 이력에 남지만 current PASSED Version은 그대로다.
         // 새로운 교사 수정 요청이 오면 이전 실패 실행 정보를 정리하고 다시 시작한다.
-        if (operationStatus == AuthoringOperationStatus.FAILED
+        // MODIFYING도 함께 회수한다. 수정 실행은 동기 경로라 이 상태에서 후보 Version도
+        // 없고 대화도 닫혀 있으면 진행 중인 작업이 아니라, 프로세스가 죽는 등으로
+        // abortActiveExecution까지 도달하지 못한 잔여 상태다. 회수하지 않으면 그 Session은
+        // 이후 모든 수정 턴에서 requireDraftIdle에 막혀 영구히 사용할 수 없다.
+        if ((operationStatus == AuthoringOperationStatus.FAILED
+                || operationStatus == AuthoringOperationStatus.MODIFYING)
                 && pendingVersionId == null
                 && interactionStatus == AuthoringInteractionStatus.IDLE) {
             operationStatus = AuthoringOperationStatus.IDLE;
@@ -133,9 +138,16 @@ public class ProblemAuthoringSession extends BaseTimeEntity {
         interactionStatus = AuthoringInteractionStatus.COLLECTING;
     }
 
-    /** 누적한 구조화 수정 상태를 저장하고 교사 확인을 기다린다. */
+    /**
+     * 누적한 구조화 수정 상태를 저장하고 교사 확인을 기다린다.
+     *
+     * <p>AWAITING_CONFIRMATION에서도 허용한다. 교사가 확인 직전에 요구를 바꾸면 Agent가
+     * 갱신된 지시로 REQUEST_CONFIRMATION을 다시 내는데, COLLECTING만 허용하면 그 정상적인
+     * 되묻기가 IllegalStateException으로 터진다. 이 경우 마지막 확인 대기 명령만 남긴다.
+     */
     public void awaitConfirmation(String pendingInstructions, int editSchemaVersion) {
-        if (interactionStatus != AuthoringInteractionStatus.COLLECTING) {
+        if (interactionStatus != AuthoringInteractionStatus.COLLECTING
+                && interactionStatus != AuthoringInteractionStatus.AWAITING_CONFIRMATION) {
             throw new IllegalStateException("수정 사항 수집 중이 아닙니다.");
         }
         this.pendingInstructions = pendingInstructions;
@@ -237,6 +249,28 @@ public class ProblemAuthoringSession extends BaseTimeEntity {
         if (pendingVersionId != null) {
             throw new IllegalStateException("pending Version은 검증 결과로 실패 처리해야 합니다.");
         }
+        operationStatus = AuthoringOperationStatus.FAILED;
+        clearActiveExecution();
+        lastErrorCode = errorCode;
+    }
+
+    /**
+     * Version을 남기지 못하고 중단된 수정 실행을 재시도 가능한 실패로 마감한다.
+     *
+     * <p>{@link #failOperation}과 달리 예외 처리 경로에서 불리므로 스스로 던지지 않는다.
+     * 승격까지 끝나 IDLE로 돌아온 Session이나 이미 실패로 마감된 Session은 그대로 두고,
+     * 실제로 실행 중 상태로 남아 있는 경우만 회수한다. 이 회수가 없으면 activateEdit이
+     * 세운 MODIFYING이 그대로 남아 이후 모든 수정 턴이 막힌다.
+     */
+    public void abortActiveExecution(String errorCode) {
+        if (lifecycleStatus != AuthoringLifecycleStatus.DRAFT) {
+            return;
+        }
+        if (operationStatus != AuthoringOperationStatus.MODIFYING
+                && operationStatus != AuthoringOperationStatus.VERIFYING) {
+            return;
+        }
+        pendingVersionId = null;
         operationStatus = AuthoringOperationStatus.FAILED;
         clearActiveExecution();
         lastErrorCode = errorCode;
