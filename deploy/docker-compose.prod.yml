@@ -94,7 +94,27 @@ services:
     networks:
       - cen-edu-net
 
-  # 서비스의 유일한 입구. TLS 를 끊고 /api 를 backend 로 넘긴다.
+  # 주 경로는 Vercel(educen.site)이다. 이 컨테이너는 EC2 로 직접 들어오는 길과
+  # CloudFront 경로를 살려 두기 위한 예비다.
+  #
+  # 포트를 공개하지 않는다. 앞의 nginx 가 넘겨준다 — 예전처럼 80 을 잡으면 nginx 가
+  # 그 포트를 못 쓴다.
+  #
+  # 프론트 저장소에서 Dockerfile 이 빠졌으므로(Vercel 로 옮기며 롤백) 이 이미지는
+  # 더 이상 새로 빌드되지 않는다. 여기 뜨는 것은 FRONTEND_TAG 에 박아 둔 시점의
+  # 화면이고, Vercel 쪽과 시간이 지날수록 벌어진다.
+  frontend:
+    image: ${DOCKERHUB_USER}/cen-edu-frontend:${FRONTEND_TAG}
+    container_name: cen-edu-frontend
+    restart: always
+    # 정적 서빙 + 프록시라 실측 2.5MB 다. 32m 도 과하게 잡은 값이다.
+    mem_limit: 32m
+    depends_on:
+      - backend
+    networks:
+      - cen-edu-net
+
+  # 서비스의 유일한 입구. TLS 를 끊고 뒤의 컨테이너로 넘긴다.
   nginx:
     image: nginx:1.27-alpine
     container_name: cen-edu-nginx
@@ -113,10 +133,14 @@ services:
     volumes:
       # 이미지가 기동할 때 templates/*.template 를 envsubst 해서 conf.d 로 옮긴다.
       - ./nginx/templates:/etc/nginx/templates:ro
+      # 80·443 이 함께 쓰는 라우팅. 치환할 값이 없어 템플릿이 아니라 그대로 넣는다.
+      - ./nginx/snippets:/etc/nginx/snippets:ro
       - letsencrypt:/etc/letsencrypt:ro
       - certbot-webroot:/var/www/certbot:ro
     depends_on:
+      # upstream 의 이름을 기동 시점에 풀어야 한다. 컨테이너가 없으면 nginx 가 죽는다.
       - backend
+      - frontend
     networks:
       - cen-edu-net
 

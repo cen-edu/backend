@@ -54,7 +54,12 @@ $COMPOSE run --rm --entrypoint sh certbot -c "
 "
 
 echo "==> 2/4 nginx 기동"
-$COMPOSE up -d nginx
+# 예전 구성에서는 frontend 컨테이너가 80 을 직접 잡고 있었다. 그대로 두면 nginx 가
+# 그 포트를 못 열고 기동에 실패한다. up -d 로 전체를 다시 맞추면 compose 가
+# frontend 의 포트 공개를 없앤 새 정의로 그 컨테이너를 다시 만든다.
+#
+# --remove-orphans 는 compose 파일에서 사라진 서비스의 컨테이너를 정리한다.
+$COMPOSE up -d --remove-orphans
 
 # nginx 가 80 번을 받을 때까지 기다린다. 바로 certbot 을 부르면 연결이 거부된다.
 echo "    80 번 응답 대기"
