@@ -7,6 +7,7 @@ import com.cenedu.backend.domain.problem.authoring.port.ProblemSemanticMateriali
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.DefaultProblemSemanticMaterializer;
 import com.cenedu.backend.domain.problem.authoring.semantic.extraction.*;
 import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
+import com.cenedu.backend.domain.problem.authoring.semantic.validation.SemanticValidationException;
 import org.springframework.stereotype.Component;
 
 /** 시스템이 호출하는 legacy semantic extraction 경로이며 Dispatcher를 거치지 않는다. */
@@ -38,17 +39,13 @@ public class ProblemSemanticExtractionAdapter implements ProblemSemanticExtracti
                     ProblemStructuredOutputSchemas.SEMANTIC_MODEL);
             ProblemSemanticModelV1 model = parser.parse(response.text());
             if (materializer != null) {
-                try { materializer.materialize(model); }
+                try {
+                    materializer.materialize(model);
+                } catch (SemanticValidationException validation) {
+                    return correctOnce(command, validation);
+                }
                 catch (RuntimeException exception) {
-                    String message = exception.getMessage();
-                    boolean unsupported = message != null && (message.contains("지원하지")
-                            || message.contains("operation") || message.contains("diagram"));
-                    // 원래 예외 메시지를 그대로 남긴다. 고정 문구로 덮어쓰면 왜 실패했는지
-                    // (placeholder 누락인지, 정답 불일치인지, 지원하지 않는 구성인지) 알 수 없어
-                    // 추출 실패가 쌓여도 원인을 좁힐 수 없다.
-                    return new SemanticExtractionResult(
-                            unsupported ? SemanticExtractionStatus.UNSUPPORTED : SemanticExtractionStatus.INVALID_SOURCE,
-                            null, java.util.List.of(ExtractionFinding.of("materialize", exception)));
+                    return failure("materialize", exception);
                 }
             }
             return new SemanticExtractionResult(SemanticExtractionStatus.EXTRACTED, model, java.util.List.of());
@@ -59,5 +56,36 @@ public class ProblemSemanticExtractionAdapter implements ProblemSemanticExtracti
             return new SemanticExtractionResult(SemanticExtractionStatus.TECHNICAL_ERROR, null,
                     java.util.List.of(ExtractionFinding.of("provider", e)));
         }
+    }
+
+    /** domain validation 실패는 동일 Snapshot으로 한 번만 교정하고 다시 실패하면 종료한다. */
+    private SemanticExtractionResult correctOnce(
+            SemanticExtractionCommand command,
+            SemanticValidationException validation
+    ) {
+        String finding = ExtractionFinding.of("materialize", validation);
+        try {
+            var response = client.completeStructured(prompts.systemPrompt(),
+                    prompts.correctionMessages(command, finding),
+                    ProblemStructuredOutputSchemas.SEMANTIC_MODEL);
+            ProblemSemanticModelV1 corrected = parser.parse(response.text());
+            materializer.materialize(corrected);
+            return new SemanticExtractionResult(SemanticExtractionStatus.EXTRACTED,
+                    corrected, java.util.List.of("semantic validation 1회 교정 완료"));
+        } catch (IllegalArgumentException exception) {
+            return failure("repair-materialize", exception);
+        } catch (RuntimeException exception) {
+            return new SemanticExtractionResult(SemanticExtractionStatus.TECHNICAL_ERROR, null,
+                    java.util.List.of(ExtractionFinding.of("repair-provider", exception)));
+        }
+    }
+
+    private SemanticExtractionResult failure(String stage, RuntimeException exception) {
+        String message = exception.getMessage();
+        boolean unsupported = message != null && (message.contains("지원하지")
+                || message.contains("operation") || message.contains("diagram"));
+        return new SemanticExtractionResult(
+                unsupported ? SemanticExtractionStatus.UNSUPPORTED : SemanticExtractionStatus.INVALID_SOURCE,
+                null, java.util.List.of(ExtractionFinding.of(stage, exception)));
     }
 }

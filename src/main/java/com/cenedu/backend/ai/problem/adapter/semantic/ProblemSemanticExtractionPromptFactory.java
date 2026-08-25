@@ -49,6 +49,12 @@ public class ProblemSemanticExtractionPromptFactory {
                 유도되는 값은 parameters가 아니라 computations로 표현한다.
                 모든 parameter를 editable=false로 두지 말라. 그러면 교사가 숫자 하나도 바꿀 수 없고
                 모든 수정이 문항 재생성으로 처리된다. 문제의 조건에 해당하는 값은 편집할 수 있어야 한다.
+
+                parameter key는 반드시 영문 대문자로 시작하고 영문 대문자·숫자·밑줄만 사용한다.
+                예: RADIUS, LEFT_VALUE, X1. 한글·소문자·공백은 사용하지 않는다.
+                bounds는 INTEGER·DECIMAL·RATIONAL처럼 숫자로 해석 가능한 parameter에만 사용한다.
+                minInclusive와 maxInclusive는 숫자 문자열이어야 하고 min <= 현재 value <= max를 만족해야 한다.
+                안전한 범위를 확정할 수 없거나 TEXT·POINT·BOOLEAN 값이면 bounds를 null로 둔다.
                 """;
     }
 
@@ -60,5 +66,16 @@ public class ProblemSemanticExtractionPromptFactory {
         } catch (Exception e) {
             throw new IllegalArgumentException("extraction prompt를 만들 수 없습니다.", e);
         }
+    }
+
+    /** 첫 추출의 domain validation 위반만 덧붙여 전체 semantic JSON을 한 번 교정하게 한다. */
+    public List<ChatMessage> correctionMessages(SemanticExtractionCommand command, String finding) {
+        var result = new java.util.ArrayList<>(messages(command));
+        String normalized = finding == null ? "semantic validation 실패"
+                : finding.replaceAll("\\s+", " ").trim();
+        if (normalized.length() > 500) normalized = normalized.substring(0, 500) + "…";
+        result.add(ChatMessage.user("이전 semantic model이 다음 domain validation을 통과하지 못했다: "
+                + normalized + " 위 규칙과 SOURCE_SNAPSHOT_JSON을 다시 대조해 전체 semantic model JSON을 교정하라."));
+        return List.copyOf(result);
     }
 }

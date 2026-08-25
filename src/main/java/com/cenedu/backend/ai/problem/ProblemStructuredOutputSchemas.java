@@ -18,6 +18,7 @@ public final class ProblemStructuredOutputSchemas {
             normalizeOneOf(root);
             constrainEvaluationArea(root, mapper);
             constrainSemanticRequiredFields(root);
+            constrainSemanticParameterKeys(root);
             validateOpenAiSubset(root);
             return mapper.writeValueAsString(root);
         } catch (java.io.IOException e) { throw new IllegalStateException("semantic model schema를 읽을 수 없습니다.", e); }
@@ -54,6 +55,14 @@ public final class ProblemStructuredOutputSchemas {
             valueKey.remove("type");
             valueKey.put("type", "string");
             valueKey.put("pattern", "^[A-Z][A-Z0-9_]{0,63}$");
+        }
+    }
+
+    /** 후단 domain validator와 같은 대문자 논리 키 규칙을 provider 출력 단계에서 강제한다. */
+    private static void constrainSemanticParameterKeys(com.fasterxml.jackson.databind.JsonNode root) {
+        var key = root.path("$defs").path("parameter").path("properties").path("key");
+        if (key instanceof com.fasterxml.jackson.databind.node.ObjectNode object) {
+            object.put("pattern", "^[A-Z][A-Z0-9_]{0,63}$");
         }
     }
 
