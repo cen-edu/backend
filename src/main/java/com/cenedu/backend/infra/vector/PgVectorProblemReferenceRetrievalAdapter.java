@@ -71,6 +71,7 @@ public class PgVectorProblemReferenceRetrievalAdapter implements ProblemReferenc
             return List.of();
         }
         double lambda = query.purpose() == com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose.PERSONALIZED_APPLICATION
+                || query.purpose() == com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose.PROBLEM_EDIT_REPLACEMENT
                 ? properties.applicationLambda() : properties.defaultLambda();
         List<ProblemSearchCandidate> selected = selector.select(reusableCandidates, embedding.vector(),
                 query.selectionLimit(), lambda, query.questionType(), query.difficulty());

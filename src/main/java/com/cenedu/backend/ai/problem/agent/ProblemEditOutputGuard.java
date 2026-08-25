@@ -78,18 +78,10 @@ public class ProblemEditOutputGuard implements OutputGuard {
             }
             return GuardDecision.allow();
         } catch (RuntimeException exception) {
-            log.warn("문제 수정 출력 검증 실패 — exceptionType={}, message={}",
-                    exception.getClass().getSimpleName(), safeMessage(exception));
+            log.warn("문제 수정 출력 검증 실패 — exceptionType={}",
+                    exception.getClass().getSimpleName());
             return GuardDecision.block("PROBLEM_EDIT_RESULT_INVALID", "문제 수정 결과 형식이 올바르지 않습니다.");
         }
-    }
-
-    /** 사용자 입력과 정답을 포함하지 않는 변환·검증 예외 메시지만 제한해 남긴다. */
-    private String safeMessage(RuntimeException exception) {
-        String message = exception.getMessage();
-        if (message == null || message.isBlank()) return "(no-message)";
-        String normalized = message.replaceAll("\\s+", " ").trim();
-        return normalized.length() <= 300 ? normalized : normalized.substring(0, 300) + "…";
     }
 
     private GuardDecision validateRequestedSpecification(ProblemEditConversationResult result) {

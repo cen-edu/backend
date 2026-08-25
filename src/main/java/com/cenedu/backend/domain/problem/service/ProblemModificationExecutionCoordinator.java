@@ -291,7 +291,6 @@ public class ProblemModificationExecutionCoordinator {
         }
         Long originQuestionId = version == null ? null : version.getSourceQuestionId();
         if (originQuestionId == null) originQuestionId = snapshot.metadata().derivedFromQuestionId();
-        if (originQuestionId == null) return List.of();
         var requested = plan.requestedSpecification();
         var questionType = requested != null && requested.questionType() != null
                 ? requested.questionType() : snapshot.metadata().questionType();
@@ -300,7 +299,7 @@ public class ProblemModificationExecutionCoordinator {
         int candidateLimit = Math.max(1, Math.min(40, ragProperties.candidateLimit()));
         int selectionLimit = Math.min(4, candidateLimit);
         ProblemReferenceQuery query = ProblemReferenceQuery.withQueryHint(
-                java.util.UUID.randomUUID(), GenerationPurpose.PERSONALIZED_APPLICATION,
+                java.util.UUID.randomUUID(), GenerationPurpose.PROBLEM_EDIT_REPLACEMENT,
                 curriculum, questionType, difficulty, originQuestionId, snapshot,
                 candidateLimit, selectionLimit, usedQuestionIds(plan, snapshot), queryHint(plan));
         try {

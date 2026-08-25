@@ -44,7 +44,10 @@ public class ProblemReferenceJdbcRepository {
                 .addValue("curriculumRevision", query.curriculum().curriculumRevision()).addValue("schoolLevel", query.curriculum().schoolLevel())
                 .addValue("grade", query.curriculum().grade())
                 .addValue("subUnitId", query.curriculum().subUnitId()).addValue("allowedDifficulties", List.of("low", "mid", "high"))
-                .addValue("allowCrossType", query.purpose().name().equals("PERSONALIZED_APPLICATION"))
+                .addValue("allowCrossType", query.purpose()
+                        == com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose.PERSONALIZED_APPLICATION
+                        || query.purpose()
+                        == com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose.PROBLEM_EDIT_REPLACEMENT)
                 .addValue("requiredVisualKind", query.requiredVisualKind().name())
                 .addValue("questionType", query.questionType().name()).addValue("candidateLimit", query.candidateLimit());
         String scopeCondition;

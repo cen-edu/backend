@@ -41,7 +41,7 @@ public record ProblemReferenceQuery(
             Set<Long> excludedQuestionIds, String queryHint) {
         return new ProblemReferenceQuery(retrievalRequestId, purpose, curriculum, questionType, difficulty,
                 originQuestionId, originSnapshot, candidateLimit, selectionLimit, excludedQuestionIds,
-                VisualReferenceKind.NONE, queryHint);
+                visualKind(originSnapshot), queryHint);
     }
     public ProblemReferenceQuery {
         if (retrievalRequestId == null || purpose == null || curriculum == null || questionType == null
@@ -56,10 +56,14 @@ public record ProblemReferenceQuery(
         }
         boolean personalized = purpose == GenerationPurpose.PERSONALIZED_SIMILAR_SHORTAGE
                 || purpose == GenerationPurpose.PERSONALIZED_APPLICATION;
+        boolean problemEdit = purpose == GenerationPurpose.PROBLEM_EDIT_REPLACEMENT;
         if (personalized && (originQuestionId == null || originSnapshot == null)) {
             throw new IllegalArgumentException("맞춤 유사·응용 검색에는 ORIGIN ID와 Snapshot이 필요합니다.");
         }
-        if (!personalized && (originQuestionId != null || originSnapshot != null)) {
+        if (problemEdit && originSnapshot == null) {
+            throw new IllegalArgumentException("문제 수정 검색에는 현재 Snapshot이 필요합니다.");
+        }
+        if (!personalized && !problemEdit && (originQuestionId != null || originSnapshot != null)) {
             throw new IllegalArgumentException("일반·종합평가 검색에는 ORIGIN을 지정할 수 없습니다.");
         }
         excludedQuestionIds = excludedQuestionIds == null ? Set.of() : Set.copyOf(excludedQuestionIds);

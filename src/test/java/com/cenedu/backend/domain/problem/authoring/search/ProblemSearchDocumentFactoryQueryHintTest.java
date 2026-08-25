@@ -9,6 +9,7 @@ import com.cenedu.backend.domain.problem.authoring.model.SnapshotBlockKind;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotContentBlock;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotMetadata;
 import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemReferenceQuery;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind;
 import com.cenedu.backend.domain.problem.entity.enums.QuestionPresentation;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import java.util.List;
@@ -31,6 +32,20 @@ class ProblemSearchDocumentFactoryQueryHintTest {
                 .contains("[수정요청] 주관식으로 바꾸고 난이도를 높여줘")
                 .contains("[유형] ESSAY")
                 .contains("[난이도] high");
+    }
+
+    @Test
+    void 수정_검색은_현재_문항의_시각_종류를_유지한다() {
+        var visualSnapshot = new QuestionSnapshotV1(1,
+                new SnapshotMetadata(QuestionType.MULTIPLE_CHOICE, QuestionPresentation.WITH_FIGURE,
+                        "mid", 10L, null, null, null),
+                List.of(), List.of(), List.of(), List.of(), List.of(), "해설", null, List.of());
+
+        var query = ProblemReferenceQuery.withQueryHint(UUID.randomUUID(),
+                GenerationPurpose.PROBLEM_EDIT_REPLACEMENT, scope(), QuestionType.MULTIPLE_CHOICE,
+                "mid", null, visualSnapshot, 40, 4, Set.of(), "다른 문제로 바꿔줘");
+
+        assertThat(query.requiredVisualKind()).isEqualTo(VisualReferenceKind.UNKNOWN_FIGURE);
     }
 
     private CurriculumScope scope() {

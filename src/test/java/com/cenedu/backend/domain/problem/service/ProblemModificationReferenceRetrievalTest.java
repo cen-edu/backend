@@ -51,6 +51,7 @@ class ProblemModificationReferenceRetrievalTest {
         ArgumentCaptor<ProblemReferenceQuery> query = ArgumentCaptor.forClass(ProblemReferenceQuery.class);
         verify(fixture.port()).retrieve(query.capture());
         assertThat(query.getValue().queryHint()).isEqualTo("주관식으로 바꾸고 난이도를 높여줘");
+        assertThat(query.getValue().purpose().name()).isEqualTo("PROBLEM_EDIT_REPLACEMENT");
         assertThat(query.getValue().originQuestionId()).isEqualTo(77L);
         assertThat(query.getValue().questionType()).isEqualTo(QuestionType.ESSAY);
         assertThat(query.getValue().difficulty()).isEqualTo("high");
@@ -72,6 +73,21 @@ class ProblemModificationReferenceRetrievalTest {
 
         verify(enabled.port(), never()).retrieve(any());
         verify(disabled.port(), never()).retrieve(any());
+    }
+
+    @Test
+    void 원본_문항_ID가_없는_AI_생성_문항도_Snapshot으로_검색한다() {
+        Fixture fixture = fixture(true);
+        when(fixture.version().getSourceQuestionId()).thenReturn(null);
+        when(fixture.port().retrieve(any())).thenReturn(List.of());
+
+        fixture.coordinator().replacementReferences(
+                plan(EditAction.REPLACE), snapshot(null), fixture.version(), scope());
+
+        ArgumentCaptor<ProblemReferenceQuery> query = ArgumentCaptor.forClass(ProblemReferenceQuery.class);
+        verify(fixture.port()).retrieve(query.capture());
+        assertThat(query.getValue().originQuestionId()).isNull();
+        assertThat(query.getValue().originSnapshot()).isNotNull();
     }
 
     private Fixture fixture(boolean ragEnabled) {

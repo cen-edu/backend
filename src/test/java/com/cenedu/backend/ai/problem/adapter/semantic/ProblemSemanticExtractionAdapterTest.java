@@ -23,6 +23,7 @@ import com.cenedu.backend.ai.problem.ProblemStructuredOutputSchemas;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemSemanticMaterializer;
 import com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionCommand;
 import com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionStatus;
+import com.cenedu.backend.domain.problem.authoring.semantic.evaluation.SemanticEvaluationException;
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.MaterializedProblem;
 import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
 import com.cenedu.backend.domain.problem.authoring.semantic.validation.SemanticValidationException;
@@ -69,6 +70,20 @@ class ProblemSemanticExtractionAdapterTest {
 
         assertThat(result.status()).isEqualTo(SemanticExtractionStatus.INVALID_SOURCE);
         assertThat(result.findings()).singleElement().asString().contains("repair-materialize");
+        verify(fixture.client(), times(2)).completeStructured(anyString(), anyList(), anyString());
+    }
+
+    @Test
+    void 계산_그래프_계약_오류도_한_번_교정한다() {
+        Fixture fixture = fixture();
+        doThrow(new SemanticEvaluationException("cycle: A, B"))
+                .doReturn(mock(MaterializedProblem.class))
+                .when(fixture.materializer()).materialize(any());
+
+        var result = fixture.adapter().extract(mock(SemanticExtractionCommand.class));
+
+        assertThat(result.status()).isEqualTo(SemanticExtractionStatus.EXTRACTED);
+        assertThat(result.semanticModel()).isSameAs(fixture.corrected());
         verify(fixture.client(), times(2)).completeStructured(anyString(), anyList(), anyString());
     }
 

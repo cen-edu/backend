@@ -7,7 +7,6 @@ import com.cenedu.backend.domain.problem.authoring.port.ProblemSemanticMateriali
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.DefaultProblemSemanticMaterializer;
 import com.cenedu.backend.domain.problem.authoring.semantic.extraction.*;
 import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
-import com.cenedu.backend.domain.problem.authoring.semantic.validation.SemanticValidationException;
 import org.springframework.stereotype.Component;
 
 /** 시스템이 호출하는 legacy semantic extraction 경로이며 Dispatcher를 거치지 않는다. */
@@ -41,7 +40,7 @@ public class ProblemSemanticExtractionAdapter implements ProblemSemanticExtracti
             if (materializer != null) {
                 try {
                     materializer.materialize(model);
-                } catch (SemanticValidationException validation) {
+                } catch (IllegalArgumentException validation) {
                     return correctOnce(command, validation);
                 }
                 catch (RuntimeException exception) {
@@ -61,7 +60,7 @@ public class ProblemSemanticExtractionAdapter implements ProblemSemanticExtracti
     /** domain validation 실패는 동일 Snapshot으로 한 번만 교정하고 다시 실패하면 종료한다. */
     private SemanticExtractionResult correctOnce(
             SemanticExtractionCommand command,
-            SemanticValidationException validation
+            IllegalArgumentException validation
     ) {
         String finding = ExtractionFinding.of("materialize", validation);
         try {
