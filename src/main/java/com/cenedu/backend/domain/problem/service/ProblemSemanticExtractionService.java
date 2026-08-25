@@ -10,6 +10,7 @@ import com.cenedu.backend.domain.problem.authoring.semantic.materialization.Mate
 import com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemSemanticDocumentCodec;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
+import com.cenedu.backend.domain.problem.authoring.semantic.extraction.ExtractionFinding;
 import com.cenedu.backend.domain.problem.entity.enums.SemanticModelStatus;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringVersionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
@@ -141,15 +142,13 @@ public class ProblemSemanticExtractionService {
             MaterializedProblem materialized = materializer.materialize(extracted.semanticModel());
             if (!sourceCompatible(materialized, snapshot)) {
                 return new SemanticExtractionResult(SemanticExtractionStatus.INVALID_SOURCE, null,
-                        java.util.List.of("materialized snapshot이 후보와 일치하지 않습니다."));
+                        java.util.List.of(mismatchFinding(materialized, snapshot, "후보")));
             }
         } catch (RuntimeException exception) {
             SemanticExtractionStatus status = unsupported(exception)
                     ? SemanticExtractionStatus.UNSUPPORTED : SemanticExtractionStatus.INVALID_SOURCE;
             return new SemanticExtractionResult(status, null,
-                    java.util.List.of(status == SemanticExtractionStatus.UNSUPPORTED
-                            ? "지원하지 않는 semantic operation 또는 diagram입니다."
-                            : "semantic model이 후보 snapshot과 일치하지 않습니다."));
+                    java.util.List.of(ExtractionFinding.of("candidate-materialize", exception)));
         }
         return extracted;
     }
@@ -164,15 +163,13 @@ public class ProblemSemanticExtractionService {
                 MaterializedProblem materialized = materializer.materialize(result.semanticModel());
                 if (!sourceCompatible(materialized, source)) {
                     finalResult = new SemanticExtractionResult(SemanticExtractionStatus.INVALID_SOURCE, null,
-                            java.util.List.of("materialized snapshot이 원본과 일치하지 않습니다."));
+                            java.util.List.of(mismatchFinding(materialized, source, "원본")));
                 }
             } catch (RuntimeException exception) {
                 SemanticExtractionStatus status = unsupported(exception)
                         ? SemanticExtractionStatus.UNSUPPORTED : SemanticExtractionStatus.INVALID_SOURCE;
                 finalResult = new SemanticExtractionResult(status, null,
-                        java.util.List.of(status == SemanticExtractionStatus.UNSUPPORTED
-                                ? "지원하지 않는 semantic operation 또는 diagram입니다."
-                                : "semantic model이 원본 snapshot과 일치하지 않습니다."));
+                        java.util.List.of(ExtractionFinding.of("materialize", exception)));
             }
         }
         SemanticExtractionResult toStore = finalResult;
@@ -193,6 +190,22 @@ public class ProblemSemanticExtractionService {
         String message = exception.getMessage();
         return message != null && (message.contains("지원하지") || message.contains("operation")
                 || message.contains("diagram"));
+    }
+
+    /**
+     * 일치 검사가 실패했을 때 정답과 구조 중 무엇이 어떻게 달랐는지 남긴다.
+     *
+     * <p>"일치하지 않습니다" 한 줄만 남기면 추출 실패가 쌓여도 프롬프트를 고쳐야 할지
+     * materializer를 고쳐야 할지 판단할 수 없다.
+     */
+    private String mismatchFinding(MaterializedProblem materialized, QuestionSnapshotV1 source, String label) {
+        QuestionSnapshotV1 generated = materialized.snapshot();
+        return "materialize 결과가 " + label + "과 다릅니다."
+                + " answers=" + size(generated.answerUnits()) + "/" + size(source.answerUnits())
+                + " choices=" + size(generated.choices()) + "/" + size(source.choices())
+                + " steps=" + size(generated.steps()) + "/" + size(source.steps())
+                + " rubrics=" + size(generated.rubricItems()) + "/" + size(source.rubricItems())
+                + " answerMatched=" + answerCompatible(materialized, source);
     }
 
     /** 추출된 model이 원본과 같은 문항인지 정답과 구조 양쪽으로 확인한다. */

@@ -41,22 +41,23 @@ public class ProblemSemanticExtractionAdapter implements ProblemSemanticExtracti
                 try { materializer.materialize(model); }
                 catch (RuntimeException exception) {
                     String message = exception.getMessage();
-                    if (message != null && (message.contains("지원하지") || message.contains("operation")
-                            || message.contains("diagram"))) {
-                        return new SemanticExtractionResult(SemanticExtractionStatus.UNSUPPORTED, null,
-                                java.util.List.of("지원하지 않는 operation 또는 diagram입니다."));
-                    }
-                    return new SemanticExtractionResult(SemanticExtractionStatus.INVALID_SOURCE, null,
-                            java.util.List.of("materialized answer가 원본과 일치하지 않습니다."));
+                    boolean unsupported = message != null && (message.contains("지원하지")
+                            || message.contains("operation") || message.contains("diagram"));
+                    // 원래 예외 메시지를 그대로 남긴다. 고정 문구로 덮어쓰면 왜 실패했는지
+                    // (placeholder 누락인지, 정답 불일치인지, 지원하지 않는 구성인지) 알 수 없어
+                    // 추출 실패가 쌓여도 원인을 좁힐 수 없다.
+                    return new SemanticExtractionResult(
+                            unsupported ? SemanticExtractionStatus.UNSUPPORTED : SemanticExtractionStatus.INVALID_SOURCE,
+                            null, java.util.List.of(ExtractionFinding.of("materialize", exception)));
                 }
             }
             return new SemanticExtractionResult(SemanticExtractionStatus.EXTRACTED, model, java.util.List.of());
         } catch (IllegalArgumentException e) {
             return new SemanticExtractionResult(SemanticExtractionStatus.INVALID_SOURCE, null,
-                    java.util.List.of("semantic model을 원본에 적용할 수 없습니다."));
+                    java.util.List.of(ExtractionFinding.of("parse", e)));
         } catch (RuntimeException e) {
             return new SemanticExtractionResult(SemanticExtractionStatus.TECHNICAL_ERROR, null,
-                    java.util.List.of("extraction provider 오류"));
+                    java.util.List.of(ExtractionFinding.of("provider", e)));
         }
     }
 }

@@ -40,6 +40,15 @@ public class ProblemSemanticExtractionPromptFactory {
 
                 presentation.choices는 객관식일 때만 채우고, 각 보기의 valueKey에 그 보기가 나타내는
                 값의 키를 넣는다. 정답 보기의 값은 intent.targetKey의 값과 같아야 한다.
+
+                parameters의 editable은 "교사가 이 값을 바꿔도 문항이 계속 성립하는가"를 뜻한다.
+                editable=true로 둘 것: 문제에서 주어진 독립 입력값. 반지름 3cm의 3, 2 + 3의 2와 3처럼
+                교사가 다른 값으로 바꾸면 정답·보기·해설이 computations로 다시 계산되어 따라오는 값이다.
+                editable=false로 둘 것: 오답 보기 전용 값처럼 혼자 바꾸면 정답과 충돌할 수 있는 값,
+                도형의 축 범위·눈금 간격처럼 표현을 위한 값, 그리고 다른 값에서 유도되는 값.
+                유도되는 값은 parameters가 아니라 computations로 표현한다.
+                모든 parameter를 editable=false로 두지 말라. 그러면 교사가 숫자 하나도 바꿀 수 없고
+                모든 수정이 문항 재생성으로 처리된다. 문제의 조건에 해당하는 값은 편집할 수 있어야 한다.
                 """;
     }
 
