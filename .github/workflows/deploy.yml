@@ -112,6 +112,14 @@ jobs:
             exit 1
           fi
 
+      # 러너의 기본 buildx 드라이버는 docker 인데, 그 드라이버는 캐시 내보내기를 지원하지
+      # 않는다. 아래 build-push-action 이 cache-to: type=gha 를 쓰므로
+      # "Cache export is not supported for the docker driver" 로 죽는다.
+      # 이 액션이 docker-container 드라이버 빌더를 만들어 준다.
+      - name: Buildx 설정
+        if: inputs.tag == ''
+        uses: docker/setup-buildx-action@v3
+
       - name: 빌드와 push
         if: inputs.tag == ''
         uses: docker/build-push-action@v6
