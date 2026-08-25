@@ -39,7 +39,9 @@ public final class ProblemSemanticDocumentCodec {
     public String canonicalHash(Object value) { return hash(write(value)); }
 
     private String write(Object value) {
-        try { return mapper.writeValueAsString(value); }
+        // PostgreSQL jsonb는 널 문자(U+0000)를 담을 수 없다. Jackson이 방출하는  이스케이프를
+        // 제거해 semantic model 저장이 "unsupported Unicode escape sequence"로 실패하지 않게 한다.
+        try { return mapper.writeValueAsString(value).replaceAll("(?i)\\\\u0000", ""); }
         catch (JacksonException e) { throw new IllegalArgumentException("semantic document를 JSON으로 변환할 수 없습니다.", e); }
     }
     private <T> T read(String json, Class<T> type) {

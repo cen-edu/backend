@@ -28,6 +28,11 @@ server:
 
 app:
   problem-authoring:
+    # AI 동시 실행 슬롯 수와 슬롯 대기 상한. permit 대기 상한은 OpenAI 호출 타임아웃(60s)보다
+    # 커야 한다 — 그렇지 않으면 앞선 호출이 슬롯을 오래 잡는 동안 대기하던 문항이 permit 대기
+    # 초과로 실패한다.
+    ai-max-concurrency: ${AI_PROBLEM_MAX_CONCURRENCY:4}
+    ai-permit-timeout-seconds: ${AI_PROBLEM_PERMIT_TIMEOUT_SECONDS:120}
     semantic:
       enabled: ${PROBLEM_SEMANTIC_AUTHORING_ENABLED:false}
     visual:
@@ -96,7 +101,9 @@ app:
       # 복잡한 문항에서 추론이 상한을 먹고 finishReason=LENGTH로 빈 응답이 났다. 검증과 같은 6000으로
       # 올려 잘림을 막는다. 상한은 천장일 뿐 실제 사용 토큰만 과금되므로 정상 출력의 비용은 늘지 않는다.
       max-completion-tokens: ${OPENAI_MAX_COMPLETION_TOKENS:6000}
-      timeout: ${OPENAI_TIMEOUT:30s}
+      # reasoning(medium)+긴 출력 생성/검증 호출이 30초를 자주 넘겨 OpenAIIoException(타임아웃)으로
+      # 실패했다(성공 호출도 ~29초로 상한에 붙어 있었다). 60초로 올려 잘림을 막는다.
+      timeout: ${OPENAI_TIMEOUT:60s}
       max-retries: ${OPENAI_MAX_RETRIES:2}
       # 목적별 모델. 지정하지 않은 값은 위 기본값을 따른다.
       use-cases:
