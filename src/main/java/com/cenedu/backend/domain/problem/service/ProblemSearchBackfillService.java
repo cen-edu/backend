@@ -3,6 +3,7 @@ package com.cenedu.backend.domain.problem.service;
 import com.cenedu.backend.domain.problem.authoring.snapshot.BankSnapshotResult;
 import com.cenedu.backend.domain.problem.authoring.snapshot.SearchSnapshotNormalizer;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
@@ -18,24 +19,29 @@ public class ProblemSearchBackfillService {
     private final ProblemSearchIndexingService indexingService;
     private final SearchSnapshotNormalizer normalizer;
     private final SnapshotStructuralValidator validator;
+    private final VisualSnapshotConsistencyValidator visualValidator;
 
     public ProblemSearchBackfillService(ProblemQuestionRepository questionRepository,
             ProblemBankSnapshotQueryService snapshotService, ProblemSearchIndexingService indexingService) {
-        this(questionRepository, snapshotService, indexingService, new SearchSnapshotNormalizer(), null);
+        this(questionRepository, snapshotService, indexingService, new SearchSnapshotNormalizer(), null,
+                new VisualSnapshotConsistencyValidator());
     }
 
     public ProblemSearchBackfillService(ProblemQuestionRepository questionRepository,
             ProblemBankSnapshotQueryService snapshotService, ProblemSearchIndexingService indexingService,
             SearchSnapshotNormalizer normalizer) {
-        this(questionRepository, snapshotService, indexingService, normalizer, null);
+        this(questionRepository, snapshotService, indexingService, normalizer, null,
+                new VisualSnapshotConsistencyValidator());
     }
 
     @Autowired
     public ProblemSearchBackfillService(ProblemQuestionRepository questionRepository,
             ProblemBankSnapshotQueryService snapshotService, ProblemSearchIndexingService indexingService,
-            SearchSnapshotNormalizer normalizer, SnapshotStructuralValidator validator) {
+            SearchSnapshotNormalizer normalizer, SnapshotStructuralValidator validator,
+            VisualSnapshotConsistencyValidator visualValidator) {
         this.questionRepository = questionRepository; this.snapshotService = snapshotService;
         this.indexingService = indexingService; this.normalizer = normalizer; this.validator = validator;
+        this.visualValidator = visualValidator;
     }
 
     /** 커서 뒤의 검증 가능한 문항을 batch 크기만큼 검사해 큐에 넣고 다음 커서를 반환한다. */
@@ -51,7 +57,9 @@ public class ProblemSearchBackfillService {
             if (result != null && result.snapshot() != null
                     && question.getQuestionType() != QuestionType.ESSAY) {
                 var normalized = normalizer.normalize(result.snapshot());
-                boolean valid = validator == null || validator.violations(normalized).isEmpty();
+                boolean valid = result.reusable()
+                        && (validator == null || validator.violations(normalized).isEmpty())
+                        && visualValidator.violations(normalized).isEmpty();
                 if (valid && indexingService.enqueueImported(question.getId(), normalized,
                         result.assetStorageKeys())) enqueued++;
                 else rejected++;

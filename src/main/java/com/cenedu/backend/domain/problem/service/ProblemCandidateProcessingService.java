@@ -69,6 +69,9 @@ public class ProblemCandidateProcessingService {
     private final ProblemAuthoringVersionRepository versionRepository;
     private final SnapshotStructuralValidator structuralValidator;
     private final SnapshotNormalizedValidator normalizedValidator;
+    private final com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator
+            visualConsistencyValidator =
+            new com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator();
     private final ProblemAuthoringJsonCodec jsonCodec;
     private final ObjectProvider<ProblemVerificationPort> verificationPortProvider;
     private final ObjectProvider<ProblemAssetProductionPort> assetPortProvider;
@@ -505,6 +508,7 @@ public class ProblemCandidateProcessingService {
         validateSourceType(request.operationType(),
                 request.candidate().provenance().sourceType());
         validateAssetPlans(request.candidate());
+        visualConsistencyValidator.validateFinal(request.candidate().snapshot());
     }
 
     /** 의미 후보를 다시 계산해 Snapshot·자산 계획이 서버 결과와 일치하는지 확인한다. */

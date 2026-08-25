@@ -24,17 +24,16 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * 텍스트가 이미 생성된 문항에 좌표그래프 시각자료를 문항 단위로 덧붙인다(2단계).
+ * 텍스트가 이미 생성된 문항에 좌표그래프 이미지를 문항 단위로 덧붙이는 생성 전략이다.
  *
  * <p>LLM에는 키·resolvedValues 같은 파라메트릭 표현이 아니라 <b>리터럴 좌표 그래프</b>(실제 숫자)만
  * 요구하고, 서버가 이를 {@link CoordinateGraphDiagramSpecV1} + resolvedValues로 변환한다. 이렇게 하면
  * 모델의 오류 표면이 크게 줄어 semantic 파이프라인의 파라메트릭 생성보다 안정적이다.
  *
- * <p>생성·검증·렌더가 실패하면 시각 없이 문항을 살리는 대신 예외를 던져, 호출부(생성 파이프라인)의
- * 재시도가 그림을 참조하는 깨진 문항을 내보내지 않게 한다.
+ * <p>재시도 횟수와 지원 종류 선택은 {@link ProblemImageGenerationLoop}가 담당한다.
  */
 @Component
-public final class ProblemVisualAugmenter {
+public final class CoordinateGraphImageGenerator implements ProblemImageGenerator {
 
     private static final String ASSET_KEY = "F1";
     private static final DiagramViewport VIEWPORT = new DiagramViewport(640, 480, 24);
@@ -74,35 +73,34 @@ public final class ProblemVisualAugmenter {
     private final SemanticAssetPlanFactory assetPlanFactory = new SemanticAssetPlanFactory();
     private final com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator structural;
 
-    public ProblemVisualAugmenter(LlmClient client, ObjectProvider<ObjectMapper> mapper,
+    public CoordinateGraphImageGenerator(LlmClient client, ObjectProvider<ObjectMapper> mapper,
             com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator structural) {
         this.client = client;
         this.mapper = mapper.getIfAvailable(ObjectMapper::new);
         this.structural = structural;
     }
 
-    /** 좌표그래프를 생성·부착한 새 후보를 반환한다. 실패하면 예외를 던진다(호출부가 재시도한다). */
-    public ProblemCandidateDraft augment(ProblemCandidateDraft candidate, String visualDescription,
-                                         ProblemGenerationCommand command) {
+    /** 이 전략이 생성하는 이미지 종류를 반환한다. */
+    @Override
+    public com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind kind() {
+        return com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.COORDINATE_GRAPH;
+    }
+
+    /** 좌표그래프를 한 번 생성·검증·부착한다. 실패 정보는 다음 이미지 생성 시도에 전달된다. */
+    @Override
+    public ProblemCandidateDraft generate(ProblemCandidateDraft candidate, String visualDescription,
+                                          ProblemGenerationCommand command, int attempt,
+                                          RuntimeException previousFailure) {
         String prompt = visiblePrompt(candidate.snapshot());
-        RuntimeException last = null;
-        for (int attempt = 0; attempt < 2; attempt++) {
-            try {
-                LiteralGraph graph = requestGraph(prompt, visualDescription, attempt, last);
-                CoordinateGraphDiagramSpecV1 spec = toSpec(graph);
-                Map<String, SemanticResolvedValue> values = resolvedValues(graph);
-                diagramValidator.validateAll(List.of(spec), values);
-                renderer.render(spec, new DiagramRenderContext(values)); // 렌더 가능한지 조기 확인
-                // altText는 visualDescription이 아니라 그래프 기하에서 사실만 조합한다. visualDescription은
-                // "곡선 위가 아닌 점이 D" 처럼 정답을 드러내는 편집적 서술이 섞여 자산 검증에서 누출(LEAK)로
-                // FAIL 처리되기 때문이다. 좌표·직선·곡선 등 화면에 실제로 보이는 사실만 적어 누출을 원천 차단한다.
-                return attach(candidate, command, spec, values, factualAltText(graph));
-            } catch (RuntimeException e) {
-                last = e;
-            }
-        }
-        throw new IllegalStateException("좌표그래프 생성에 실패했습니다: "
-                + (last == null ? "unknown" : last.getMessage()), last);
+        LiteralGraph graph = requestGraph(prompt, visualDescription, attempt, previousFailure);
+        CoordinateGraphDiagramSpecV1 spec = toSpec(graph);
+        Map<String, SemanticResolvedValue> values = resolvedValues(graph);
+        diagramValidator.validateAll(List.of(spec), values);
+        renderer.render(spec, new DiagramRenderContext(values)); // 렌더 가능한지 조기 확인
+        // altText는 visualDescription이 아니라 그래프 기하에서 사실만 조합한다. visualDescription은
+        // "곡선 위가 아닌 점이 D" 처럼 정답을 드러내는 편집적 서술이 섞여 자산 검증에서 누출(LEAK)로
+        // FAIL 처리되기 때문이다. 좌표·직선·곡선 등 화면에 실제로 보이는 사실만 적어 누출을 원천 차단한다.
+        return attach(candidate, command, spec, values, factualAltText(graph));
     }
 
     private LiteralGraph requestGraph(String prompt, String description, int attempt, RuntimeException prior) {

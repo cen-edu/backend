@@ -8,6 +8,7 @@ import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.snapshot.ProblemQuestionSnapshotMapper;
 import com.cenedu.backend.domain.problem.authoring.snapshot.ProblemSnapshotSource;
 import com.cenedu.backend.domain.problem.authoring.validation.SnapshotStructuralValidator;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator;
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemChoiceRepository;
@@ -24,6 +25,7 @@ public class ProblemBankSnapshotQueryService {
     private final ProblemQuestionRepository questionRepository;
     private final ProblemQuestionSnapshotMapper mapper;
     private final SnapshotStructuralValidator validator;
+    private final VisualSnapshotConsistencyValidator visualValidator;
     private final ProblemChoiceRepository choiceRepository;
     private final ProblemStepRepository stepRepository;
     private final ProblemAnswerUnitRepository answerUnitRepository;
@@ -37,7 +39,8 @@ public class ProblemBankSnapshotQueryService {
                                            ProblemStepRepository stepRepository,
                                            ProblemAnswerUnitRepository answerUnitRepository,
                                            ProblemAssetRepository assetRepository,
-                                           ProblemRubricItemRepository rubricRepository) {
+                                           ProblemRubricItemRepository rubricRepository,
+                                           VisualSnapshotConsistencyValidator visualValidator) {
         this.questionRepository = questionRepository;
         this.mapper = mapper;
         this.validator = validator;
@@ -46,6 +49,7 @@ public class ProblemBankSnapshotQueryService {
         this.answerUnitRepository = answerUnitRepository;
         this.assetRepository = assetRepository;
         this.rubricRepository = rubricRepository;
+        this.visualValidator = visualValidator;
     }
 
     /** 문제 ID 순서를 유지하며 스냅샷을 만들고 재사용 가능 여부를 판정한다. */
@@ -76,7 +80,10 @@ public class ProblemBankSnapshotQueryService {
         try {
             QuestionSnapshotV1 snapshot = mapper.toSnapshot(new ProblemSnapshotSource(
                     question, choices, steps, units, assets, rubrics));
-            List<String> violations = validator.violations(snapshot);
+            List<String> violations = java.util.stream.Stream.concat(
+                            validator.violations(snapshot).stream(),
+                            visualValidator.violations(snapshot).stream())
+                    .distinct().toList();
             Map<String, String> storageKeys = assets.stream().collect(
                     java.util.stream.Collectors.toMap(
                             com.cenedu.backend.domain.problem.entity.ProblemAsset::getAssetKey,
