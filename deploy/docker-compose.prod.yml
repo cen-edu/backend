@@ -1,17 +1,18 @@
 # AWS EC2 배포용 compose. 이 저장소에서 빌드하지 않는다 — Docker Hub 에 올려 둔
 # 이미지를 받아서 띄운다(t3.micro 1GB 에서 Gradle 빌드는 OOM 으로 죽는다).
 #
-# EC2 에 올리는 파일은 이 파일과 .env 두 개뿐이다.
+# 프론트는 Vercel 이 서빙한다. 여기 있는 것은 API 와 그 앞단뿐이다.
+#
+# EC2 에 올리는 파일:
 #   scp -i cen-edu.pem deploy/docker-compose.prod.yml ec2-user@<EIP>:/home/ec2-user/app/
 #   scp -i cen-edu.pem deploy/.env.prod.example       ec2-user@<EIP>:/home/ec2-user/app/.env
+#   scp -i cen-edu.pem -r deploy/nginx                ec2-user@<EIP>:/home/ec2-user/app/
+#   scp -i cen-edu.pem deploy/init-letsencrypt.sh     ec2-user@<EIP>:/home/ec2-user/app/
 #
-# nginx 설정은 프론트 이미지 안에 들어 있다(프론트 저장소 deploy/nginx.conf).
-# 라우팅을 바꾸려면 프론트 이미지를 다시 빌드해 새 태그로 올린다.
+# 처음 한 번은 인증서를 발급받아야 한다(nginx 가 인증서 없이는 443 을 못 연다):
+#   ./init-letsencrypt.sh
 #
-# 실행:
-# 이 파일은 EC2 에서만 띄운다. 로컬에서 같이 올리면 개발용 compose.yaml 과
-# cen-edu-postgres 컨테이너 이름이 부딪힌다. 로컬 개발은 compose.yaml 을 쓴다.
-#
+# 이후 실행:
 #   docker compose -f docker-compose.prod.yml pull
 #   docker compose -f docker-compose.prod.yml up -d
 
@@ -82,7 +83,7 @@ services:
       postgres:
         # Flyway 가 기동 시 마이그레이션을 돌린다. DB 가 덜 뜬 상태로 붙으면 앱이 죽는다.
         condition: service_healthy
-    # 8080 을 공개하지 않는다. 외부에서 들어오는 길은 frontend 의 nginx 하나뿐이다.
+    # 8080 을 공개하지 않는다. 외부에서 들어오는 길은 nginx 하나뿐이다.
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health || exit 1"]
       interval: 15s
@@ -93,17 +94,49 @@ services:
     networks:
       - cen-edu-net
 
-  # 서비스의 유일한 입구. nginx 가 정적 파일을 서빙하면서 /api 를 backend 로 넘긴다.
-  frontend:
-    image: ${DOCKERHUB_USER}/cen-edu-frontend:${FRONTEND_TAG}
-    container_name: cen-edu-frontend
+  # 서비스의 유일한 입구. TLS 를 끊고 /api 를 backend 로 넘긴다.
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: cen-edu-nginx
     restart: always
-    # 정적 서빙 + 프록시라 실측 2.5MB 다. 32m 도 과하게 잡은 값이다.
-    mem_limit: 32m
+    # 정적 파일을 다루지 않는 순수 프록시라 실측 수 MB 다.
+    mem_limit: 48m
     ports:
       - "80:80"
+      - "443:443"
+    environment:
+      # 인증서 경로와 server_name 에 함께 쓰인다. .env 에서 읽는다.
+      SERVER_NAME: ${SERVER_NAME}
+      # 템플릿에서 치환할 변수를 이것만으로 좁힌다. 지정하지 않으면 $host, $scheme 같은
+      # nginx 자체 변수까지 빈 문자열로 치환돼 설정이 조용히 망가진다.
+      NGINX_ENVSUBST_FILTER: SERVER_NAME
+    volumes:
+      # 이미지가 기동할 때 templates/*.template 를 envsubst 해서 conf.d 로 옮긴다.
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot:ro
     depends_on:
       - backend
+    networks:
+      - cen-edu-net
+
+  # 평소에는 뜨지 않는다(profiles). t3.micro 에서 상주시킬 이유가 없다 —
+  # 발급과 갱신이 필요할 때만 일회성으로 돌린다.
+  #
+  #   최초 발급 : ./init-letsencrypt.sh
+  #   갱신      : docker compose -f docker-compose.prod.yml run --rm certbot renew
+  #               docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+  #
+  # 갱신은 crontab 에 걸어 둔다(인증서 수명이 90일이라 사람이 기억할 수 없다):
+  #   0 4 * * 1 cd /home/ec2-user/app && docker compose -f docker-compose.prod.yml run --rm certbot renew --quiet && docker compose -f docker-compose.prod.yml exec -T nginx nginx -s reload
+  certbot:
+    image: certbot/certbot:latest
+    container_name: cen-edu-certbot
+    profiles:
+      - tools
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
     networks:
       - cen-edu-net
 
@@ -114,3 +147,7 @@ networks:
 volumes:
   # 컨테이너를 지워도 데이터는 남는다. 이미지를 새 태그로 갈아끼워도 이 볼륨은 건드리지 않는다.
   postgres-data:
+  # 발급받은 인증서. 이 볼륨을 잃으면 재발급해야 한다(Let's Encrypt 주당 발급 한도에 걸린다).
+  letsencrypt:
+  # ACME 소유 확인용 임시 파일. nginx 가 읽고 certbot 이 쓴다.
+  certbot-webroot:
