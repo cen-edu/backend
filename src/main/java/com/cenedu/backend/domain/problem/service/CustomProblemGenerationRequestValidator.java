@@ -66,9 +66,9 @@ public class CustomProblemGenerationRequestValidator {
         if (item.similarCount() > 0 && proposal.similar().referenceQuestions().isEmpty()) {
             throw new BusinessException(ErrorCode.CUSTOM_PROBLEM_SIMILAR_REFERENCE_MISSING);
         }
-        if (item.advancedCount() > 0 && !proposal.advanced().triggered()) {
-            throw new BusinessException(ErrorCode.CUSTOM_PROBLEM_ADVANCED_NOT_ALLOWED);
-        }
+        // 응용은 발동 조건(triggered)으로 막지 않는다. 조건은 교사에게 알리는 정보이지
+        // 허가가 아니다 — 시스템이 모르는 근거(지필 성적, 수업 중 이해도)로 응용을 낼 수 있다.
+        // 상한(maxCount)은 아래에서 함께 검사한다.
         if (item.reviewCount() > proposal.review().maxCount()
                 || item.similarCount() > proposal.similar().maxCount()
                 || item.advancedCount() > proposal.advanced().maxCount()) {

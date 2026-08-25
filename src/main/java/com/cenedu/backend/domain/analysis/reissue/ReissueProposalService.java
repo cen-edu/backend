@@ -91,7 +91,26 @@ public class ReissueProposalService {
 
         return new ReissueProposalResponse(subUnits.stream()
                 .map(subUnit -> toProposal(subUnit, context))
+                .filter(ReissueProposalService::hasSomethingToMake)
                 .toList());
+    }
+
+    /**
+     * 이 소단원으로 만들 수 있는 것이 하나라도 있는지.
+     *
+     * <p>조회는 학생이 푼 모든 소단원을 가져온다. 다 맞힌 단원도 섞여 오는데, 그런 단원은
+     * 복습할 오답도 없고 유사 문항을 만들 기준 문항도 없어 세 단계가 모두 비어 있다.
+     * 그대로 내보내면 교사가 아무것도 할 수 없는 줄이 "취약 소분류" 목록에 남는다.
+     *
+     * <p>{@code proposedCount} 가 아니라 {@code maxCount} 를 본다. 추천이 0 이어도 교사가
+     * 올릴 수 있으면 남겨야 한다.
+     *
+     * <p>응용은 보지 않는다. 상한이 항상 열려 있어 판단 기준이 되지 못한다. 뜻으로 풀면
+     * 이렇다 — 복습할 오답도 없고 유사 문항을 만들 기준도 없다면 취약하지 않다. 응용만
+     * 낼 수 있다고 취약 목록에 올리지 않는다.
+     */
+    private static boolean hasSomethingToMake(ReissueProposalResponse.SubUnitProposal proposal) {
+        return proposal.review().maxCount() > 0 || proposal.similar().maxCount() > 0;
     }
 
     /**
@@ -299,7 +318,20 @@ public class ReissueProposalService {
                 excluded);
     }
 
-    /** 응용 문항 제안. 발동하지 않았으면 상한도 0 이라 교사가 올릴 수 없다. */
+    /**
+     * 응용 문항 제안.
+     *
+     * <p>상한은 발동 여부와 무관하게 연다. 세 필드가 이미 역할을 나눠 갖고 있다 —
+     * {@code proposedCount} 가 "권하지 않는다"를, {@code triggered} 가 "조건 미충족"을
+     * 말한다. 상한까지 0 으로 막으면 같은 말을 세 번 하면서 교사의 판단만 뺏는다.
+     *
+     * <p>다른 두 단계의 {@code maxCount} 는 "만들 수 있는 개수"다 — 복습은 재출제 가능한
+     * 오답 수, 유사는 기준 문항이 있는지. 응용만 정책 판단을 같은 필드에 실으면 뜻이
+     * 어긋난다.
+     *
+     * <p>교사는 시스템이 모르는 근거를 갖고 있을 수 있다(지필 성적, 수업 중 이해도).
+     * 발동 조건은 {@code triggered} 로 알리고, 낼지 말지는 교사가 정한다.
+     */
     private ReissueProposalResponse.AdvancedProposal toAdvanced(
             long subUnitId, boolean triggered, SubUnitWeaknessRow weakness, Context context
     ) {
@@ -324,7 +356,7 @@ public class ReissueProposalService {
         return new ReissueProposalResponse.AdvancedProposal(
                 triggered,
                 DEFAULT_ADVANCED_COUNT,
-                triggered ? MAX_PROPOSED_COUNT : 0,
+                MAX_PROPOSED_COUNT,
                 historicalIncorrectItemCount,
                 weakness == null ? 0 : weakness.incorrectSessionCount(),
                 primaryEvaluationArea(areaEvidence, historicalIncorrectItemCount),
