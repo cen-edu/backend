@@ -109,7 +109,7 @@ public class ContentIntegrityChecker {
     }
 
     /**
-     * 개념 안내가 정답이나 풀이 방향을 노출한다.
+     * 문제 본문 또는 개념 안내가 정답이나 풀이 방향을 노출한다.
      *
      * <p>심각도가 둘로 갈린다 — 정답 값을 그대로 담으면 학생이 화면만 보고 답을 얻으므로
      * {@code ERROR} 다. 풀이 방향만 지정한 것은 교사가 보고 판단할 문제이므로 {@code WARNING} 이고,
@@ -124,8 +124,8 @@ public class ContentIntegrityChecker {
                         ? VerificationSeverity.WARNING
                         : VerificationSeverity.ERROR;
         String message = severity == VerificationSeverity.WARNING
-                ? "개념 안내가 풀이 방향을 지정합니다."
-                : "개념 안내가 정답 값을 노출합니다.";
+                ? "문제 본문 또는 개념 안내가 풀이 방향을 지정합니다."
+                : "문제 본문 또는 개념 안내가 정답 값을 노출합니다.";
         return Findings.fail(
                 VerificationCheckType.ANSWER_CONSISTENCY,
                 VerificationIssueCode.ANSWER_INCONSISTENT,

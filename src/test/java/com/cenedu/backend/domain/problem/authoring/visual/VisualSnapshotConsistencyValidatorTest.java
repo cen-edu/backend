@@ -66,6 +66,37 @@ class VisualSnapshotConsistencyValidatorTest {
         assertThat(validator.violations(snapshot)).isEmpty();
     }
 
+    @Test
+    void 보기_참조에_실제_보기_내용이_없으면_차단한다() {
+        var snapshot = snapshot("다음 조건에 알맞은 식을 보기에서 찾으시오. 점 $(3,-2)$를 지난다.",
+                QuestionPresentation.TEXT_ONLY, List.of(), List.of());
+
+        assertThat(validator.violations(snapshot))
+                .contains("referenceDependency: 보기 참조에 필요한 보기 내용이 없습니다.");
+    }
+
+    @Test
+    void altText에_보기_내용이_보존되어_있으면_허용한다() {
+        List<SnapshotContentBlock> blocks = List.of(
+                new SnapshotContentBlock("CB1", SnapshotBlockKind.TEXT, 0,
+                        "다음 보기에서 옳은 식을 모두 고르시오.", null, null),
+                new SnapshotContentBlock("CB2", SnapshotBlockKind.FIGURE, 1,
+                        null, "F1", null));
+        var snapshot = snapshot(null, QuestionPresentation.WITH_FIGURE, blocks,
+                List.of(new SnapshotAssetReference("F1",
+                        "보기 ㄱ. $y=-1/x$ ㄴ. $y=-6/x$ ㄷ. $y=8/x$ ㄹ. $y=10/x$")));
+
+        assertThat(validator.violations(snapshot)).isEmpty();
+    }
+
+    @Test
+    void 본문에_보기_내용이_직접_정의되어_있으면_허용한다() {
+        var snapshot = snapshot("다음 보기 중 일차식을 고르시오. ㄱ. $4$ ㄴ. $-5x$ ㄷ. $x^2+1$",
+                QuestionPresentation.TEXT_ONLY, List.of(), List.of());
+
+        assertThat(validator.violations(snapshot)).isEmpty();
+    }
+
     private QuestionSnapshotV1 snapshot(String text, QuestionPresentation presentation,
                                         List<SnapshotContentBlock> blocks,
                                         List<SnapshotAssetReference> assets) {

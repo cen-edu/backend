@@ -36,10 +36,11 @@ public class ProblemGenerationPlanningService {
     private final ObjectProvider<ProblemRetrievalTracePort> tracePort;
     private final ProblemRagProperties ragProperties;
     private final java.util.concurrent.ExecutorService planningExecutor;
+    private final ProblemVisualReferenceQueryService visualReferenceQueryService;
 
     public ProblemGenerationPlanningService(ProblemQuestionSelector selector,
                                             ProblemBankSnapshotQueryService snapshotQueryService) {
-        this(selector, snapshotQueryService, null, null, null, null);
+        this(selector, snapshotQueryService, null, null, null, null, null);
     }
 
     /** 검색·추적 Port가 선택적으로 연결된 생성 계획 서비스를 구성한다. */
@@ -48,7 +49,7 @@ public class ProblemGenerationPlanningService {
                                             ObjectProvider<ProblemReferenceRetrievalPort> retrievalPort,
                                             ObjectProvider<ProblemRetrievalTracePort> tracePort,
                                             ProblemRagProperties ragProperties) {
-        this(selector, snapshotQueryService, retrievalPort, tracePort, ragProperties, null);
+        this(selector, snapshotQueryService, retrievalPort, tracePort, ragProperties, null, null);
     }
 
     /** 부족분 RAG 검색을 요구(소단원) 간 병렬 실행할 fan-out 풀을 연결한다(null이면 순차 실행). */
@@ -59,13 +60,15 @@ public class ProblemGenerationPlanningService {
                                             ObjectProvider<ProblemRetrievalTracePort> tracePort,
                                             ProblemRagProperties ragProperties,
                                             @org.springframework.beans.factory.annotation.Qualifier("problemPlanningRetrievalExecutor")
-                                            java.util.concurrent.ExecutorService planningExecutor) {
+                                            java.util.concurrent.ExecutorService planningExecutor,
+                                            ProblemVisualReferenceQueryService visualReferenceQueryService) {
         this.selector = selector;
         this.snapshotQueryService = snapshotQueryService;
         this.retrievalPort = retrievalPort;
         this.tracePort = tracePort;
         this.ragProperties = ragProperties;
         this.planningExecutor = planningExecutor;
+        this.visualReferenceQueryService = visualReferenceQueryService;
     }
 
     /** 요청 조건을 화면 순서가 보존된 실행 계획으로 변환한다.
@@ -171,8 +174,8 @@ public class ProblemGenerationPlanningService {
             log.info("event=problem_retrieval stage=RAG outcome=SUCCESS requestId={} candidateReferenceCount={} elapsedMs={}",
                     retrievalRequestId, retrieved.size(), elapsedMs(startedAt));
             return retrieved.stream()
-                    .map(reference -> new GenerationReference(GenerationReferenceRole.EXAMPLE,
-                            reference.questionId(), reference.snapshot())).toList();
+                    .map(reference -> generationReference(GenerationReferenceRole.EXAMPLE,
+                            reference.questionId(), reference.snapshot(), reference.visualKind())).toList();
         } catch (RuntimeException exception) {
             log.warn("event=problem_retrieval stage=RAG outcome=FALLBACK requestId={} elapsedMs={} exceptionType={}",
                     retrievalRequestId, elapsedMs(startedAt), exception.getClass().getSimpleName());
@@ -204,6 +207,24 @@ public class ProblemGenerationPlanningService {
 
     private long elapsedMs(long startedAt) {
         return (System.nanoTime() - startedAt) / 1_000_000;
+    }
+
+    /** 검색 참고 문항의 시각 정본을 생성 계약에 함께 보존한다. */
+    private GenerationReference generationReference(GenerationReferenceRole role, long questionId,
+            com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 snapshot,
+            com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind indexedKind) {
+        if (visualReferenceQueryService != null) {
+            return new GenerationReference(role, questionId, snapshot, null,
+                    visualReferenceQueryService.get(questionId));
+        }
+        var asset = snapshot.assets() == null || snapshot.assets().isEmpty()
+                ? null : snapshot.assets().getFirst();
+        var visual = indexedKind == null
+                || indexedKind == com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.NONE
+                ? null : new com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceDescriptor(
+                        asset == null ? null : asset.assetKey(), indexedKind, null,
+                        asset == null ? "" : asset.altText(), null);
+        return new GenerationReference(role, questionId, snapshot, null, visual);
     }
 
     /** Pass 1에서 확정한 한 요구의 은행 재사용·부족분 수량·검색 제외 시드를 담는 중간 결과다. */

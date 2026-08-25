@@ -18,22 +18,26 @@ public class ProblemReferenceJdbcRepository {
     /** metadata hard filter 뒤 cosine 최근접 후보를 dense 순서로 반환한다. */
     public List<ProblemSearchCandidate> findCandidates(ProblemReferenceQuery query, String queryVectorLiteral) {
         boolean hasExcluded = !query.excludedQuestionIds().isEmpty();
-        String exclusion = hasExcluded ? "AND question_id NOT IN (:excludedQuestionIds)" : "";
+        String exclusion = hasExcluded ? "AND search_index.question_id NOT IN (:excludedQuestionIds)" : "";
         int difficulty = switch (query.difficulty()) { case "low" -> 1; case "high" -> 3; default -> 2; };
         String sql = """
                 WITH nearest AS MATERIALIZED (
-                    SELECT *, embedding <=> CAST(:queryVector AS vector) AS cosine_distance
-                    FROM problem_search_index
-                    WHERE index_status = 'READY' AND deleted = false
-                      AND curriculum_revision = :curriculumRevision AND school_level = :schoolLevel AND grade = :grade
+                    SELECT search_index.*, search_index.embedding <=> CAST(:queryVector AS vector) AS cosine_distance
+                    FROM problem_search_index search_index
+                    JOIN problem_question source_question ON source_question.id=search_index.question_id
+                    WHERE search_index.index_status = 'READY' AND search_index.deleted = false
+                      AND source_question.deleted_at IS NULL
+                      AND search_index.curriculum_revision = :curriculumRevision
+                      AND search_index.school_level = :schoolLevel AND search_index.grade = :grade
                       AND %s
-                      AND difficulty IN (:allowedDifficulties)
-                      AND (:allowCrossType OR question_type = :questionType)
-                      AND (:requiredVisualKind = 'NONE' OR visual_kind = :requiredVisualKind)
+                      AND search_index.difficulty IN (:allowedDifficulties)
+                      AND (:allowCrossType OR search_index.question_type = :questionType)
+                      AND (:requiredVisualKind = 'NONE' OR search_index.visual_kind = :requiredVisualKind)
                 """ + exclusion + """
-                    ORDER BY embedding <=> CAST(:queryVector AS vector) LIMIT :candidateLimit)
+                    ORDER BY search_index.embedding <=> CAST(:queryVector AS vector) LIMIT :candidateLimit)
                 SELECT question_id, cosine_distance, duplicate_cluster_key, source_family_key,
-                       question_type, difficulty, document_hash, snapshot, embedding::text AS vector_literal
+                       question_type, difficulty, visual_kind, document_hash, snapshot,
+                       embedding::text AS vector_literal
                 FROM nearest ORDER BY cosine_distance, question_id
                 """;
         MapSqlParameterSource params = new MapSqlParameterSource().addValue("queryVector", queryVectorLiteral)
@@ -45,9 +49,9 @@ public class ProblemReferenceJdbcRepository {
                 .addValue("questionType", query.questionType().name()).addValue("candidateLimit", query.candidateLimit());
         String scopeCondition;
         if (query.curriculum().achievementStandardId() == null) {
-            scopeCondition = "sub_unit_id = :subUnitId";
+            scopeCondition = "search_index.sub_unit_id = :subUnitId";
         } else {
-            scopeCondition = "achievement_standard_id = :achievementStandardId";
+            scopeCondition = "search_index.achievement_standard_id = :achievementStandardId";
             params.addValue("achievementStandardId", query.curriculum().achievementStandardId());
         }
         sql = sql.formatted(scopeCondition);
@@ -59,7 +63,10 @@ public class ProblemReferenceJdbcRepository {
                 return new ProblemSearchCandidate(rs.getLong("question_id"), row + 1, 1.0 - distance,
                         VectorCodec.decode(vector), rs.getString("duplicate_cluster_key"), rs.getString("source_family_key"),
                         QuestionType.valueOf(rs.getString("question_type")), rs.getString("difficulty"),
-                        objectMapper.readValue(rs.getString("snapshot"), QuestionSnapshotV1.class), rs.getString("document_hash"));
+                        objectMapper.readValue(rs.getString("snapshot"), QuestionSnapshotV1.class),
+                        rs.getString("document_hash"),
+                        com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.valueOf(
+                                rs.getString("visual_kind")));
             } catch (Exception e) { throw new IllegalStateException("검색 Snapshot 복원에 실패했습니다.", e); }
         });
     }

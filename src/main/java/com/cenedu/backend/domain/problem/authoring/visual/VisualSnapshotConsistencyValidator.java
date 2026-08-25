@@ -29,6 +29,10 @@ public final class VisualSnapshotConsistencyValidator {
                     + "|다음은[^.!?]{0,120}(?:그림|그래프|좌표평면|표)(?:이다|입니다)"
                     + "|(?:알맞은|옳은|해당하는)\\s*(?:그림|그래프|표)\\s*(?:을|를)\\s*(?:고르|찾)");
     private static final Pattern CIRCLED_LABEL = Pattern.compile("[㉠-㉻]");
+    private static final Pattern VIEW_REFERENCE = Pattern.compile(
+            "보기\\s*(?:에서|중|의|를|로부터)|보기\\s*$");
+    private static final Pattern VIEW_LABEL_DEFINITION = Pattern.compile(
+            "([ㄱ-ㅎᄀ-ᄒ①-⑩])\\s*[.．:：)]\\s*\\S");
     private static final Set<Character> NON_DEFINITION_PREFIXES = Set.of(
             ',', '，', '、', ')', '）', ']', '］', '}', '｝', '/', '·', 'ㆍ');
 
@@ -105,6 +109,16 @@ public final class VisualSnapshotConsistencyValidator {
                     + String.join(", ", unresolved));
         }
 
+        boolean referencesView = problemTexts.stream().anyMatch(this::hasViewReference);
+        boolean hasStructuredChoices = snapshot.choices() != null
+                && snapshot.choices().stream().filter(java.util.Objects::nonNull).count() >= 2;
+        long definedViewLabels = definitionTexts.stream()
+                .flatMap(text -> viewLabelDefinitions(text).stream())
+                .distinct().count();
+        if (referencesView && !hasStructuredChoices && definedViewLabels < 2) {
+            violations.add("referenceDependency: 보기 참조에 필요한 보기 내용이 없습니다.");
+        }
+
         if (snapshot.metadata() != null
                 && snapshot.metadata().presentation() == QuestionPresentation.TEXT_ONLY
                 && hasVisualMaterial) {
@@ -141,6 +155,19 @@ public final class VisualSnapshotConsistencyValidator {
 
     private boolean hasDeicticVisualReference(String text) {
         return hasText(text) && DEICTIC_VISUAL_REFERENCE.matcher(text).find();
+    }
+
+    private boolean hasViewReference(String text) {
+        return hasText(text) && VIEW_REFERENCE.matcher(text).find();
+    }
+
+    /** 본문·표·altText에서 실제 내용이 뒤따르는 ㄱ·ㄴ 또는 ①·② 보기 라벨을 찾는다. */
+    private Set<String> viewLabelDefinitions(String text) {
+        if (!hasText(text)) return Set.of();
+        Set<String> definitions = new LinkedHashSet<>();
+        Matcher matcher = VIEW_LABEL_DEFINITION.matcher(text);
+        while (matcher.find()) definitions.add(matcher.group(1));
+        return definitions;
     }
 
     /** 기호 바로 뒤에 쉼표·닫는 괄호가 아닌 실제 내용이 있으면 텍스트 정의로 본다. */

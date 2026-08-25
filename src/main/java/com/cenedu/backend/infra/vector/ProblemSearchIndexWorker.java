@@ -61,7 +61,9 @@ public class ProblemSearchIndexWorker {
             }
             ProblemSearchDocument document = documentFactory.create(task.command());
             if (ready.isPresent() && ready.get().documentHash().equals(document.documentHash())) {
-                repository.markSkipped(task.taskId()); return;
+                repository.refreshReadyMetadata(task, document);
+                repository.markReady(task.taskId());
+                return;
             }
             EmbeddingResult embedding = embeddingClient.embed(document.documentText());
             String vector = VectorCodec.encode(embedding.vector());

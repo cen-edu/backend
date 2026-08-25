@@ -31,7 +31,7 @@ final class EvidencePrefix {
     // ── ASSET_CONSISTENCY ─────────────────────────────────────────────────
     /** 자산 준비 상태. */
     static final String MANIFEST = "MANIFEST";
-    /** altText 내용. 하위 구분({@code LEAK} · {@code MISMATCH})은 뒤에 한 겹 더 붙는다. */
+    /** altText와 발문의 시각 자산 불일치 내용. */
     static final String ALTTEXT = "ALTTEXT";
 
     /** {@code 접두어: 내용} 으로 조립한다. */
@@ -40,9 +40,7 @@ final class EvidencePrefix {
     }
 
     /**
-     * 두 단계 접두어. {@code ALTTEXT: LEAK — 내용} 형태다.
-     *
-     * <p>조율측이 자산 준비 문제와 altText 문제를 먼저 가르고, 그다음 유출·불일치를 가른다.
+     * 두 단계 접두어. {@code ALTTEXT: MISMATCH — 내용} 형태다.
      */
     static String of(String prefix, String subKind, String detail) {
         return prefix + ": " + subKind + " — " + (detail == null ? "" : detail);

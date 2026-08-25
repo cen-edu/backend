@@ -222,17 +222,17 @@ public class PersonalizedProblemGenerationPlanningService {
         List<Long> selectedIds = selected.stream().map(RetrievedProblemReference::questionId).distinct().toList();
         Map<Long, BankSnapshotResult> selectedSnapshots = snapshotsById(selectedIds);
         List<GenerationReference> examples = new ArrayList<>();
-        examples.add(new GenerationReference(GenerationReferenceRole.ORIGIN, originId, origin.snapshot()));
+        examples.add(reference(GenerationReferenceRole.ORIGIN, originId, origin.snapshot()));
         for (Long referenceId : referenceIds) {
             if (referenceId.equals(originId)) continue;
             BankSnapshotResult reference = referenceSnapshots.get(referenceId);
             if (reference != null && reference.reusable()) {
-                examples.add(new GenerationReference(GenerationReferenceRole.EXAMPLE,
+                examples.add(reference(GenerationReferenceRole.EXAMPLE,
                         referenceId, reference.snapshot()));
             }
         }
         for (RetrievedProblemReference reference : selected) {
-            examples.add(new GenerationReference(GenerationReferenceRole.EXAMPLE,
+            examples.add(reference(GenerationReferenceRole.EXAMPLE,
                     reference.questionId(), reference.snapshot()));
         }
         for (Long questionId : selectedIds) {
@@ -340,13 +340,13 @@ public class PersonalizedProblemGenerationPlanningService {
         }
         CurriculumScope curriculum = curriculum(path);
         List<GenerationReference> generationReferences = new ArrayList<>();
-        generationReferences.add(new GenerationReference(GenerationReferenceRole.ORIGIN,
+        generationReferences.add(reference(GenerationReferenceRole.ORIGIN,
                 originId, origin.snapshot()));
         for (ReissueProposalResponse.ReferenceQuestion reference : similar.referenceQuestions()) {
             if (reference.questionId() == originId) continue;
             BankSnapshotResult example = referenceSnapshots.get(reference.questionId());
             if (example != null && example.reusable()) {
-                generationReferences.add(new GenerationReference(GenerationReferenceRole.EXAMPLE,
+                generationReferences.add(reference(GenerationReferenceRole.EXAMPLE,
                         reference.questionId(), example.snapshot()));
             }
         }
@@ -356,7 +356,7 @@ public class PersonalizedProblemGenerationPlanningService {
                 .map(GenerationDiagnosticEvidence::diagnosticType).toList();
         GenerationSpecification specification = new GenerationSpecification(
                 QuestionType.STEP_FILL, "high", subUnit.advanced().primaryEvaluationArea(),
-                diagnosticTypes, true);
+                diagnosticTypes, true, visualRequirement(generationReferences));
         ProblemGenerationCommand command = new ProblemGenerationCommand(UUID.randomUUID(), null,
                 GenerationPurpose.PERSONALIZED_APPLICATION, specification, curriculum,
                 generationReferences, List.of(), evidence);
@@ -383,8 +383,8 @@ public class PersonalizedProblemGenerationPlanningService {
             log.info("event=problem_retrieval stage=RAG outcome=SUCCESS requestId={} purpose={} candidateReferenceCount={} elapsedMs={}",
                     requestId, query.purpose(), retrieved.size(), elapsedMs(startedAt));
             return retrieved.stream()
-                    .map(reference -> new GenerationReference(GenerationReferenceRole.EXAMPLE,
-                            reference.questionId(), reference.snapshot())).toList();
+                    .map(value -> reference(GenerationReferenceRole.EXAMPLE,
+                            value.questionId(), value.snapshot())).toList();
         } catch (RuntimeException exception) {
             log.warn("event=problem_retrieval stage=RAG outcome=FALLBACK requestId={} purpose={} exceptionType={}",
                     requestId, query.purpose(), exception.getClass().getSimpleName());
@@ -414,6 +414,14 @@ public class PersonalizedProblemGenerationPlanningService {
         return (System.nanoTime() - startedAt) / 1_000_000;
     }
 
+    /** 참고 문항의 시각 정본을 생성 계약에 함께 보존한다. */
+    private GenerationReference reference(GenerationReferenceRole role, long questionId,
+            com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 snapshot) {
+        var visual = visualReferenceQueryService == null ? null
+                : visualReferenceQueryService.get(questionId);
+        return new GenerationReference(role, questionId, snapshot, null, visual);
+    }
+
     /** 이미 조회한 ORIGIN과 검색 예시를 사용해 AI 부족분 명령을 만든다. */
     private ProblemGenerationSlotPlan aiSlot(ReissueProposalResponse.SubUnitProposal subUnit,
                                              CurriculumPathResponse path, CustomStage stage,
@@ -421,16 +429,25 @@ public class PersonalizedProblemGenerationPlanningService {
                                              CurriculumScope curriculum,
                                              List<GenerationReference> references) {
         String difficulty = stage == CustomStage.ADVANCED ? "high" : subUnit.similar().difficulty();
-        var originVisual = references.getFirst().visualReference();
-        var mode = originVisual == null ? VisualGenerationMode.NONE : VisualGenerationMode.PRESERVE_ORIGIN;
         GenerationSpecification specification = new GenerationSpecification(
                 QuestionType.STEP_FILL, difficulty, null, List.of(), false,
-                new VisualGenerationRequirement(mode,
-                        originVisual == null ? null : originVisual.kind()));
+                visualRequirement(references));
         ProblemGenerationCommand command = new ProblemGenerationCommand(UUID.randomUUID(), null,
                 purpose, specification, curriculum, references, List.of());
         return new ProblemGenerationSlotPlan(1, GenerationSlotSource.AI_GENERATION, null,
                 originId, stage, null, Map.of(), command);
+    }
+
+    private VisualGenerationRequirement visualRequirement(List<GenerationReference> references) {
+        var origin = references.stream()
+                .filter(reference -> reference.role() == GenerationReferenceRole.ORIGIN)
+                .findFirst().orElse(null);
+        var visual = origin == null ? null : origin.visualReference();
+        if (visual == null || visual.kind() != VisualReferenceKind.COORDINATE_GRAPH) {
+            return VisualGenerationRequirement.none();
+        }
+        return new VisualGenerationRequirement(VisualGenerationMode.PRESERVE_ORIGIN,
+                VisualReferenceKind.COORDINATE_GRAPH);
     }
 
     /** 교육과정 응답을 생성 계약에서 사용하는 범위 객체로 변환한다. */

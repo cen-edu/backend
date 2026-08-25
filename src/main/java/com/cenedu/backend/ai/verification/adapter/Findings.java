@@ -25,8 +25,8 @@ final class Findings {
      * <p>{@code CURRICULUM_ALIGNMENT} 를 ERROR 로 둔다 — 교육과정 범위를 벗어난 문항이 교사에게
      * 나가면 안 된다. 난이도가 한 칸 다른 것과는 성격이 다르다.
      *
-     * <p>{@code ASSET_CONSISTENCY} 도 ERROR 로 둔다. altText 에 정답이 새면 학생이 그림 설명만
-     * 읽고 답을 얻고, manifest 가 준비되지 않은 문항은 애초에 승격할 수 없다.
+     * <p>{@code ASSET_CONSISTENCY} 도 ERROR 로 둔다. manifest가 준비되지 않았거나 altText가 발문과
+     * 다른 자산을 설명하는 문항은 승격할 수 없다.
      */
     private static final Map<VerificationCheckType, VerificationSeverity> SEVERITY = Map.of(
             VerificationCheckType.CORRECTNESS, VerificationSeverity.ERROR,

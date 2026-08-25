@@ -20,16 +20,15 @@ import org.springframework.stereotype.Component;
 /**
  * {@code ASSET} 범위 판정. manifest 준비 상태(코드)와 altText·본문 정합(LLM)을 본다.
  *
- * <p>두 판정을 하나의 {@code ASSET_CONSISTENCY} Finding 으로 합치지 않는다. 준비되지 않은 자산과
- * 정답이 새는 altText 는 조율측의 대응이 다르다 — 앞은 기다리거나 재생성이고 뒤는 문항 수정이다.
- * 다만 계약의 CheckType 이 하나뿐이라 둘 다 {@code ASSET_CONSISTENCY} 로 나가며, 어느 쪽인지는
- * message 로 구분한다. CheckType 을 늘리는 것은 계약 변경이므로 여기서 하지 않는다.
+ * <p>altText는 자산에 표시된 좌표·식·수치·보기를 대신 전달하는 접근성 정보다. 정답과 같은 값이
+ * 포함됐는지는 검사하지 않고, 발문이 요구하는 자산과 다른 내용을 설명하는지만 판정한다.
  */
 @Component
 public class AssetChecks {
 
     /** 프롬프트가 낼 수 있는 문제 유형. */
-    private static final Set<String> ISSUES = Set.of("LEAK", "MISMATCH", "UNNECESSARY", "TEXT_DUPLICATION", "GENERIC_REFERENCE");
+    private static final Set<String> IGNORED_LEGACY_ISSUES = Set.of(
+            "LEAK", "UNNECESSARY", "TEXT_DUPLICATION", "GENERIC_REFERENCE");
 
     private final VerificationLlmClient llmClient;
 
@@ -101,12 +100,7 @@ public class AssetChecks {
         return Findings.pass(VerificationCheckType.ASSET_CONSISTENCY, "자산 key와 무결성 메타데이터가 일치합니다.");
     }
 
-    /**
-     * altText 에 정답이 새었는지, 발문과 어긋나는지 본다.
-     *
-     * <p>이 판정은 <b>Blind 가 아니라 원본</b>을 입력으로 한다. Blind 에는 정답이 없어서
-     * "altText 에 정답이 새어 있는지"를 판정할 수 없다. Solver 호출과 분리된 별개의 호출이다.
-     */
+    /** altText가 비어 있지 않고 발문이 요구하는 자산과 어긋나지 않는지 본다. */
     public VerificationFinding altTextIntegrity(QuestionSnapshotV1 snapshot) {
         if (snapshot.assets() == null || snapshot.assets().isEmpty()) {
             return Findings.notApplicable(VerificationCheckType.ASSET_CONSISTENCY,
@@ -126,25 +120,22 @@ public class AssetChecks {
         VerificationLlmClient.AssetJudgement judgement = llmClient.judgeAsset(snapshot);
         if (!judgement.hasIssue()) {
             return Findings.pass(VerificationCheckType.ASSET_CONSISTENCY,
-                    "그림 설명이 보이는 정보만 담고 발문과 일치합니다.");
+                    "그림 설명이 발문과 일치합니다.");
         }
 
         String issue = judgement.issue().toUpperCase();
-        if (!ISSUES.contains(issue)) {
+        if (IGNORED_LEGACY_ISSUES.contains(issue)) {
+            return Findings.pass(VerificationCheckType.ASSET_CONSISTENCY,
+                    "그림에 표시된 좌표·식·수치·보기 정보는 altText에 포함할 수 있습니다.");
+        }
+        if (!issue.equals("MISMATCH")) {
             return Findings.error(VerificationCheckType.ASSET_CONSISTENCY,
                     "자산 심사 응답의 문제 유형을 알 수 없습니다.", "issue=" + judgement.issue());
         }
-        VerificationIssueCode code = issue.equals("UNNECESSARY")
-                ? VerificationIssueCode.ASSET_INCONSISTENT
-                : VerificationIssueCode.ASSET_IMAGE_REGENERATABLE;
         return Findings.fail(
                 VerificationCheckType.ASSET_CONSISTENCY,
-                code,
-                issue.equals("LEAK")
-                        ? "그림 설명에 그림에 보이지 않는 정보가 있습니다."
-                        : issue.equals("MISMATCH")
-                        ? "그림 설명이 발문과 어긋납니다."
-                        : "그림 설명이 불필요하거나 본문을 반복하거나 일반적인 표현만 포함합니다.",
+                VerificationIssueCode.ASSET_IMAGE_REGENERATABLE,
+                "그림 설명이 발문과 어긋납니다.",
                 EvidencePrefix.of(EvidencePrefix.ALTTEXT, issue, judgement.detail()));
     }
 }
