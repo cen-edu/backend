@@ -34,6 +34,21 @@ jobs:
 
       - name: 테스트
         run: ./gradlew test --no-daemon
+        env:
+          # 테스트가 src/main/resources/application.yaml 을 그대로 쓰고, 그 파일이
+          # 개발자 로컬의 .env 를 읽는다. 그래서 .env 가 있는 기계에서만 통과했다.
+          # 깨끗한 체크아웃에서는 아래 값들이 없어 스프링 컨텍스트가 뜨지 못하고
+          # @SpringBootTest 가 전부 깨진다.
+          #
+          # 진짜 값이 아니어도 된다 — 형식만 맞으면 컨텍스트가 뜬다. 테스트는 S3 나
+          # 외부 서비스를 실제로 부르지 않는다(S3_ENABLED 기본값이 false).
+          #
+          # 근본 해결은 테스트가 로컬 .env 에 기대지 않게 만드는 것이다. 다만 그러려면
+          # 테스트 전용 설정을 따로 두어야 하고, 그건 이 저장소의 모든 테스트에 영향을
+          # 준다. 여기서는 CI 를 세우는 것까지만 한다.
+          JWT_SECRET: ci-only-not-a-real-secret-at-least-32-bytes-long
+          AWS_ACCESS_KEY_ID: ci-dummy
+          AWS_SECRET_ACCESS_KEY: ci-dummy
 
       # 실패했을 때 어느 테스트가 왜 깨졌는지 로그만으로는 읽기 어렵다.
       - name: 테스트 리포트 보관

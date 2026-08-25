@@ -60,6 +60,12 @@ jobs:
 
       - name: 테스트
         run: ./gradlew test --no-daemon
+        env:
+          # 테스트가 로컬 .env 에 기대고 있어, 깨끗한 체크아웃에서는 이 값들이 없으면
+          # 스프링 컨텍스트가 뜨지 못한다. 자세한 사정은 ci.yml 의 같은 자리에 적었다.
+          JWT_SECRET: ci-only-not-a-real-secret-at-least-32-bytes-long
+          AWS_ACCESS_KEY_ID: ci-dummy
+          AWS_SECRET_ACCESS_KEY: ci-dummy
 
       - name: 테스트 리포트 보관
         if: failure()
