@@ -52,6 +52,11 @@ public class ProblemGenerationPromptFactory {
                 쓰지 마라. 개념과 접근 관점만 서술하고 최종 정답 수치·계산 절차는 넣지 않는다.
                 학생에게 표시되는 contentBlocks, choices, steps, explanation, learningGuide의 수식은
                 인라인 LaTeX인 $...$로 감싸라(예: $2^3$, $\\frac{1}{2}$). 일반 문장과 단위만 있는 텍스트는 감싸지 마라.
+                JSON 문자열 안의 LaTeX 백슬래시는 반드시 JSON 규칙에 맞게 두 번(\\\\) 써라.
+                예를 들어 화면에 $\\frac{3}{4}$, $2\\times3$을 표시하려면 JSON 원문은
+                {"text":"$\\\\frac{3}{4}$"}, {"text":"$2\\\\times3$"}이어야 한다.
+                {"text":"$\\frac{3}{4}$"}처럼 백슬래시를 한 번만 쓰면 \\f·\\t가 제어문자로
+                해석되어 수식이 손상되므로 절대 그렇게 출력하지 마라.
                 answerUnits의 answerRaw는 화면 표시용 구분자($, $$, \\(, \\)) 없이 비교 가능한 원시값만 작성하라.
                 assets는 항상 []다 — 그림은 이 출력이 아니라 별도 단계에서 생성한다.
                 대신 이 문항이 좌표그래프(좌표평면 위의 점·직선·정비례/반비례 함수 그래프)를 반드시
