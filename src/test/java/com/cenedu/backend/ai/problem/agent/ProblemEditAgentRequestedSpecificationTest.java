@@ -34,6 +34,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class ProblemEditAgentRequestedSpecificationTest {
 
     @Test
+    void 요청_스펙을_JSON으로_직렬화해도_계산용_empty_필드가_생기지_않는다() throws Exception {
+        String json = new ObjectMapper().writeValueAsString(
+                new com.cenedu.backend.domain.problem.authoring.edit.RequestedProblemSpecification(
+                        null, "low", null, false, false));
+
+        assertThat(json).contains("\"difficulty\":\"low\"").doesNotContain("\"empty\"");
+    }
+
+    @Test
     void 난이도_변경값을_수정_대화_결과에_보존한다() {
         LlmClient client = mock(LlmClient.class);
         when(client.completeStructured(anyString(), anyList(), anyString())).thenReturn(new LlmResponse("""

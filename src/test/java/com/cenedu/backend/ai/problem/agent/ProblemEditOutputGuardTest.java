@@ -64,6 +64,24 @@ class ProblemEditOutputGuardTest {
         assertThat(decision.blocked()).as("차단 사유=%s", decision.reasonCode()).isFalse();
     }
 
+    @Test
+    void map으로_전달된_난이도_교체_응답도_통과시킨다() {
+        var result = new ProblemEditConversationResult(
+                EditConversationAction.REQUEST_CONFIRMATION,
+                List.of(new ProblemEditInstruction(EditTargetType.DIFFICULTY, null,
+                        EditChangeNature.STRUCTURAL, "난이도를 하로 낮춘다")),
+                null,
+                new RequestedProblemSpecification(null, "low", null, false, false),
+                "난이도를 낮출까요?");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> serialized = new ObjectMapper().convertValue(result, Map.class);
+
+        var decision = guard.inspect(request(), AgentResponse.ofData(
+                Map.of(ProblemEditAgentResultEnvelope.RESPONSE_KEY, serialized)));
+
+        assertThat(decision.blocked()).as("차단 사유=%s", decision.reasonCode()).isFalse();
+    }
+
     private AgentRequest request() {
         var payload = new ProblemEditAgentPayload(ProblemEditAgentPayload.CURRENT_SCHEMA_VERSION,
                 UUID.randomUUID(), 1L, 2L, AuthoringInteractionStatus.COLLECTING,

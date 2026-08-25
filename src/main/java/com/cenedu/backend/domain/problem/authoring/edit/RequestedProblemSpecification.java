@@ -9,7 +9,7 @@ import com.cenedu.backend.global.common.enums.QuestionType;
  * {@code requiresAsset}은 "이미지가 있는 문제로 바꿔줘"처럼 자료 유무 자체가 조건인 요청을 담으며
  * null이면 무관을 뜻한다. {@code differentProblemOnly}는 조건은 그대로 두고 다른 문항을 원하는
  * 요청("같은 조건으로 다른 문제 줘")을 표현한다 — 이 값이 없으면 그런 요청은 바꿀 값이 하나도 없어
- * {@link #isEmpty()}에 걸려 교체 요청이 아닌 것으로 사라진다.
+     * {@link #hasNoCriteria()}에 걸려 교체 요청이 아닌 것으로 사라진다.
  *
  * <p>{@code requiresNewProblem}은 교사가 기존 문항이 아니라 새로 만든 문항을 원한다고 명시한
  * 경우다("새로 만들어줘", "직접 출제해줘"). 교체는 기본적으로 문제은행 조회를 먼저 시도하므로,
@@ -47,7 +47,7 @@ public record RequestedProblemSpecification(
      * "교체 요청인가"를 판단하므로, 빈 스펙이 그대로 흘러가면 아무 변경도 없는 문항 전체
      * 재생성이 일어난다.
      */
-    public boolean isEmpty() {
+    public boolean hasNoCriteria() {
         return questionType == null && difficulty == null
                 && requiresAsset == null && !differentProblemOnly && !requiresNewProblem;
     }

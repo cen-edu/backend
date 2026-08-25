@@ -94,7 +94,7 @@ public class ProblemEditAgent implements Agent {
     /** 바꿀 값이 없는 빈 스펙을 "요청 없음"으로 되돌린다. */
     private RequestedProblemSpecification requestedSpecification(ProblemEditConversationResult result) {
         RequestedProblemSpecification specification = result.requestedSpecification();
-        return specification == null || specification.isEmpty() ? null : specification;
+        return specification == null || specification.hasNoCriteria() ? null : specification;
     }
 
     private boolean keyed(EditTargetType type) {
