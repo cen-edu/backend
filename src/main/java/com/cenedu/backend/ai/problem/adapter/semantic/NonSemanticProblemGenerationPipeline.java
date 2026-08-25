@@ -74,7 +74,12 @@ public final class NonSemanticProblemGenerationPipeline {
                 normalized.validate(candidate.snapshot());
                 // 문항이 좌표그래프를 필요로 하면 시각을 덧붙인다(2단계). 실패하면 예외가 나 재시도로
                 // 이어져, 그림을 참조하는 깨진 문항을 내보내지 않는다.
-                if (visualAugmenter != null && out.visualRequired()) {
+                // 생성 명령이 REQUIRED·COORDINATE_GRAPH를 명시하면 모델의 visualRequired 판단과
+                // 무관하게 그래프를 붙여, 호출자가 전달한 시각 요구 계약을 지킨다.
+                var visualReq = command.specification().visualRequirement();
+                boolean forcedGraph = visualReq.mode() == com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode.REQUIRED
+                        && visualReq.requiredKind() == com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.COORDINATE_GRAPH;
+                if (visualAugmenter != null && (forcedGraph || out.visualRequired())) {
                     candidate = visualAugmenter.augment(candidate, out.visualDescription(), command);
                 }
                 return candidate;

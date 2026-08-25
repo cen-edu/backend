@@ -93,7 +93,10 @@ public final class ProblemVisualAugmenter {
                 Map<String, SemanticResolvedValue> values = resolvedValues(graph);
                 diagramValidator.validateAll(List.of(spec), values);
                 renderer.render(spec, new DiagramRenderContext(values)); // 렌더 가능한지 조기 확인
-                return attach(candidate, command, spec, values, visualDescription);
+                // altText는 visualDescription이 아니라 그래프 기하에서 사실만 조합한다. visualDescription은
+                // "곡선 위가 아닌 점이 D" 처럼 정답을 드러내는 편집적 서술이 섞여 자산 검증에서 누출(LEAK)로
+                // FAIL 처리되기 때문이다. 좌표·직선·곡선 등 화면에 실제로 보이는 사실만 적어 누출을 원천 차단한다.
+                return attach(candidate, command, spec, values, factualAltText(graph));
             } catch (RuntimeException e) {
                 last = e;
             }
@@ -203,6 +206,41 @@ public final class ProblemVisualAugmenter {
                 base.explanation(), base.learningGuide(), base.rubricItems());
         structural.validate(snapshot);
         return ProblemCandidateDraft.legacy(candidate.requestId(), snapshot, plans, candidate.provenance());
+    }
+
+    /**
+     * 그래프 기하에서 사실만 뽑아 접근성 altText를 만든다. 좌표축 범위·눈금, 점의 좌표와 라벨,
+     * 선분·직선·정비례/반비례 곡선 등 화면에 실제로 보이는 것만 중립적으로 기술한다. 어느 점·보기가
+     * 정답인지 같은 편집적 해석은 넣지 않는다 — 그것이 자산 검증의 누출(LEAK) FAIL 원인이었다.
+     */
+    private String factualAltText(LiteralGraph g) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("좌표평면. x축 ").append(num(g.xMin())).append("부터 ").append(num(g.xMax()))
+          .append(", y축 ").append(num(g.yMin())).append("부터 ").append(num(g.yMax()))
+          .append(", 눈금 간격 x=").append(num(g.xTick())).append(" y=").append(num(g.yTick())).append(".");
+        for (LiteralPoint p : g.points()) {
+            sb.append(" 점 ");
+            if (p.label() != null && !p.label().isBlank()) sb.append(p.label()).append(' ');
+            sb.append('(').append(num(p.x())).append(", ").append(num(p.y())).append(").");
+        }
+        for (LiteralSegment s : g.segments()) {
+            sb.append(" 두 점을 잇는 선분.");
+        }
+        for (LiteralLine ln : g.lines()) {
+            sb.append(" 두 점을 지나는 직선.");
+        }
+        for (LiteralFunction f : g.functions()) {
+            boolean inverse = "INVERSE_PROPORTION".equals(f.kind());
+            sb.append(inverse ? " 반비례 곡선 y=" + num(f.coefficient()) + "/x."
+                              : " 정비례 직선 y=" + num(f.coefficient()) + "x.");
+        }
+        return sb.toString();
+    }
+
+    /** BigDecimal을 불필요한 0 없이 사람이 읽는 문자열로 만든다(예: 6.0 → 6). */
+    private static String num(BigDecimal value) {
+        if (value == null) return "0";
+        return value.stripTrailingZeros().toPlainString();
     }
 
     private static String visiblePrompt(QuestionSnapshotV1 snapshot) {

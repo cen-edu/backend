@@ -61,9 +61,9 @@ public class ProblemGenerationPromptFactory {
                 그래프가 필요 없으면 visualRequired=false, visualKind=null, visualDescription=null로 두고
                 없는 그림을 참조하지 마라. 표·도형 등 좌표그래프가 아닌 시각자료는 현재 만들지 않으므로
                 그런 문항은 visualRequired=false로 두고 텍스트로 자립하게 출제하라.
-                유형별 규칙:
+                %s유형별 규칙:
                 %s
-                """.formatted(typeRules(spec.questionType().name()));
+                """.formatted(forcedGraphInstruction(command), typeRules(spec.questionType().name()));
         List<ChatMessage> messages = new java.util.ArrayList<>();
         if (command.references() != null && !command.references().isEmpty()) {
             messages.add(ChatMessage.user("FEW_SHOT_JSON\n" + new FewShotReferenceSerializer().serialize(curriculum, command.references())));
@@ -80,6 +80,30 @@ public class ProblemGenerationPromptFactory {
             messages.add(ChatMessage.user(feedback.toString()));
         }
         return new ProblemGenerationPrompt(systemPrompt, messages);
+    }
+
+    /**
+     * 생성 명령이 좌표그래프를 명시적으로 요구(REQUIRED·COORDINATE_GRAPH)하면,
+     * 모델의 선택적 판단보다 우선하는 "반드시 그래프 문항" 지시를 앞에 덧붙인다.
+     * 이때 "모든 데이터를 발문 text에 포함" 규칙은 그래프에 담기는 좌표·직선·함수 정보에는
+     * 적용하지 않는다 — 그 정보는 visualDescription에만 넣고 발문은 그래프를 참조해야 한다.
+     * 명시적 요구가 아니면 빈 문자열이라 일반 생성 프롬프트에 영향이 없다.
+     */
+    private String forcedGraphInstruction(ProblemGenerationCommand command) {
+        var visual = command.specification().visualRequirement();
+        boolean forced = visual.mode() == com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode.REQUIRED
+                && visual.requiredKind() == com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.COORDINATE_GRAPH;
+        if (!forced) return "";
+        return """
+                [필수] 이 문항은 반드시 좌표그래프를 "보고 푸는" 문항으로 출제하라. 예외 없이
+                visualRequired=true, visualKind="COORDINATE_GRAPH"로 두고 visualDescription을 채워라.
+                이 문항에 한해 "모든 데이터를 발문 text에 포함" 규칙은 그래프에 담기는 정보
+                (좌표축 범위·눈금, 점의 좌표와 라벨, 직선/함수와 그 식)에는 적용하지 않는다 —
+                그 정보는 발문 text에 나열하지 말고 오직 visualDescription에만 적어라. 발문은
+                "다음 그래프를 보고 …"처럼 그림에 의존하게 쓰고, 자체 검산 (1)단계에서 학생이
+                그래프를 함께 본다고 가정하라. 그래프에서 값을 읽거나 그래프 위의 점을 고르거나
+                주어진 그래프의 식·기울기·비례상수·사분면을 판단하는 문항으로 만들어라.
+                """;
     }
 
     private String currentRequest(ProblemGenerationCommand command) {

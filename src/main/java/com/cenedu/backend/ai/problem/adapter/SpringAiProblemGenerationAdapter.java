@@ -8,6 +8,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind;
 import com.cenedu.backend.global.common.BusinessException;
 import com.cenedu.backend.global.common.ErrorCode;
 @Component
@@ -26,7 +27,13 @@ public final class SpringAiProblemGenerationAdapter implements ProblemGeneration
                 && originUnavailable) {
             throw new BusinessException(ErrorCode.PROBLEM_VISUAL_SOURCE_UNSUPPORTED);
         }
-        if (command.specification().visualRequirement().mode() == VisualGenerationMode.NONE) {
+        VisualGenerationMode mode = command.specification().visualRequirement().mode();
+        // NONE은 물론, 좌표그래프를 강제하는 REQUIRED도 안정적인 non-semantic+augmenter 경로로 보낸다.
+        // 좌표그래프는 이제 문항 단위 시각 생성(augmenter)이 신뢰성 있게 처리하므로, 불안정한
+        // 파라메트릭 semantic 경로로 보낼 이유가 없다. semantic 경로는 그 외 시각(PRESERVE_ORIGIN 등)만 맡는다.
+        if (mode == VisualGenerationMode.NONE
+                || (mode == VisualGenerationMode.REQUIRED
+                    && command.specification().visualRequirement().requiredKind() == VisualReferenceKind.COORDINATE_GRAPH)) {
             return nonSemanticPipeline.generate(command);
         }
         return semanticPipeline.generate(command);
