@@ -1,9 +1,14 @@
 # 이미지를 빌드해 Docker Hub 에 올리고 EC2 에 배포한다.
 #
+# 평소에는 이 스크립트를 쓰지 않는다. main 에 머지하면 GitHub Actions 가 배포한다
+# (.github/workflows/deploy.yml). 이 스크립트는 Actions 가 막혔을 때를 위한 길이다.
+#
 #   .\scripts\release.ps1 1.0.1                 백엔드만
-#   .\scripts\release.ps1 1.0.1 -Frontend       백엔드 + 프론트(같은 태그)
-#   .\scripts\release.ps1 1.0.1 -FrontendOnly   프론트만
 #   .\scripts\release.ps1 1.0.1 -SkipDeploy     빌드·푸시까지만 (EC2 는 건드리지 않는다)
+#
+# -Frontend / -FrontendOnly 는 더 이상 동작하지 않는다. 프론트가 Vercel 로 옮겨가며
+# 그 저장소에서 Dockerfile 이 빠졌다. EC2 에 예비로 떠 있는 프론트 이미지는
+# .env 의 FRONTEND_TAG 에 박아 둔 시점에 고정된다.
 #
 # 설정은 아래 기본값을 쓰고, 환경 변수가 있으면 그쪽이 이긴다. 인스턴스를 다시 만들어
 # 주소가 바뀌면 CEN_EDU_HOST 만 바꾸면 된다.
@@ -36,7 +41,7 @@ $DockerHubUser = Get-Setting 'DOCKERHUB_USER' 'suhwan1117'
 $RemoteHost    = Get-Setting 'CEN_EDU_HOST'   'ec2-user@54.180.102.43'
 $KeyPath       = Get-Setting 'CEN_EDU_KEY'    "$env:USERPROFILE\Documents\cen-edu.ppk"
 $FrontendRepo  = Get-Setting 'CEN_EDU_FRONTEND_REPO' "$env:USERPROFILE\Documents\cen-edu-frontend"
-$HealthUrl     = Get-Setting 'CEN_EDU_HEALTH_URL' 'https://d2u1d13c5vp4n5.cloudfront.net/actuator/health'
+$HealthUrl     = Get-Setting 'CEN_EDU_HEALTH_URL' 'https://api.educen.site/actuator/health'
 $Plink         = Get-Setting 'CEN_EDU_PLINK' 'C:\Program Files\PuTTY\plink.exe'
 
 $BackendRepoRoot = Split-Path -Parent $PSScriptRoot
