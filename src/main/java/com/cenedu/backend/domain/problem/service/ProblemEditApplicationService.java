@@ -132,7 +132,9 @@ public class ProblemEditApplicationService {
                     result.semanticPatch() == null ? UUID.randomUUID() : result.semanticPatch().requestId(),
                     sessionId, baseVersionId, List.copyOf(merged),
                     result.semanticPatch(),
-                    null, null, ReplacementSourcePolicy.NONE));
+                    result.requestedSpecification(), null,
+                    result.requestedSpecification() == null
+                            ? ReplacementSourcePolicy.NONE : ReplacementSourcePolicy.GENERATE_ONLY));
         } else if (result.action() == EditConversationAction.CANCEL) {
             conversationService.cancel(teacherId, sessionId);
         } else if (result.action() == EditConversationAction.CONFIRM_EXECUTION) {

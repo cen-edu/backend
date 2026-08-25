@@ -11,9 +11,11 @@ import com.cenedu.backend.domain.problem.authoring.edit.EditAction;
 import com.cenedu.backend.domain.problem.authoring.edit.EditTargetType;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditExecutionPlan;
+import com.cenedu.backend.domain.problem.authoring.generation.*;
 import com.cenedu.backend.domain.problem.authoring.model.*;
 import com.cenedu.backend.domain.problem.authoring.port.ProblemModificationPort;
 import com.cenedu.backend.domain.problem.authoring.validation.*;
+import com.cenedu.backend.domain.problem.authoring.visual.*;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
@@ -30,11 +32,13 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
     private final SnapshotStructuralValidator structuralValidator;
     private final SnapshotNormalizedValidator normalizedValidator;
     private final ProblemModificationSnapshotMerger snapshotMerger;
+    private final ProblemImageGenerationLoop imageGenerationLoop;
 
     public ProblemModificationAdapter(LlmClient llmClient, ObjectProvider<ObjectMapper> objectMapper,
             ModificationPromptStrategy promptStrategy, ProblemGenerationOutputMapper outputMapper,
             SnapshotStructuralValidator structuralValidator, SnapshotNormalizedValidator normalizedValidator,
-            ProblemModificationSnapshotMerger snapshotMerger) {
+            ProblemModificationSnapshotMerger snapshotMerger,
+            ObjectProvider<ProblemImageGenerationLoop> imageGenerationLoop) {
         this.llmClient = llmClient;
         this.objectMapper = objectMapper.getIfAvailable(ObjectMapper::new);
         this.promptStrategy = promptStrategy;
@@ -42,6 +46,7 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
         this.structuralValidator = structuralValidator;
         this.normalizedValidator = normalizedValidator;
         this.snapshotMerger = snapshotMerger;
+        this.imageGenerationLoop = imageGenerationLoop.getIfAvailable();
     }
 
     /** 수정 JSON을 생성하고 command의 requestId와 AI_MODIFY 출처를 적용한다. */
@@ -55,27 +60,46 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
             String response = llmClient.completeStructured(promptStrategy.create(command),
                     List.of(ChatMessage.user("확정된 수정 계획을 실행하라.")),
                     ProblemStructuredOutputSchemas.modificationDeltaFor(targets)).text();
-            ProblemGenerationOutput output = withProtectedBaseValues(command,
-                    objectMapper.readValue(response, ProblemGenerationOutput.class));
+            ProblemGenerationOutput modelOutput = objectMapper.readValue(response, ProblemGenerationOutput.class);
+            boolean regenerateVisual = shouldRegenerateCoordinateGraph(command, modelOutput);
+            ProblemGenerationOutput output = withProtectedBaseValues(
+                    command, modelOutput, regenerateVisual);
             var requested = command.plan().requestedSpecification();
-            ProblemCandidateDraft mapped = outputMapper.map(
-                    new com.cenedu.backend.domain.problem.authoring.generation.ProblemGenerationCommand(
+            ProblemGenerationCommand generationCommand =
+                    new ProblemGenerationCommand(
                             command.requestId(),
                             null,
-                            com.cenedu.backend.domain.problem.authoring.generation.GenerationPurpose.PERSONALIZED_APPLICATION,
-                            new com.cenedu.backend.domain.problem.authoring.generation.GenerationSpecification(
+                            GenerationPurpose.PERSONALIZED_APPLICATION,
+                            new GenerationSpecification(
                                     requested != null && requested.questionType() != null
                                             ? requested.questionType() : command.baseSnapshot().metadata().questionType(),
                                     requested != null && requested.difficulty() != null
                                             ? requested.difficulty() : command.baseSnapshot().metadata().difficulty(),
-                                    command.baseSnapshot().metadata().evaluationArea(), List.of()),
-                            new com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope(
+                                    command.baseSnapshot().metadata().evaluationArea(), List.of(), false,
+                                    regenerateVisual
+                                            ? new VisualGenerationRequirement(VisualGenerationMode.REQUIRED,
+                                                    VisualReferenceKind.COORDINATE_GRAPH)
+                                            : VisualGenerationRequirement.none()),
+                            new CurriculumScope(
                                 "2022_REVISED", "MIDDLE", 1, null, null,
                                 command.baseSnapshot().metadata().subUnitId(), "대단원", "중단원", "소단원"),
-                            List.of(), List.of()), output);
-            var mergedSnapshot = snapshotMerger.merge(command.plan(), command.baseSnapshot(), mapped.snapshot());
+                            List.of(), List.of());
+            ProblemCandidateDraft mapped = outputMapper.map(generationCommand, output);
+            if (regenerateVisual) {
+                if (imageGenerationLoop == null) {
+                    throw new IllegalStateException("그래프 수정에 필요한 이미지 생성 루프가 없습니다.");
+                }
+                mapped = imageGenerationLoop.generate(mapped, output, generationCommand);
+            }
+            var mergedSnapshot = snapshotMerger.merge(
+                    command.plan(), command.baseSnapshot(), mapped.snapshot());
+            if (regenerateVisual && command.plan().action() != EditAction.REPLACE) {
+                mergedSnapshot = withRegeneratedAssets(mergedSnapshot, mapped.snapshot());
+            }
+            var assetPlans = regenerateVisual || command.baseAssetPlans().isEmpty()
+                    ? mapped.assetPlans() : command.baseAssetPlans();
             ProblemCandidateDraft candidate = new ProblemCandidateDraft(
-                    command.requestId(), mergedSnapshot, mapped.assetPlans(),
+                    command.requestId(), mergedSnapshot, assetPlans,
                     command.baseSemanticModel(),
                     new CandidateProvenance(CandidateSourceType.AI_MODIFY, null, List.of()));
             structuralValidator.validate(candidate.snapshot());
@@ -105,22 +129,29 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
      * 판정되지 않는다. {@link ProblemModificationSnapshotMerger#merge}가 REPLACE를
      * 무조건 통과시키는 것과 같은 의도로, REPLACE일 때는 이 필드들도 모델 출력을 그대로 쓴다.
      *
-     * <p>assets는 예외다. 이 경로가 쓰는 {@link ProblemStructuredOutputSchemas#CANDIDATE}는
-     * assets를 항상 빈 배열로 강제한다 — 레거시 경로는 이미지를 새로 만들 수 없다. action과
-     * 무관하게 항상 기준 Snapshot의 자산을 그대로 유지한다.
+     * <p>assets는 예외다. 수정이 좌표그래프에 영향을 주면 기존 FIGURE를 제거해 이미지 생성
+     * 루프가 새 구조화 자산을 붙이게 하고, 영향이 없으면 기준 Snapshot의 자산을 유지한다.
      */
     private ProblemGenerationOutput withProtectedBaseValues(
             ProblemModificationCommand command,
-            ProblemGenerationOutput output
+            ProblemGenerationOutput output,
+            boolean regenerateVisual
     ) {
         QuestionSnapshotV1 base = command.baseSnapshot();
         ProblemEditExecutionPlan plan = command.plan();
         boolean replace = plan.action() == EditAction.REPLACE;
         boolean bodyEditable = replace || editable(plan, EditTargetType.QUESTION_BODY)
                 || editable(plan, EditTargetType.CONTENT_BLOCK);
+        List<ProblemGenerationOutput.ContentBlockOutput> selectedBlocks = bodyEditable
+                ? output.contentBlocks() : contentBlocks(base);
+        if (regenerateVisual) {
+            selectedBlocks = selectedBlocks == null ? List.of() : selectedBlocks.stream()
+                    .filter(block -> !"FIGURE".equals(block.blockKind()))
+                    .toList();
+        }
         return new ProblemGenerationOutput(
                 bodyEditable ? output.question() : firstQuestionText(base),
-                bodyEditable ? output.contentBlocks() : contentBlocks(base),
+                selectedBlocks,
                 replace || editable(plan, EditTargetType.CHOICE) ? output.choices() : choices(base),
                 replace || editable(plan, EditTargetType.STEP) ? output.steps() : steps(base),
                 replace || editable(plan, EditTargetType.ANSWER_UNIT) ? output.answerUnits() : answers(base),
@@ -129,7 +160,59 @@ public class ProblemModificationAdapter implements ProblemModificationPort {
                         ? output.learningGuide() : learningGuide(base),
                 replace || editable(plan, EditTargetType.RUBRIC_ITEM)
                         ? output.rubricItems() : rubrics(base),
-                assets(base), false, null, null);
+                regenerateVisual ? List.of() : assets(base), regenerateVisual,
+                regenerateVisual ? VisualReferenceKind.COORDINATE_GRAPH.name() : null,
+                regenerateVisual ? visualDescription(command, output) : null);
+    }
+
+    boolean shouldRegenerateCoordinateGraph(
+            ProblemModificationCommand command,
+            ProblemGenerationOutput output
+    ) {
+        if (command.baseSnapshot().assets().isEmpty()) return false;
+        boolean affectsVisual = command.plan().action() == EditAction.REPLACE
+                || editable(command.plan(), EditTargetType.ASSET)
+                || editable(command.plan(), EditTargetType.QUESTION_BODY)
+                || editable(command.plan(), EditTargetType.CONTENT_BLOCK);
+        boolean missingReusablePlan = command.baseAssetPlans().isEmpty();
+        if (!affectsVisual && !missingReusablePlan) return false;
+        boolean structuredCoordinateGraph = command.baseAssetPlans().stream()
+                .anyMatch(plan -> plan.specification() != null
+                        && plan.specification().diagramSpec() != null
+                        && plan.specification().diagramSpec().kind()
+                        == com.cenedu.backend.domain.problem.authoring.diagram.DiagramKind.COORDINATE_GRAPH);
+        return structuredCoordinateGraph || containsCoordinateGraphHint(command, output);
+    }
+
+    private boolean containsCoordinateGraphHint(
+            ProblemModificationCommand command,
+            ProblemGenerationOutput output
+    ) {
+        String context = (firstQuestionText(command.baseSnapshot()) + " "
+                + (output.question() == null ? "" : output.question()) + " "
+                + command.plan().instructions()).toLowerCase(java.util.Locale.ROOT);
+        return java.util.stream.Stream.of("좌표", "그래프", "기울기", "직선", "정비례", "반비례",
+                        "coordinate", "slope", "y=")
+                .anyMatch(context::contains);
+    }
+
+    private String visualDescription(
+            ProblemModificationCommand command,
+            ProblemGenerationOutput output
+    ) {
+        String question = output.question() == null || output.question().isBlank()
+                ? firstQuestionText(command.baseSnapshot()) : output.question();
+        String description = "수정 지시=" + command.plan().instructions() + "; 수정된 문제=" + question;
+        return description.length() > 1500 ? description.substring(0, 1500) : description;
+    }
+
+    private QuestionSnapshotV1 withRegeneratedAssets(
+            QuestionSnapshotV1 merged,
+            QuestionSnapshotV1 generated
+    ) {
+        return new QuestionSnapshotV1(merged.schemaVersion(), merged.metadata(), merged.contentBlocks(),
+                generated.assets(), merged.choices(), merged.steps(), merged.answerUnits(),
+                merged.explanation(), merged.learningGuide(), merged.rubricItems());
     }
 
     private boolean editable(ProblemEditExecutionPlan plan, EditTargetType type) {

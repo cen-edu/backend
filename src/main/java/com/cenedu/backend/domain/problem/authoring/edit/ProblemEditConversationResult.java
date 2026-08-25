@@ -8,10 +8,17 @@ public record ProblemEditConversationResult(
         EditConversationAction action,
         List<ProblemEditInstruction> instructionDeltas,
         ProblemSemanticPatch semanticPatch,
+        RequestedProblemSpecification requestedSpecification,
         String assistantMessage
 ) {
     public ProblemEditConversationResult(EditConversationAction action,
             List<ProblemEditInstruction> instructionDeltas, String assistantMessage) {
-        this(action, instructionDeltas, null, assistantMessage);
+        this(action, instructionDeltas, null, null, assistantMessage);
+    }
+
+    public ProblemEditConversationResult(EditConversationAction action,
+            List<ProblemEditInstruction> instructionDeltas, ProblemSemanticPatch semanticPatch,
+            String assistantMessage) {
+        this(action, instructionDeltas, semanticPatch, null, assistantMessage);
     }
 }

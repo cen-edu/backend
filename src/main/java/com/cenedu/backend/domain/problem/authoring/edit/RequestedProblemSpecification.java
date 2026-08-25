@@ -7,4 +7,12 @@ public record RequestedProblemSpecification(
         QuestionType questionType,
         String difficulty
 ) {
+    public RequestedProblemSpecification {
+        if (difficulty != null && !java.util.Set.of("low", "mid", "high").contains(difficulty)) {
+            throw new IllegalArgumentException("수정 요청 난이도는 low, mid, high 중 하나여야 합니다.");
+        }
+        if (questionType == null && difficulty == null) {
+            throw new IllegalArgumentException("수정할 문항 유형 또는 난이도가 필요합니다.");
+        }
+    }
 }
