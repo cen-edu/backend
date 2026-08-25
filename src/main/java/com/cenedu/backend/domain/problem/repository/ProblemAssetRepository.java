@@ -25,6 +25,11 @@ public interface ProblemAssetRepository
     List<ProblemAsset> findAllByQuestionIds(
         @Param("questionIds") Collection<Long> questionIds
     );
+
+    /** 후보 문항 중 자산을 하나 이상 가진 문항 ID를 중복 없이 반환한다. */
+    @Query("select distinct asset.question.id from ProblemAsset asset where asset.question.id in :questionIds")
+    List<Long> findQuestionIdsWithAssets(@Param("questionIds") Collection<Long> questionIds);
+
     /** 문항의 지정된 이미지 키에 대응하는 자산을 반환한다. */
     Optional<ProblemAsset> findByQuestionIdAndAssetKey(Long questionId, String assetKey);
 

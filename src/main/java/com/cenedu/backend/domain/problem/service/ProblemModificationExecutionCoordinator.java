@@ -286,7 +286,8 @@ public class ProblemModificationExecutionCoordinator {
         // 후보를 하나만 뽑으면 그 하나가 구조 검증에 걸리거나 자료 조건이 맞지 않는 순간
         // 조건에 맞는 문항이 더 있어도 생성 경로로 새어 나간다.
         var candidates = questionSelector.selectAvailable(baseSnapshot.metadata().subUnitId(),
-                difficulty, type, BANK_CANDIDATE_LIMIT, usedQuestionIds(plan, baseSnapshot));
+                difficulty, type, BANK_CANDIDATE_LIMIT, usedQuestionIds(plan, baseSnapshot),
+                requested == null ? null : requested.requiresAsset());
         if (candidates.isEmpty()) return null;
         var bank = bankSnapshotQueryService.getSnapshots(candidates.stream()
                         .map(com.cenedu.backend.domain.problem.entity.ProblemQuestion::getId).toList()).stream()
