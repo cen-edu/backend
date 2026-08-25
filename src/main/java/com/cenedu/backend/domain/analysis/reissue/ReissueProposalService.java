@@ -59,14 +59,6 @@ public class ReissueProposalService {
     /** 유사도 기준으로 넘길 오답 문항 수 상한. 프롬프트가 무한정 길어지지 않게 자른다. */
     private static final int MAX_REFERENCE_QUESTIONS = 10;
 
-    /**
-     * 대표값으로 뽑기 위한 최소 채점 표본.
-     *
-     * <p>오답률이 아니라 오답 개수로 고르게 되면서 크게 걸 이유가 없어졌다. 한 문항만 채점된
-     * 영역을 후보에서 빼는 정도로 둔다.
-     */
-    private static final int MIN_EVIDENCE_SAMPLE = 2;
-
     /** 근거가 하나도 없을 때 서 있을 자리. 위아래 어느 쪽으로도 조절할 수 있는 가운데다. */
     private static final short FALLBACK_DIFFICULTY = DifficultyLadder.MID;
 
@@ -353,8 +345,9 @@ public class ReissueProposalService {
      * 만들라" 고 알려 주는 것이라, 비율이 높은 영역보다 실제로 많이 틀린 영역이 맞다.
      *
      * <p>개수로 고르면 표본이 적은 영역이 대표를 가로채지 못한다. 오답률로 고를 때는 2문항 중
-     * 1개 틀린 영역(50%)이 10문항 중 4개 틀린 영역(40%)을 이겨서 최소 채점 수를 크게 걸어야
-     * 했는데, 그럴 필요가 없어졌다.
+     * 1개 틀린 영역(50%)이 10문항 중 4개 틀린 영역(40%)을 이겨서 최소 채점 수를 걸어야 했는데,
+     * 그럴 필요가 없어져 그 문턱도 없앴다. 그 영역 문항이 하나뿐이고 그걸 틀렸다면 그 한 건이
+     * 근거의 전부다.
      *
      * <p>오답 개수에 바닥을 두지 않는다. 소단원 하나에서 나온 오답이 한 건뿐이면 그 한 건이
      * 근거의 전부다 — 약한 근거가 아니라 완전한 근거다. 교사에게는 "이 영역에서 틀렸다" 는
@@ -369,7 +362,6 @@ public class ReissueProposalService {
             List<ReissueProposalResponse.EvaluationAreaEvidence> evidence
     ) {
         return evidence.stream()
-                .filter(item -> item.gradedItemCount() >= MIN_EVIDENCE_SAMPLE)
                 .filter(item -> item.incorrectItemCount() > 0)
                 .max(Comparator.comparingInt(
                                 ReissueProposalResponse.EvaluationAreaEvidence::incorrectItemCount)
@@ -384,7 +376,6 @@ public class ReissueProposalService {
             List<ReissueProposalResponse.DiagnosticStageEvidence> evidence
     ) {
         return evidence.stream()
-                .filter(item -> item.gradedUnitCount() >= MIN_EVIDENCE_SAMPLE)
                 .filter(item -> item.incorrectUnitCount() > 0)
                 .max(Comparator.comparingInt(
                                 ReissueProposalResponse.DiagnosticStageEvidence::incorrectUnitCount)
