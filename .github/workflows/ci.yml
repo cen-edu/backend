@@ -1,0 +1,45 @@
+# PR 에서 테스트를 돌린다.
+#
+# main push 는 여기서 다루지 않는다. 그쪽은 Deploy 워크플로가 배포 전에 같은 테스트를
+# 돌리므로, 여기서도 돌리면 같은 커밋을 두 번 검사하며 실행 시간만 두 배로 쓴다.
+#
+# OPENAI_API_KEY 를 주지 않는다. *LiveTest 들이 @EnabledIfEnvironmentVariable 로
+# 그 키를 보고 스스로 켜지고 꺼지므로, 키가 없으면 자동으로 건너뛴다. 키를 넣으면
+# 실제 OpenAI 를 호출해 PR 마다 수 분과 토큰이 나간다.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+# 같은 브랜치에 연달아 push 하면 이전 실행을 취소한다. 무료 실행 시간을 아낀다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21 설치
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Gradle 설정
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 테스트
+        run: ./gradlew test --no-daemon
+
+      # 실패했을 때 어느 테스트가 왜 깨졌는지 로그만으로는 읽기 어렵다.
+      - name: 테스트 리포트 보관
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: build/reports/tests/test
+          retention-days: 7
