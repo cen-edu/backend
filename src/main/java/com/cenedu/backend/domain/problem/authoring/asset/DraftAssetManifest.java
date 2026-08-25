@@ -18,4 +18,22 @@ public record DraftAssetManifest(
                 plans == null ? List.of() : List.copyOf(plans),
                 List.of());
     }
+
+    /**
+     * 이미 문제은행에 적재된 문항의 이미지를 그대로 가리키는 manifest를 만든다.
+     *
+     * <p>은행 문항은 생성 계획 없이 최종 저장 키만 갖고 있으므로 plans는 비고 artifacts만 채운다.
+     * 이 manifest를 만들지 않고 빈 값을 저장하면 미리보기가 문항의 이미지를 찾지 못하고,
+     * 이 Version을 기준으로 다시 AI 수정을 걸 때도 자산 정보가 사라진 채로 넘어간다.
+     */
+    public static DraftAssetManifest forBankReuse(java.util.Map<String, String> assetStorageKeys) {
+        if (assetStorageKeys == null || assetStorageKeys.isEmpty()) {
+            return new DraftAssetManifest(CURRENT_SCHEMA_VERSION, List.of(), List.of());
+        }
+        return new DraftAssetManifest(CURRENT_SCHEMA_VERSION, List.of(),
+                assetStorageKeys.entrySet().stream()
+                        .map(entry -> new DraftAssetArtifact(entry.getKey(), DraftAssetStatus.READY,
+                                entry.getValue(), null, null, null, null, 0, null))
+                        .toList());
+    }
 }

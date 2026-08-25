@@ -133,8 +133,7 @@ public class ProblemEditApplicationService {
                     sessionId, baseVersionId, List.copyOf(merged),
                     result.semanticPatch(),
                     result.requestedSpecification(), null,
-                    result.requestedSpecification() == null
-                            ? ReplacementSourcePolicy.NONE : ReplacementSourcePolicy.GENERATE_ONLY));
+                    replacementSourcePolicy(result.requestedSpecification())));
         } else if (result.action() == EditConversationAction.CANCEL) {
             conversationService.cancel(teacherId, sessionId);
         } else if (result.action() == EditConversationAction.CONFIRM_EXECUTION) {
@@ -155,6 +154,22 @@ public class ProblemEditApplicationService {
             }
         }
         return ProblemEditTurnResponse.from(result, executionResult);
+    }
+
+    /**
+     * 교체 요청을 문제은행 조회 우선과 신규 생성 전용 중 하나로 배선한다.
+     *
+     * <p>기본값이 BANK_FIRST인 이유는, 이미 검증을 통과해 적재된 문항으로 바꾸면 AI 호출도
+     * 재검증도 없이 끝나기 때문이다. 조건에 맞는 문항이 없으면
+     * {@link ProblemModificationExecutionCoordinator}가 알아서 생성 경로로 넘어간다.
+     *
+     * <p>다만 교사가 "새로 만들어줘"라고 명시했는데도 은행 문항을 내밀면 요청을 어긴 것이므로,
+     * 그 경우만 GENERATE_ONLY로 은행 조회를 건너뛴다.
+     */
+    private ReplacementSourcePolicy replacementSourcePolicy(RequestedProblemSpecification specification) {
+        if (specification == null) return ReplacementSourcePolicy.NONE;
+        return specification.requiresNewProblem()
+                ? ReplacementSourcePolicy.GENERATE_ONLY : ReplacementSourcePolicy.BANK_FIRST;
     }
 
     private List<ProblemEditInstruction> accumulated(ProblemAuthoringSession session) {

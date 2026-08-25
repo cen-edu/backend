@@ -22,6 +22,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** 확정 수정 계획을 RESTORE 또는 AI 수정 실행으로 분기한다. */
 @Component
 public class ProblemModificationExecutionCoordinator {
+    /** 구조 검증·자료 조건에 걸리는 후보가 있어도 교체가 성사되도록 확보하는 후보 수다. */
+    private static final int BANK_CANDIDATE_LIMIT = 8;
+
     private final ProblemModificationWorker modificationWorker;
     private final ProblemAuthoringStateService stateService;
     private final ProblemQuestionSelector questionSelector;
@@ -35,6 +38,7 @@ public class ProblemModificationExecutionCoordinator {
     private ProblemSemanticExtractionService semanticExtractionService;
     private CurriculumUnitQueryService curriculumUnitQueryService;
     private ProblemTeacherDecisionEventService decisionEventService;
+    private com.cenedu.backend.domain.problem.authoring.edit.ReplacementExclusionPort replacementExclusionPort;
 
     public ProblemModificationExecutionCoordinator(ProblemModificationWorker modificationWorker,
             ProblemAuthoringStateService stateService, ProblemQuestionSelector questionSelector,
@@ -55,6 +59,13 @@ public class ProblemModificationExecutionCoordinator {
     /** 교사 결정 이벤트 기록기를 선택적으로 연결한다. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setDecisionEventService(ProblemTeacherDecisionEventService service) { this.decisionEventService = service; }
+
+    /** 학습지처럼 Session 바깥 문맥이 강제하는 교체 후보 제외 규칙을 선택적으로 연결한다. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setReplacementExclusionPort(
+            com.cenedu.backend.domain.problem.authoring.edit.ReplacementExclusionPort port) {
+        this.replacementExclusionPort = port;
+    }
 
     /** semantic patch 실행기를 선택적으로 연결해 기존 legacy 경로와 공존시킨다. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -116,6 +127,20 @@ public class ProblemModificationExecutionCoordinator {
                             java.util.EnumSet.allOf(com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticImpactArea.class), false, false),
                     true, false);
         }
+        // 문제은행 조회 교체는 AI 호출 없이 끝나므로 semantic patch 실행보다 먼저 시도한다.
+        // ProblemEditPolicy.effectivePatch가 교체 요청의 patch를 항상 STRUCTURAL_REGENERATION으로
+        // 정규화하므로, 이 검사가 아래에 있으면 semanticPatch 분기가 항상 먼저 return해
+        // BANK_FIRST 경로에 영원히 도달하지 못한다.
+        if (plan.action() == EditAction.REPLACE
+                && plan.sourcePolicy() == ReplacementSourcePolicy.BANK_FIRST) {
+            ProblemModificationExecutionResult bankResult =
+                    transactionTemplate.execute(status -> tryBankReuse(teacherId, plan, baseSnapshot));
+            if (bankResult != null) {
+                if (decisionEventService != null) decisionEventService.recordReplacement(
+                        teacherId, plan.sessionId(), plan.baseVersionId(), plan.requestId(), plan.instructions());
+                return bankResult;
+            }
+        }
         if (plan.semanticPatch() != null) {
             ProblemAuthoringVersion baseVersion = versionRepository
                     .findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
@@ -160,15 +185,6 @@ public class ProblemModificationExecutionCoordinator {
                 throw new com.cenedu.backend.global.common.BusinessException(
                         com.cenedu.backend.global.common.ErrorCode.PROBLEM_SEMANTIC_MODEL_UNSUPPORTED);
             return semanticModificationService.apply(teacherId, plan.sessionId(), baseVersion, plan.semanticPatch());
-        }
-        if (plan.action() == EditAction.REPLACE
-                && plan.sourcePolicy() == ReplacementSourcePolicy.BANK_FIRST) {
-            Object bankResult = transactionTemplate.execute(status -> tryBankReuse(teacherId, plan, baseSnapshot));
-            if (bankResult != null) {
-                if (decisionEventService != null) decisionEventService.recordReplacement(
-                        teacherId, plan.sessionId(), plan.baseVersionId(), plan.requestId(), plan.instructions());
-                return bankResult;
-            }
         }
         ProblemAuthoringVersion executionBaseVersion = versionRepository
                 .findByIdAndSessionId(plan.baseVersionId(), plan.sessionId())
@@ -251,18 +267,33 @@ public class ProblemModificationExecutionCoordinator {
                 promoted, true);
     }
 
-    private Long tryBankReuse(long teacherId, ProblemEditExecutionPlan plan,
+    /**
+     * 요청 조건에 맞는 다른 문항을 문제은행에서 찾아 AI 호출 없이 현재 Version으로 교체한다.
+     *
+     * <p>조건에 맞는 재사용 가능한 문항이 없으면 null을 반환해 호출자가 생성 경로로 넘어가게 한다.
+     * 실패를 예외로 올리지 않는 이유는 이 경로가 "먼저 시도해 보는" 최적화이지 요청의 성패를
+     * 결정하는 단계가 아니기 때문이다.
+     */
+    private ProblemModificationExecutionResult tryBankReuse(long teacherId, ProblemEditExecutionPlan plan,
                               com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 baseSnapshot) {
         var requested = plan.requestedSpecification();
         var type = requested == null || requested.questionType() == null
                 ? baseSnapshot.metadata().questionType() : requested.questionType();
         String difficultyValue = requested == null || requested.difficulty() == null
                 ? baseSnapshot.metadata().difficulty() : requested.difficulty();
+        Short difficulty = difficulty(difficultyValue);
+        if (difficulty == null || baseSnapshot.metadata().subUnitId() == null) return null;
+        // 후보를 하나만 뽑으면 그 하나가 구조 검증에 걸리거나 자료 조건이 맞지 않는 순간
+        // 조건에 맞는 문항이 더 있어도 생성 경로로 새어 나간다.
         var candidates = questionSelector.selectAvailable(baseSnapshot.metadata().subUnitId(),
-                difficulty(difficultyValue), type, 1, java.util.Set.of());
+                difficulty, type, BANK_CANDIDATE_LIMIT, usedQuestionIds(plan, baseSnapshot));
         if (candidates.isEmpty()) return null;
-        var bank = bankSnapshotQueryService.getSnapshots(List.of(candidates.getFirst().getId())).getFirst();
-        if (!bank.reusable()) return null;
+        var bank = bankSnapshotQueryService.getSnapshots(candidates.stream()
+                        .map(com.cenedu.backend.domain.problem.entity.ProblemQuestion::getId).toList()).stream()
+                .filter(com.cenedu.backend.domain.problem.authoring.snapshot.BankSnapshotResult::reusable)
+                .filter(candidate -> matchesAssetRequirement(requested, candidate))
+                .findFirst().orElse(null);
+        if (bank == null) return null;
         var session = sessionRepository.findOwnedByIdForUpdate(plan.sessionId(), teacherId)
                 .orElseThrow(() -> new com.cenedu.backend.global.common.BusinessException(
                         com.cenedu.backend.global.common.ErrorCode.PROBLEM_AUTHORING_SESSION_NOT_FOUND));
@@ -271,17 +302,60 @@ public class ProblemModificationExecutionCoordinator {
         ProblemAuthoringVersion version = versionRepository.save(ProblemAuthoringVersion.create(
                 plan.sessionId(), versionNo, plan.baseVersionId(), plan.requestId(),
                 AuthoringOperationType.BANK_REUSE, bank.questionId(), 1,
-                jsonCodec.write(bank.snapshot()), "{}", "문제은행 교체"));
+                jsonCodec.write(bank.snapshot()),
+                jsonCodec.write(DraftAssetManifest.forBankReuse(bank.assetStorageKeys())),
+                "문제은행 교체"));
         version.startVerification(java.util.UUID.nameUUIDFromBytes(
                 ("bank-edit:" + plan.requestId()).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         version.passVerification("{\"source\":\"BANK_REUSE\"}");
         session.attachPendingVersion(version.getId());
         session.promotePendingVersion(version.getId(), version.getVerificationStatus());
-        return version.getId();
+        return new ProblemModificationExecutionResult(version.getId(),
+                com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticEditMode.BANK_REUSE,
+                new com.cenedu.backend.domain.problem.authoring.edit.semantic.ProblemSemanticDiff(List.of(),
+                        java.util.EnumSet.allOf(com.cenedu.backend.domain.problem.authoring.edit.semantic.SemanticImpactArea.class),
+                        true, false),
+                true, false);
     }
 
-    private short difficulty(String value) {
-        return switch (value) { case "low" -> 1; case "mid" -> 2; case "high" -> 3;
-            default -> throw new IllegalArgumentException("지원하지 않는 난이도입니다."); };
+    /**
+     * 이미 이 Session에서 거쳐 간 문항을 후보에서 제외한다.
+     *
+     * <p>제외하지 않으면 "다른 문제로 바꿔줘"를 반복할 때 같은 문항이 계속 돌아온다 — 특히
+     * 소단원·난이도·유형이 모두 같은 후보 풀이 좁을 때 첫 후보가 원래 문항 자신인 경우가 흔하다.
+     *
+     * <p>학습지 문항을 다시 수정하는 Session이면 그 학습지에 이미 들어 있는 문항도 함께 뺀다.
+     * 조회 단계에서 빼지 않으면 교체를 확정하는 순간 학습지 문항 중복으로 뒤늦게 실패한다.
+     */
+    private java.util.Set<Long> usedQuestionIds(ProblemEditExecutionPlan plan,
+            com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1 baseSnapshot) {
+        java.util.Set<Long> used = new java.util.LinkedHashSet<>();
+        if (baseSnapshot.metadata().derivedFromQuestionId() != null) {
+            used.add(baseSnapshot.metadata().derivedFromQuestionId());
+        }
+        versionRepository.findAllBySessionIdOrderByVersionNo(plan.sessionId()).stream()
+                .map(ProblemAuthoringVersion::getSourceQuestionId)
+                .filter(java.util.Objects::nonNull).forEach(used::add);
+        if (replacementExclusionPort != null) {
+            used.addAll(replacementExclusionPort.excludedQuestionIds(plan.sessionId()));
+        }
+        return used;
+    }
+
+    /** 교사가 자료 유무를 조건으로 걸었을 때만 후보의 자산 보유 여부를 확인한다. */
+    private boolean matchesAssetRequirement(
+            com.cenedu.backend.domain.problem.authoring.edit.RequestedProblemSpecification requested,
+            com.cenedu.backend.domain.problem.authoring.snapshot.BankSnapshotResult candidate) {
+        if (requested == null || requested.requiresAsset() == null) return true;
+        boolean hasAsset = candidate.snapshot() != null && candidate.snapshot().assets() != null
+                && !candidate.snapshot().assets().isEmpty();
+        return requested.requiresAsset() == hasAsset;
+    }
+
+    /** 스냅샷이 예상 밖의 난이도 표기를 담고 있으면 교체를 포기하고 생성 경로로 넘긴다. */
+    private Short difficulty(String value) {
+        if (value == null) return null;
+        return switch (value) { case "low" -> (short) 1; case "mid" -> (short) 2;
+            case "high" -> (short) 3; default -> null; };
     }
 }

@@ -371,9 +371,12 @@ public final class ProblemStructuredOutputSchemas {
                     "requestedSpecification":{"type":["object","null"],"additionalProperties":false,
                       "properties":{
                         "questionType":{"type":["string","null"],"enum":["MULTIPLE_CHOICE","SHORT_INPUT","ESSAY","STEP_FILL",null]},
-                        "difficulty":{"type":["string","null"],"enum":["low","mid","high",null]}
+                        "difficulty":{"type":["string","null"],"enum":["low","mid","high",null]},
+                        "requiresAsset":{"type":["boolean","null"]},
+                        "differentProblemOnly":{"type":"boolean"},
+                        "requiresNewProblem":{"type":"boolean"}
                       },
-                      "required":["questionType","difficulty"]
+                      "required":["questionType","difficulty","requiresAsset","differentProblemOnly","requiresNewProblem"]
                     },
                     "assistantMessage":{"type":"string"}
                   },

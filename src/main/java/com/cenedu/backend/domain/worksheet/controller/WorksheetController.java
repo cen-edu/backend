@@ -2,13 +2,17 @@ package com.cenedu.backend.domain.worksheet.controller;
 
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetAssignmentCreateRequest;
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetCreateRequest;
+import com.cenedu.backend.domain.worksheet.dto.request.WorksheetItemEditApplyRequest;
 import com.cenedu.backend.domain.worksheet.dto.request.WorksheetListRequest;
 import com.cenedu.backend.domain.worksheet.dto.response.WorksheetAssignmentCreateResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.WorksheetCreateResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.WorksheetDetailResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.WorksheetGenSpecPrefillResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.WorksheetItemEditApplyResponse;
+import com.cenedu.backend.domain.worksheet.dto.response.WorksheetItemEditSessionResponse;
 import com.cenedu.backend.domain.worksheet.dto.response.WorksheetListResponse;
 import com.cenedu.backend.domain.worksheet.service.WorksheetCommandService;
+import com.cenedu.backend.domain.worksheet.service.WorksheetItemEditService;
 import com.cenedu.backend.domain.worksheet.service.WorksheetQueryService;
 import com.cenedu.backend.global.common.ApiResponse;
 import com.cenedu.backend.global.security.AuthenticatedUser;
@@ -41,6 +45,7 @@ public class WorksheetController {
 
     private final WorksheetCommandService worksheetCommandService;
     private final WorksheetQueryService worksheetQueryService;
+    private final WorksheetItemEditService worksheetItemEditService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -117,6 +122,59 @@ public class WorksheetController {
     ) {
         return ApiResponse.success(worksheetCommandService.assignWorksheet(
                 user.memberId(), worksheetId, request));
+    }
+
+    @PostMapping("/{worksheetId}/items/{worksheetItemId}/edit-session")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "학습지 문항 수정 세션 열기", description = """
+            저장된 학습지의 문항 하나를 다시 수정할 수 있는 작성 세션을 연다.
+            반환된 sessionId로 /api/teacher/problems/authoring-sessions/{sessionId}/edit/turns 를
+            그대로 사용하고, 수정이 끝나면 같은 sessionId로 교체를 확정한다.
+            배포된 학습지의 문항은 열 수 없다.
+            """)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "201", description = "수정 세션 생성"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404", description = "학습지 또는 문항이 없거나 내 것이 아님",
+                    content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409", description = "배포된 학습지이거나 문항을 스냅샷으로 만들 수 없음",
+                    content = @Content)
+    })
+    public ApiResponse<WorksheetItemEditSessionResponse> openItemEditSession(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long worksheetId,
+            @PathVariable long worksheetItemId
+    ) {
+        return ApiResponse.success(worksheetItemEditService.openEditSession(
+                user.memberId(), worksheetId, worksheetItemId));
+    }
+
+    @PostMapping("/{worksheetId}/items/{worksheetItemId}/edit-session/apply")
+    @Operation(summary = "학습지 문항 수정 결과 반영", description = """
+            수정 세션을 최종화하고 그 결과 문항으로 학습지 문항을 교체한다.
+            표시 순서와 배점은 유지한다. 학습지 종류가 허용하지 않는 문항 유형이거나
+            같은 문항이 이미 학습지에 있으면 교체하지 않는다.
+            """)
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "반영 완료"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400", description = "이 문항에서 연 세션이 아니거나 유형 규칙 위반",
+                    content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409", description = "배포된 학습지이거나 검증 전 수정 세션",
+                    content = @Content)
+    })
+    public ApiResponse<WorksheetItemEditApplyResponse> applyItemEditSession(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable long worksheetId,
+            @PathVariable long worksheetItemId,
+            @Valid @RequestBody WorksheetItemEditApplyRequest request
+    ) {
+        return ApiResponse.success(worksheetItemEditService.applyEditSession(
+                user.memberId(), worksheetId, worksheetItemId, request.sessionId()));
     }
 
     @DeleteMapping("/{worksheetId}")
