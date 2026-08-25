@@ -1,9 +1,7 @@
 # AWS EC2 배포용 compose. 이 저장소에서 빌드하지 않는다 — Docker Hub 에 올려 둔
 # 이미지를 받아서 띄운다(t3.micro 1GB 에서 Gradle 빌드는 OOM 으로 죽는다).
 #
-# 프론트는 Vercel 이 서빙한다. 여기 있는 것은 API 와 그 앞단뿐이다.
-#
-# EC2 에 올리는 파일:
+# EC2 에 올리는 파일은 이 파일과 .env 두 개뿐이다.
 #   scp -i cen-edu.pem deploy/docker-compose.prod.yml ec2-user@<EIP>:/home/ec2-user/app/
 #   scp -i cen-edu.pem deploy/.env.prod.example       ec2-user@<EIP>:/home/ec2-user/app/.env
 #   scp -i cen-edu.pem -r deploy/nginx                ec2-user@<EIP>:/home/ec2-user/app/
@@ -78,6 +76,7 @@ services:
       JAVA_OPTS: -XX:MaxRAMPercentage=55.0
       # 컨테이너 이름이 곧 호스트명이다. EC2 사설 IP 를 박으면 인스턴스를 새로 만들 때마다 바뀐다.
       DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
+      PROBLEM_DRAFT_ROOT: /var/lib/cen-edu/problem-drafts
       TZ: Asia/Seoul
     depends_on:
       postgres:
@@ -91,6 +90,8 @@ services:
       retries: 10
       # Flyway 마이그레이션 + 컨텍스트 기동에 시간이 걸린다. 이 구간의 실패는 세지 않는다.
       start_period: 90s
+    volumes:
+      - problem-drafts:/var/lib/cen-edu/problem-drafts
     networks:
       - cen-edu-net
 
@@ -171,6 +172,7 @@ networks:
 volumes:
   # 컨테이너를 지워도 데이터는 남는다. 이미지를 새 태그로 갈아끼워도 이 볼륨은 건드리지 않는다.
   postgres-data:
+  problem-drafts:
   # 발급받은 인증서. 이 볼륨을 잃으면 재발급해야 한다(Let's Encrypt 주당 발급 한도에 걸린다).
   letsencrypt:
   # ACME 소유 확인용 임시 파일. nginx 가 읽고 certbot 이 쓴다.

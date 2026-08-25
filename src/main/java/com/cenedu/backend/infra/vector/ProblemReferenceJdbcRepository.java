@@ -29,6 +29,7 @@ public class ProblemReferenceJdbcRepository {
                       AND %s
                       AND difficulty IN (:allowedDifficulties)
                       AND (:allowCrossType OR question_type = :questionType)
+                      AND (:requiredVisualKind = 'NONE' OR visual_kind = :requiredVisualKind)
                 """ + exclusion + """
                     ORDER BY embedding <=> CAST(:queryVector AS vector) LIMIT :candidateLimit)
                 SELECT question_id, cosine_distance, duplicate_cluster_key, source_family_key,
@@ -40,6 +41,7 @@ public class ProblemReferenceJdbcRepository {
                 .addValue("grade", query.curriculum().grade())
                 .addValue("subUnitId", query.curriculum().subUnitId()).addValue("allowedDifficulties", List.of("low", "mid", "high"))
                 .addValue("allowCrossType", query.purpose().name().equals("PERSONALIZED_APPLICATION"))
+                .addValue("requiredVisualKind", query.requiredVisualKind().name())
                 .addValue("questionType", query.questionType().name()).addValue("candidateLimit", query.candidateLimit());
         String scopeCondition;
         if (query.curriculum().achievementStandardId() == null) {

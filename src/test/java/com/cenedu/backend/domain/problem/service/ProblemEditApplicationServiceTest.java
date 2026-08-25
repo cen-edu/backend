@@ -8,6 +8,9 @@ import static org.mockito.Mockito.*;
 import com.cenedu.backend.domain.problem.authoring.edit.semantic.*;
 import com.cenedu.backend.domain.problem.authoring.edit.*;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
+import com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionResult;
+import com.cenedu.backend.domain.problem.authoring.semantic.extraction.SemanticExtractionStatus;
+import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
 import com.cenedu.backend.domain.problem.dto.request.ProblemEditTurnRequest;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringSession;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
@@ -16,6 +19,7 @@ import com.cenedu.backend.domain.problem.repository.ProblemAuthoringSessionRepos
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringVersionRepository;
 import com.cenedu.backend.domain.problem.dto.response.ProblemModificationPreviewResponse;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import java.util.*;
 
 class ProblemEditApplicationServiceTest {
@@ -60,6 +64,46 @@ class ProblemEditApplicationServiceTest {
                 .hasMessage("AI unavailable");
         verify(conversation).start(7L, 3L);
         verify(conversation).cancel(7L, 3L);
+    }
+
+    @Test
+    void semantic_model이_없으면_턴_시작_전에_lazy_extraction을_시도해서_payload를_채운다() {
+        var sessions = mock(ProblemAuthoringSessionRepository.class);
+        var versions = mock(ProblemAuthoringVersionRepository.class);
+        var jsonCodec = mock(ProblemAuthoringJsonCodec.class);
+        var conversation = mock(ProblemEditConversationService.class);
+        var gateway = mock(ProblemEditAgentGateway.class);
+        var coordinator = mock(ProblemModificationExecutionCoordinator.class);
+        var extractionService = mock(ProblemSemanticExtractionService.class);
+        var session = mock(ProblemAuthoringSession.class);
+        var versionBefore = mock(ProblemAuthoringVersion.class);
+        var versionAfter = mock(ProblemAuthoringVersion.class);
+        var snapshot = mock(QuestionSnapshotV1.class);
+        var extractedModel = mock(ProblemSemanticModelV1.class);
+        when(session.getInteractionStatus()).thenReturn(AuthoringInteractionStatus.IDLE);
+        when(session.getCurrentVersionId()).thenReturn(11L);
+        when(versionBefore.getSnapshot()).thenReturn("snapshot");
+        when(versionBefore.getSemanticModel()).thenReturn(null);
+        when(versionAfter.getSemanticModel()).thenReturn("semantic-json");
+        when(sessions.findByIdAndOwnerTeacherId(3L, 7L)).thenReturn(Optional.of(session));
+        when(versions.findByIdAndSessionId(11L, 3L))
+                .thenReturn(Optional.of(versionBefore), Optional.of(versionAfter));
+        when(jsonCodec.read("snapshot", QuestionSnapshotV1.class)).thenReturn(snapshot);
+        when(jsonCodec.read("semantic-json", ProblemSemanticModelV1.class)).thenReturn(extractedModel);
+        when(extractionService.ensureVersionSemantic(eq(7L), eq(3L), eq(11L), any())).thenReturn(
+                new SemanticExtractionResult(SemanticExtractionStatus.EXTRACTED, extractedModel, List.of()));
+        when(gateway.handle(eq(7L), eq("기울기를 3으로"), any(), any())).thenReturn(
+                new ProblemEditConversationResult(EditConversationAction.CONTINUE_COLLECTION,
+                        List.of(), null, "더 알려주세요"));
+        var service = new ProblemEditApplicationService(
+                sessions, versions, jsonCodec, conversation, gateway, coordinator);
+        service.setSemanticExtractionService(extractionService);
+
+        service.handleTurn(7L, 3L, new ProblemEditTurnRequest("기울기를 3으로", null, null));
+
+        ArgumentCaptor<ProblemEditAgentPayload> payloadCaptor = ArgumentCaptor.forClass(ProblemEditAgentPayload.class);
+        verify(gateway).handle(eq(7L), eq("기울기를 3으로"), any(), payloadCaptor.capture());
+        assertThat(payloadCaptor.getValue().currentSemanticModel()).isEqualTo(extractedModel);
     }
 
     @Test

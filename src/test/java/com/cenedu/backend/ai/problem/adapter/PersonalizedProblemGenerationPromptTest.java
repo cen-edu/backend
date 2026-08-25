@@ -18,6 +18,11 @@ import com.cenedu.backend.domain.problem.entity.enums.DiagnosticType;
 import com.cenedu.backend.global.common.enums.EvaluationArea;
 import com.cenedu.backend.global.common.enums.QuestionType;
 import org.junit.jupiter.api.Test;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationReference;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceDescriptor;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind;
+import com.cenedu.backend.domain.problem.entity.enums.AssetRole;
 
 class PersonalizedProblemGenerationPromptTest {
 
@@ -39,6 +44,24 @@ class PersonalizedProblemGenerationPromptTest {
 
         assertThat(prompt).contains("personalizedEvidence", "historicalIncorrectItemCount",
                 "incorrectRate", "EXECUTE", "$...$");
+    }
+
+    @Test
+    void origin_visual_kind와_asset_key_및_보존지시가_prompt에_포함된다() {
+        var origin = new GenerationReference(GenerationReferenceRole.ORIGIN, 41L, null, null,
+                new VisualReferenceDescriptor("F1", VisualReferenceKind.COORDINATE_GRAPH,
+                        AssetRole.FIGURE, "좌표 그래프", null));
+        var base = command();
+        var withOrigin = new ProblemGenerationCommand(base.requestId(), base.retrievalRequestId(), base.purpose(),
+                new GenerationSpecification(base.specification().questionType(), base.specification().difficulty(),
+                        base.specification().targetEvaluationArea(), base.specification().targetDiagnosticTypes(),
+                        base.specification().requiresSolutionStructure(),
+                        new com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement(
+                                com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode.PRESERVE_ORIGIN,
+                                VisualReferenceKind.COORDINATE_GRAPH)),
+                base.curriculum(), List.of(origin), base.conceptEvidence(), base.personalizedEvidence());
+        String prompt = new ProblemSemanticGenerationPromptFactory(new FewShotReferenceSerializer()).create(withOrigin, List.of());
+        assertThat(prompt).contains("COORDINATE_GRAPH", "visualAssetKey", "F1", "directCopyForbidden", "preserveKind");
     }
 
     private ProblemGenerationCommand command() {

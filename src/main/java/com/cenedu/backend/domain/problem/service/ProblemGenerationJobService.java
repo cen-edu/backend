@@ -28,7 +28,10 @@ import com.cenedu.backend.global.common.ErrorCode;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.ObjectProvider;
 import com.cenedu.backend.domain.problem.authoring.retrieval.ProblemRetrievalTracePort;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** 멱등 Job과 문항별 Item을 생성하고 독립 실행·재시도·집계를 관리한다. */
 @Service
@@ -40,13 +43,16 @@ public class ProblemGenerationJobService {
     private final ProblemAuthoringJsonCodec jsonCodec;
     private final ProblemAuthoringVersionService versionService;
     private final ObjectProvider<ProblemRetrievalTracePort> tracePort;
+    private final TransactionTemplate transactionTemplate;
 
     public ProblemGenerationJobService(ProblemGenerationJobRepository jobRepository,
                                        ProblemGenerationItemRepository itemRepository,
                                        ProblemAuthoringSessionRepository sessionRepository,
                                        ProblemAuthoringJsonCodec jsonCodec,
-                                       ProblemAuthoringVersionService versionService) {
-        this(jobRepository, itemRepository, sessionRepository, jsonCodec, versionService, null);
+                                       ProblemAuthoringVersionService versionService,
+                                       PlatformTransactionManager transactionManager) {
+        this(jobRepository, itemRepository, sessionRepository, jsonCodec, versionService,
+                transactionManager, null);
     }
 
     /** retrieval trace 연결 Port를 선택적으로 주입해 기존 Job 저장 계약을 유지한다. */
@@ -56,6 +62,7 @@ public class ProblemGenerationJobService {
                                        ProblemAuthoringSessionRepository sessionRepository,
                                        ProblemAuthoringJsonCodec jsonCodec,
                                        ProblemAuthoringVersionService versionService,
+                                       PlatformTransactionManager transactionManager,
                                        ObjectProvider<ProblemRetrievalTracePort> tracePort) {
         this.jobRepository = jobRepository;
         this.itemRepository = itemRepository;
@@ -63,26 +70,67 @@ public class ProblemGenerationJobService {
         this.jsonCodec = jsonCodec;
         this.versionService = versionService;
         this.tracePort = tracePort;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+    }
+
+    /** 계획 수립(RAG 임베딩·벡터검색) 이전 단계에서 clientRequestId로 기존 Job을 조회하는
+     *  읽기 전용 멱등 조회다. 존재하면 호출부가 비싼 계획 수립을 건너뛰도록 한다.
+     *  {@link #create} 내부 멱등 체크는 동시성 레이스 안전망으로 그대로 유지한다. */
+    @Transactional(readOnly = true)
+    public Optional<ProblemGenerationJobResult> findByClientRequestId(long ownerTeacherId,
+                                                                      java.util.UUID clientRequestId) {
+        return jobRepository.findByOwnerTeacherIdAndClientRequestId(ownerTeacherId, clientRequestId)
+                .map(this::toResult);
     }
 
     /** 문제은행 재사용과 AI 생성 슬롯을 하나의 멱등 Job으로 저장한다. */
-    @Transactional
     public ProblemGenerationJobResult create(long ownerTeacherId, ProblemGenerationPlan plan) {
         validatePlan(plan);
-        return jobRepository.findByOwnerTeacherIdAndClientRequestId(ownerTeacherId, plan.clientRequestId())
-                .map(this::toResult)
-                .orElseGet(() -> createPlanned(ownerTeacherId, plan));
+        return createIdempotent(ownerTeacherId, plan.clientRequestId(),
+                () -> createPlanned(ownerTeacherId, plan));
     }
 
     /** clientRequestId를 멱등 키로 사용해 Job과 문항별 Session·Item을 생성한다. */
-    @Transactional
     public ProblemGenerationJobResult create(long ownerTeacherId,
                                              ProblemGenerationBatchCommand batch) {
         validateBatch(batch);
-        return jobRepository.findByOwnerTeacherIdAndClientRequestId(
-                        ownerTeacherId, batch.clientRequestId())
-                .map(this::toResult)
-                .orElseGet(() -> createNew(ownerTeacherId, batch));
+        return createIdempotent(ownerTeacherId, batch.clientRequestId(),
+                () -> createNew(ownerTeacherId, batch));
+    }
+
+    /**
+     * clientRequestId를 멱등 키로 Job을 만든다. 먼저 조회해 있으면 그대로 반환하고, 없으면 별도
+     * 트랜잭션에서 생성한다.
+     *
+     * <p>find-then-insert 사이에 <b>진짜 동시</b> 요청 둘이 모두 조회를 통과할 수 있다. 그때는
+     * 유니크 제약 {@code (owner_teacher_id, client_request_id)}이 후발 insert를 막아
+     * {@link DataIntegrityViolationException}을 던진다. PostgreSQL은 선발이 커밋된 뒤에야 이 예외를
+     * 내므로, 잡아서 재조회하면 선발이 만든 Job이 반드시 보인다 — 이를 반환해 멱등성을 지킨다.
+     * 생성은 {@code TransactionTemplate}로 별도 트랜잭션에서 수행해, 위반으로 트랜잭션이 rollback-only가
+     * 된 뒤에도 바깥에서 깨끗한 재조회가 가능하게 한다.
+     */
+    private ProblemGenerationJobResult createIdempotent(long ownerTeacherId,
+                                                        java.util.UUID clientRequestId,
+                                                        java.util.function.Supplier<ProblemGenerationJobResult> creator) {
+        ProblemGenerationJobResult existing = findResultByClientRequestId(ownerTeacherId, clientRequestId);
+        if (existing != null) {
+            return existing;
+        }
+        try {
+            return transactionTemplate.execute(status -> creator.get());
+        } catch (DataIntegrityViolationException race) {
+            ProblemGenerationJobResult created = findResultByClientRequestId(ownerTeacherId, clientRequestId);
+            if (created != null) {
+                return created;
+            }
+            throw race;
+        }
+    }
+
+    private ProblemGenerationJobResult findResultByClientRequestId(long ownerTeacherId,
+                                                                   java.util.UUID clientRequestId) {
+        return jobRepository.findByOwnerTeacherIdAndClientRequestId(ownerTeacherId, clientRequestId)
+                .map(this::toResult).orElse(null);
     }
 
     /** 멱등 재요청이 동시에 와도 QUEUED Item을 한 Worker만 원자적으로 선점한다. */

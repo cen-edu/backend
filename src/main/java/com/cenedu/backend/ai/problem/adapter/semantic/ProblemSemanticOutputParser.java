@@ -17,7 +17,8 @@ public final class ProblemSemanticOutputParser {
         try {
             return mapper.readValue(json, ProblemSemanticModelV1.class);
         } catch (Exception e) {
-            throw new IllegalArgumentException("semantic model JSON을 해석할 수 없습니다.", e);
+            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            throw new IllegalArgumentException("semantic model JSON을 해석할 수 없습니다: " + detail, e);
         }
     }
 }

@@ -20,6 +20,12 @@ public final class ProblemSemanticModelValidator {
         if (!v.isEmpty()) throw new SemanticValidationException(v);
     }
 
+    /** 계산이 끝난 semantic 값이 정답·보기 참조를 모두 해석할 수 있는지 검증한다. */
+    public void validateResolved(ProblemSemanticModelV1 m,
+            Map<String, com.cenedu.backend.domain.problem.authoring.semantic.evaluation.SemanticResolvedValue> values) {
+        assertions.validateResolved(m, values);
+    }
+
     public List<String> violations(ProblemSemanticModelV1 m) {
         var v = new ArrayList<String>();
         if (m.schemaVersion() != 1) v.add("schemaVersion: 1 이어야 합니다.");

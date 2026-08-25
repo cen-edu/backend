@@ -12,19 +12,31 @@ import com.cenedu.backend.domain.problem.authoring.diagram.*;
 
 public final class DefaultProblemSemanticMaterializer implements ProblemSemanticMaterializer {
     private final ProblemSemanticModelValidator validator = new ProblemSemanticModelValidator(new SemanticUnitAndBoundsValidator(), new SemanticConstraintValidator(), new SemanticAssertionValidator());
+    private final SemanticAnswerExposureValidator exposureValidator = new SemanticAnswerExposureValidator();
+    private final DiagramSpecValidator diagramValidator = new DiagramSpecValidator();
 
     public MaterializedProblem materialize(ProblemSemanticModelV1 m) {
         validator.validate(m);
         var e = new SemanticComputationEngine().evaluate(m);
+        validator.validateResolved(m, e.values());
+        exposureValidator.validate(m, e.values());
+        diagramValidator.validateAll(m.diagrams(), e.values());
         var snapshot = new SemanticSnapshotFactory().create(m, e.values());
-        var plans = new SemanticAssetPlanFactory().create(m.diagrams());
+        var descriptions = new SemanticVisualDescriptionFactory().create(m.diagrams(), e.values());
+        var plans = new SemanticAssetPlanFactory().create(m.diagrams(), e.values(), descriptions);
         var blocks = new ArrayList<>(snapshot.contentBlocks());
         var refs = new ArrayList<SnapshotAssetReference>();
         var keys = new LinkedHashSet<String>();
         int order = 2;
         for (var d : m.diagrams()) {
-            blocks.add(new SnapshotContentBlock("CB" + order++, d.kind() == DiagramKind.DATA_TABLE ? SnapshotBlockKind.TABLE : SnapshotBlockKind.FIGURE, blocks.size(), null, d.kind() == DiagramKind.DATA_TABLE ? null : d.assetKey(), d.kind() == DiagramKind.DATA_TABLE ? d.assetKey() : null));
-            refs.add(new SnapshotAssetReference(d.assetKey(), d.assetKey()));
+            if (d instanceof DataTableDiagramSpecV1 table) {
+                blocks.add(new SnapshotContentBlock("CB" + order++, SnapshotBlockKind.TABLE,
+                        blocks.size(), null, null,
+                        new SemanticTableMarkupFactory().create(table, e.values())));
+            }
+            blocks.add(new SnapshotContentBlock("CB" + order++, SnapshotBlockKind.FIGURE,
+                    blocks.size(), null, d.assetKey(), null));
+            refs.add(new SnapshotAssetReference(d.assetKey(), descriptions.get(d.assetKey())));
             keys.add(d.assetKey());
         }
         if (!m.diagrams().isEmpty())

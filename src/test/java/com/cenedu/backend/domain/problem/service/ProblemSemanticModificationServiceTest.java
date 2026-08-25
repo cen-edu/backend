@@ -82,12 +82,33 @@ class ProblemSemanticModificationServiceTest {
         assertThat(result.promoted()).isTrue();
     }
 
+    @Test
+    void expectedOldValue가_실제값과_다르면_BusinessException으로_변환한다() throws Exception {
+        var jsonCodec = mock(ProblemAuthoringJsonCodec.class);
+        var materializer = mock(ProblemSemanticMaterializer.class);
+        var processing = mock(ProblemCandidateProcessingService.class);
+        var service = new ProblemSemanticModificationService(jsonCodec, materializer, processing);
+        var base = semanticModel("3");
+        var version = mock(com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion.class);
+        when(version.getId()).thenReturn(20L);
+        when(version.getSemanticModel()).thenReturn(new tools.jackson.databind.ObjectMapper().writeValueAsString(base));
+        var patch = new ProblemSemanticPatch(1, UUID.randomUUID(), 20L, SemanticEditMode.PARAMETRIC_PATCH,
+                List.of(new SemanticPatchOperation(SemanticPatchOperationType.SET_PARAMETER_VALUE,
+                        "/parameters/A/value", "9", "5")), "변경을 확인해 주세요.");
+
+        assertThatThrownBy(() -> service.apply(7L, 31L, version, patch))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(exception -> assertThat(((BusinessException) exception).getErrorCode())
+                        .isEqualTo(com.cenedu.backend.global.common.ErrorCode.PROBLEM_EDIT_COMMAND_STALE));
+        org.mockito.Mockito.verifyNoInteractions(processing);
+    }
+
     private ProblemSemanticModelV1 semanticModel(String value) {
         var parameter = new SemanticParameter("A", SemanticValueType.INTEGER, value, null, true, null);
         var computation = new SemanticComputation("C", SemanticOperation.IDENTITY, List.of("A"), null, null, value);
         var intent = new SemanticProblemIntent(com.cenedu.backend.global.common.enums.QuestionType.SHORT_INPUT,
                 "mid", null, "identity", "C", 1, false);
-        var presentation = new SemanticPresentationPlan("${A}cm", List.of(), List.of(), "${C}", null, List.of());
+        var presentation = new SemanticPresentationPlan("{{A}}cm", List.of(), List.of(), "{{C}}", null, List.of());
         return new ProblemSemanticModelV1(1, new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "a", "b", "c"),
                 intent, List.of(parameter), List.of(computation), List.of(), presentation, List.of(), List.of());
     }

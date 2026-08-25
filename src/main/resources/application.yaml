@@ -30,6 +30,15 @@ app:
   problem-authoring:
     semantic:
       enabled: ${PROBLEM_SEMANTIC_AUTHORING_ENABLED:false}
+    visual:
+      enabled: ${PROBLEM_VISUAL_AUTHORING_ENABLED:false}
+      allowed-kinds: ${PROBLEM_VISUAL_ALLOWED_KINDS:COORDINATE_GRAPH,DATA_TABLE}
+      allowed-question-types: ${PROBLEM_VISUAL_ALLOWED_QUESTION_TYPES:MULTIPLE_CHOICE,SHORT_INPUT}
+      max-assets-per-question: ${PROBLEM_VISUAL_MAX_ASSETS_PER_QUESTION:1}
+      force-required: ${PROBLEM_VISUAL_FORCE_REQUIRED:false}
+    draft:
+      root: ${PROBLEM_DRAFT_ROOT:/tmp/cen-edu-problem-drafts}
+      preview-max-bytes: ${PROBLEM_VISUAL_PREVIEW_MAX_BYTES:1048576}
   problem:
     rag:
       enabled: ${PROBLEM_RAG_ENABLED:false}
@@ -46,7 +55,9 @@ app:
         max-attempts: 3
         retry-delay: 30s
         worker-delay: 5s
-        backfill-delay: 60s
+        backfill-initial-delay: 10m
+        backfill-delay: 1h
+        backfill-batch-size: 50
   storage:
     s3:
       enabled: ${S3_ENABLED:false}
@@ -81,7 +92,10 @@ app:
       # GPT-5 계열은 추론 토큰이 max-completion-tokens 에서 차감된다. 한도가 낮으면
       # content 가 빈 문자열로 잘려 돌아온다. minimal + 3000 은 실측으로 정한 값이다.
       reasoning-effort: ${OPENAI_REASONING_EFFORT:medium}
-      max-completion-tokens: ${OPENAI_MAX_COMPLETION_TOKENS:3000}
+      # 생성(DEFAULT useCase)의 상한. reasoning(medium) 토큰이 여기서 차감되므로 3000은 낮아
+      # 복잡한 문항에서 추론이 상한을 먹고 finishReason=LENGTH로 빈 응답이 났다. 검증과 같은 6000으로
+      # 올려 잘림을 막는다. 상한은 천장일 뿐 실제 사용 토큰만 과금되므로 정상 출력의 비용은 늘지 않는다.
+      max-completion-tokens: ${OPENAI_MAX_COMPLETION_TOKENS:6000}
       timeout: ${OPENAI_TIMEOUT:30s}
       max-retries: ${OPENAI_MAX_RETRIES:2}
       # 목적별 모델. 지정하지 않은 값은 위 기본값을 따른다.

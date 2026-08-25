@@ -34,17 +34,21 @@ public class CustomProblemGenerationService {
         this.asyncGenerationService = asyncGenerationService;
     }
 
-    /** 최신 취약 제안과 교육과정 경로를 결합해 맞춤 생성 Job을 시작한다. */
+    /** 최신 취약 제안과 교육과정 경로를 결합해 맞춤 생성 Job을 시작한다.
+     *  같은 clientRequestId 재요청이면 제안 조회·RAG 계획 수립을 건너뛰고 기존 Job을 재개한다. */
     public ProblemGenerationStartResponse start(long teacherId, CustomProblemGenerationRequest request) {
-        ReissueProposalResponse proposal = proposalService.getProposal(teacherId,
-                request.sourceAssignmentId(), request.studentId());
-        validator.validate(request, proposal);
-        Set<Long> requestedIds = new HashSet<>();
-        request.items().forEach(item -> requestedIds.add(item.subUnitId()));
-        Map<Long, CurriculumPathResponse> paths = curriculumUnitQueryService
-                .getPathsBySubUnitIds(requestedIds);
-        ProblemGenerationPlan plan = planningService.plan(request.clientRequestId(), proposal,
-                request.items(), paths);
-        return asyncGenerationService.startPersonalized(teacherId, plan);
+        return asyncGenerationService.resumeIfExists(teacherId, request.clientRequestId())
+                .orElseGet(() -> {
+                    ReissueProposalResponse proposal = proposalService.getProposal(teacherId,
+                            request.sourceAssignmentId(), request.studentId());
+                    validator.validate(request, proposal);
+                    Set<Long> requestedIds = new HashSet<>();
+                    request.items().forEach(item -> requestedIds.add(item.subUnitId()));
+                    Map<Long, CurriculumPathResponse> paths = curriculumUnitQueryService
+                            .getPathsBySubUnitIds(requestedIds);
+                    ProblemGenerationPlan plan = planningService.plan(request.clientRequestId(), proposal,
+                            request.items(), paths);
+                    return asyncGenerationService.startPersonalized(teacherId, plan);
+                });
     }
 }

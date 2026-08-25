@@ -10,6 +10,10 @@ logging:
     org.hibernate.orm.jdbc.bind: trace
 
 app:
+  problem-authoring:
+    visual:
+      allowed-kinds: ${PROBLEM_VISUAL_ALLOWED_KINDS:NUMBER_LINE,COORDINATE_GRAPH,DATA_TABLE,PLANE_GEOMETRY,SOLID_GEOMETRY}
+      allowed-question-types: ${PROBLEM_VISUAL_ALLOWED_QUESTION_TYPES:MULTIPLE_CHOICE,SHORT_INPUT}
   cors:
     allowed-origins: http://localhost:5173   # Vite 기본 포트. 5단계 CorsConfig 에서 소비한다.
   storage:

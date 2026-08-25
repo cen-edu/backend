@@ -58,6 +58,6 @@ public class ProblemSemanticDiffFactory {
 
     private boolean containsPlaceholder(Object value, String key) {
         JsonNode node = mapper.valueToTree(value);
-        return node.toString().contains("${" + key + "}");
+        return node.toString().contains("{{" + key + "}}");
     }
 }

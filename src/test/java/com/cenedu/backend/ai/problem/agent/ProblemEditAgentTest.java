@@ -31,7 +31,7 @@ class ProblemEditAgentTest {
                 """, 1, 1, 0));
         ObjectProvider<ObjectMapper> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable(any())).thenReturn(new ObjectMapper());
-        ProblemEditAgent agent = new ProblemEditAgent(client, provider, new ProblemEditPromptFactory());
+        ProblemEditAgent agent = new ProblemEditAgent(client, provider, new ProblemEditPromptFactory(provider));
         UUID requestId = UUID.randomUUID();
         ProblemEditAgentPayload payload = new ProblemEditAgentPayload(2, requestId, 1L, 20L,
                 AuthoringInteractionStatus.COLLECTING, null, ProblemSnapshotFixtures.shortInput(), semanticModel(), List.of());
@@ -55,7 +55,7 @@ class ProblemEditAgentTest {
                 """, 1, 1, 0));
         ObjectProvider<ObjectMapper> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable(any())).thenReturn(new ObjectMapper());
-        ProblemEditAgent agent = new ProblemEditAgent(client, provider, new ProblemEditPromptFactory());
+        ProblemEditAgent agent = new ProblemEditAgent(client, provider, new ProblemEditPromptFactory(provider));
         ProblemEditAgentPayload payload = new ProblemEditAgentPayload(1, 1L, 2L,
                 AuthoringInteractionStatus.COLLECTING, null, ProblemSnapshotFixtures.shortInput(), List.of());
 
@@ -80,7 +80,7 @@ class ProblemEditAgentTest {
         ObjectProvider<ObjectMapper> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable(any())).thenReturn(new ObjectMapper());
         ProblemEditAgent agent = new ProblemEditAgent(
-                client, provider, new ProblemEditPromptFactory());
+                client, provider, new ProblemEditPromptFactory(provider));
         ProblemEditAgentPayload payload = new ProblemEditAgentPayload(1, 1L, 2L,
                 AuthoringInteractionStatus.COLLECTING,
                 new ProblemEditTargetRef(EditTargetType.QUESTION_BODY, null),
@@ -101,7 +101,7 @@ class ProblemEditAgentTest {
         var parameter = new SemanticParameter("RADIUS", SemanticValueType.INTEGER, "3", "cm", true, null);
         var computation = new SemanticComputation("R", SemanticOperation.IDENTITY, List.of("RADIUS"), null, "cm", "3");
         var intent = new SemanticProblemIntent(QuestionType.SHORT_INPUT, "mid", null, "identity", "R", 1, false);
-        var presentation = new SemanticPresentationPlan("${RADIUS}", List.of(), List.of(), "", null, List.of());
+        var presentation = new SemanticPresentationPlan("{{RADIUS}}", List.of(), List.of(), "", null, List.of());
         return new ProblemSemanticModelV1(1, new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1, null, 1L, "a", "b", "c"), intent,
                 List.of(parameter), List.of(computation), List.of(), presentation, List.of(), List.of());
     }

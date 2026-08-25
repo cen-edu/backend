@@ -16,8 +16,10 @@ import com.cenedu.backend.global.common.enums.QuestionType;
 import com.cenedu.backend.domain.problem.entity.enums.QuestionPresentation;
 import java.util.List;
 import java.util.Set;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind;
 
 class ProblemSearchDocumentFactoryTest {
     private final ProblemSearchDocumentFactory factory = new ProblemSearchDocumentFactory();
@@ -51,12 +53,28 @@ class ProblemSearchDocumentFactoryTest {
     }
 
     @Test
+    void preservesVisualKindInSearchDocument() {
+        var snapshot = snapshot("다음 표를 보고 고르시오.", "C1");
+        var command = new SearchIndexingCommand(UUID.randomUUID(), 10L, null, scope(),
+                "110:11319_11635", snapshot, Set.of(), Map.of(), (short) 2, VisualReferenceKind.DATA_TABLE);
+        assertThat(factory.create(command).visualKind()).isEqualTo(VisualReferenceKind.DATA_TABLE);
+    }
+
+    @Test
     void queryUsesSameAnswerFreeLabelsWithoutOriginSnapshot() {
         var query = new ProblemReferenceQuery(UUID.randomUUID(), GenerationPurpose.GENERAL_LEARNING_SHORTAGE,
                 scope(), QuestionType.SHORT_INPUT, "mid", null, null, 40, 3, Set.of());
         String text = factory.createQuery(query);
         assertThat(text).contains("[교육과정]", "[성취기준]", "[발문]", "[풀이전략]", "[풀이요약]", "[표현]");
         assertThat(text).contains("동일 교육과정 범위의 새 문제");
+    }
+
+    @Test
+    void originTableQueryCarriesRequiredVisualKindForRepositoryFilter() {
+        var query = new ProblemReferenceQuery(UUID.randomUUID(), GenerationPurpose.PERSONALIZED_SIMILAR_SHORTAGE,
+                scope(), QuestionType.SHORT_INPUT, "mid", 10L,
+                snapshotWithTable("다음 표를 보고 고르시오.", "C1"), 40, 3, Set.of());
+        assertThat(query.requiredVisualKind()).isEqualTo(VisualReferenceKind.DATA_TABLE);
     }
 
     private static SearchIndexingCommand command(QuestionSnapshotV1 snapshot) {
@@ -77,5 +95,13 @@ class ProblemSearchDocumentFactoryTest {
                 List.of(), List.of(), List.of(),
                 List.of(new SnapshotAnswerUnit("MAIN", null, 1, answer, answer, null, null, null)),
                 "정답은 설명에 넣지 않는다", null, List.of());
+    }
+
+    private static QuestionSnapshotV1 snapshotWithTable(String prompt, String answer) {
+        var base = snapshot(prompt, answer);
+        var metadata = new SnapshotMetadata(QuestionType.SHORT_INPUT, QuestionPresentation.WITH_TABLE,
+                "mid", 30L, null, null, null);
+        return new QuestionSnapshotV1(1, metadata, base.contentBlocks(), base.assets(), base.choices(), base.steps(),
+                base.answerUnits(), base.explanation(), base.learningGuide(), base.rubricItems());
     }
 }

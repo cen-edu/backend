@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind;
 
 @Component
 public class ProblemSearchDocumentFactory {
@@ -30,7 +31,7 @@ public class ProblemSearchDocumentFactory {
         String duplicate = sha256(normalizedPrompt.replaceAll(NUMBER.pattern(), "#") + "|"
                 + command.curriculum().subUnitId() + "|" + snapshot.metadata().questionType());
         return new ProblemSearchDocument(text, sha256(text), duplicate,
-                sourceFamily(command.sourceRef(), command.questionId()), strategy, summary);
+                sourceFamily(command.sourceRef(), command.questionId()), strategy, summary, command.visualKind());
     }
 
     /** 검색 요구에서 같은 레이블 순서의 답안 없는 query 문서를 만든다. */

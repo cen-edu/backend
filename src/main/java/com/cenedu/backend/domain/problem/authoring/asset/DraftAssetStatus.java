@@ -5,5 +5,7 @@ public enum DraftAssetStatus {
     PLANNED,
     GENERATING,
     READY,
-    FAILED
+    FAILED,
+    EXPIRED,
+    PROMOTED
 }

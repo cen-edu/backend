@@ -12,14 +12,24 @@ public record ProblemGenerationCommand(
         CurriculumScope curriculum,
         List<GenerationReference> references,
         List<GenerationConceptEvidence> conceptEvidence,
-        PersonalizedGenerationEvidence personalizedEvidence
+        PersonalizedGenerationEvidence personalizedEvidence,
+        String editInstruction
 ) {
+    public ProblemGenerationCommand(UUID requestId, UUID retrievalRequestId,
+                                    GenerationPurpose purpose, GenerationSpecification specification,
+                                    CurriculumScope curriculum, List<GenerationReference> references,
+                                    List<GenerationConceptEvidence> conceptEvidence,
+                                    PersonalizedGenerationEvidence personalizedEvidence) {
+        this(requestId, retrievalRequestId, purpose, specification, curriculum,
+                references, conceptEvidence, personalizedEvidence, null);
+    }
+
     public ProblemGenerationCommand(UUID requestId, UUID retrievalRequestId,
                                     GenerationPurpose purpose, GenerationSpecification specification,
                                     CurriculumScope curriculum, List<GenerationReference> references,
                                     List<GenerationConceptEvidence> conceptEvidence) {
         this(requestId, retrievalRequestId, purpose, specification, curriculum,
-                references, conceptEvidence, null);
+                references, conceptEvidence, null, null);
     }
 
     public ProblemGenerationCommand {

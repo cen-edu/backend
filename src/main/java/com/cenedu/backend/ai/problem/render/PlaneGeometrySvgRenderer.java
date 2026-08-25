@@ -67,11 +67,19 @@ public final class PlaneGeometrySvgRenderer {
 
     private static void label(StringBuilder b, int x, int y, String t) {
         if (t != null && !t.isBlank())
-            b.append("<text x=\"").append(x).append("\" y=\"").append(y).append("\">").append(t).append("</text>");
+            b.append("<text x=\"").append(x).append("\" y=\"").append(y).append("\">").append(escape(t)).append("</text>");
+    }
+
+    private static String escape(String s) {
+        return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private static String text(Map<String, SemanticResolvedValue> v, String k, String d) {
-        return k != null && v.containsKey(k) ? v.get(k).canonicalValue() : d;
+        if (k == null || !v.containsKey(k) || v.get(k) == null) {
+            return d == null ? "" : d;
+        }
+        String value = v.get(k).canonicalValue();
+        return d == null || d.isBlank() ? value : d + " " + value;
     }
 
     private static int coord(int p, Map<String, SemanticResolvedValue> v, String k) {
@@ -83,10 +91,11 @@ public final class PlaneGeometrySvgRenderer {
     }
 
     private static double num(Map<String, SemanticResolvedValue> v, String k, double d) {
+        if (k == null || !v.containsKey(k) || v.get(k) == null) throw new IllegalArgumentException("plane geometry resolved value가 없습니다.");
         try {
             return Double.parseDouble(v.get(k).canonicalValue());
         } catch (Exception e) {
-            return d;
+            throw new IllegalArgumentException("plane geometry numeric resolved value가 올바르지 않습니다.", e);
         }
     }
 }

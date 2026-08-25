@@ -44,6 +44,8 @@ import com.cenedu.backend.domain.problem.authoring.semantic.materialization.Sema
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.DefaultProblemSemanticMaterializer;
 import com.cenedu.backend.ai.problem.adapter.semantic.SemanticAuthoringProperties;
 import com.cenedu.backend.domain.problem.authoring.diagram.DiagramSpecValidator;
+import com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationPolicy;
+import com.cenedu.backend.domain.problem.config.ProblemVisualAuthoringProperties;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringSession;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.entity.enums.AuthoringOperationType;
@@ -79,6 +81,8 @@ public class ProblemCandidateProcessingService {
     private final ProblemSemanticDocumentCodec semanticDocumentCodec =
             new ProblemSemanticDocumentCodec(new tools.jackson.databind.ObjectMapper());
     private final SemanticAuthoringProperties semanticProperties;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ProblemVisualAuthoringProperties visualProperties;
 
     public ProblemCandidateProcessingService(
             ProblemAuthoringSessionRepository sessionRepository,
@@ -213,20 +217,29 @@ public class ProblemCandidateProcessingService {
         if (!plan.repairable()) return null;
         ProblemRepairPort repairPort = repairPortProvider.getIfAvailable();
         if (repairPort == null) return null;
-        ProblemRepairDelta delta = repairPort.repair(new ProblemRepairCommand(
-                UUID.randomUUID(), request.candidate().snapshot(), plan));
-        var repairedSnapshot = repairDeltaMerger.merge(request.candidate().snapshot(), plan, delta);
-        structuralValidator.validate(repairedSnapshot);
-        normalizedValidator.validate(repairedSnapshot);
-        ProblemCandidateDraft repairedCandidate = ProblemCandidateDraft.legacy(
-                UUID.randomUUID(), repairedSnapshot, request.candidate().assetPlans(),
-                new CandidateProvenance(CandidateSourceType.AI_MODIFY,
-                        registered.versionId(), List.of(registered.versionId())));
-        CandidateProcessingRequest repairedRequest = new CandidateProcessingRequest(
-                request.ownerTeacherId(), request.sessionId(), registered.versionId(),
-                AuthoringOperationType.AI_MODIFY, request.verificationOperationType(), repairedCandidate,
-                request.expectation(), request.verificationContext(), "검증 오류 항목 부분 수정");
-        return processInternal(repairedRequest, false, repairProfile(plan));
+        // repair는 어디까지나 선택적 재교정이다. repair 호출·병합·검증에서 예외가 나면 그것을 위로
+        // 전파해 원래의 FAILED를 하드 에러(VERIFICATION_ERROR)로 바꾸지 않는다 — null을 반환해
+        // 원래 FAILED 결과로 폴백시키고, worker가 통상적인 재생성으로 처리하게 한다.
+        try {
+            ProblemRepairDelta delta = repairPort.repair(new ProblemRepairCommand(
+                    UUID.randomUUID(), request.candidate().snapshot(), plan));
+            var repairedSnapshot = repairDeltaMerger.merge(request.candidate().snapshot(), plan, delta);
+            structuralValidator.validate(repairedSnapshot);
+            normalizedValidator.validate(repairedSnapshot);
+            ProblemCandidateDraft repairedCandidate = ProblemCandidateDraft.legacy(
+                    UUID.randomUUID(), repairedSnapshot, request.candidate().assetPlans(),
+                    new CandidateProvenance(CandidateSourceType.AI_MODIFY,
+                            registered.versionId(), List.of(registered.versionId())));
+            CandidateProcessingRequest repairedRequest = new CandidateProcessingRequest(
+                    request.ownerTeacherId(), request.sessionId(), registered.versionId(),
+                    AuthoringOperationType.AI_MODIFY, request.verificationOperationType(), repairedCandidate,
+                    request.expectation(), request.verificationContext(), "검증 오류 항목 부분 수정");
+            return processInternal(repairedRequest, false, repairProfile(plan));
+        } catch (RuntimeException exception) {
+            log.warn("event=problem_authoring_stage operation=REPAIR outcome=ERROR itemId={} errorType={} message={}",
+                    context("itemId"), exception.getClass().getSimpleName(), exception.getMessage());
+            return null;
+        }
     }
 
     private VerificationProfile repairProfile(ProblemRepairPlan plan) {
@@ -437,9 +450,9 @@ public class ProblemCandidateProcessingService {
     }
 
     private boolean retryableVerificationException(RuntimeException exception) {
-        if (exception instanceof BusinessException businessException) {
-            return businessException.getErrorCode() == ErrorCode.AI_CLIENT_CALL_FAILED;
-        }
+        // 전송계층 오류(429/5xx → AI_CLIENT_CALL_FAILED)는 LlmClient가 이미 재시도하는 L1의 몫이라
+        // 여기서 verify 전체를 다시 부르지 않는다(이중 재시도 방지). LlmClient가 못 다루는, 모델이
+        // 형식을 어긴 malformed 출력만 재검증한다.
         return exception instanceof com.cenedu.backend.ai.verification.adapter.SolverResponseParseException;
     }
 
@@ -481,7 +494,7 @@ public class ProblemCandidateProcessingService {
                 || request.verificationContext() == null) {
             throw new IllegalArgumentException("후보 처리 필수값이 누락되었습니다.");
         }
-        validateSemanticCandidate(request.candidate());
+        validateSemanticCandidate(request);
         structuralValidator.validate(request.candidate().snapshot());
         normalizedValidator.validate(request.candidate().snapshot());
         validateSourceType(request.operationType(),
@@ -490,25 +503,63 @@ public class ProblemCandidateProcessingService {
     }
 
     /** 의미 후보를 다시 계산해 Snapshot·자산 계획이 서버 결과와 일치하는지 확인한다. */
-    private void validateSemanticCandidate(ProblemCandidateDraft candidate) {
+    private void validateSemanticCandidate(CandidateProcessingRequest request) {
+        ProblemCandidateDraft candidate = request.candidate();
         if (candidate.semanticModel() == null) {
+            // semantic authoring이 켜져 있어도 semantic model이 없는 후보가 정당한 경우가 있다:
+            // (1) AI_GENERATE — VisualGenerationMode.NONE인 문항(서술형·빈칸형 등)은
+            //     SpringAiProblemGenerationAdapter가 애초에 NonSemanticProblemGenerationPipeline으로
+            //     보내고, 그 경로는 semantic model을 만들지 않는다. 이건 버그가 아니라 설계다.
+            // (2) AI_MODIFY — 수정 대상 Version이 원래부터 semantic model이 없었다면
+            //     ProblemModificationExecutionCoordinator가 legacy 수정 경로로 폴백하는데,
+            //     그 경로도 semantic model을 만들지 않는다. base가 이미 없었다면 정상이다.
+            // 따라서 "무조건 있어야 한다"가 아니라 "원래 있었어야 하는데 없다"만 걸러낸다.
             if (semanticProperties.enabled()
-                    && (candidate.provenance().sourceType() == CandidateSourceType.AI_GENERATE
-                    || candidate.provenance().sourceType() == CandidateSourceType.AI_MODIFY)) {
+                    && candidate.provenance().sourceType() == CandidateSourceType.AI_MODIFY
+                    && parentHadSemanticModel(request.parentVersionId())) {
                 throw new IllegalArgumentException("semantic authoring 활성화 상태에서는 semantic model이 필요합니다.");
             }
             return;
         }
         MaterializedProblem materialized = semanticMaterializer.materialize(candidate.semanticModel());
+        ProblemVisualAuthoringProperties properties = visualProperties == null
+                ? new ProblemVisualAuthoringProperties(true,
+                java.util.Set.of(com.cenedu.backend.domain.problem.authoring.diagram.DiagramKind.values()),
+                java.util.Set.of(com.cenedu.backend.global.common.enums.QuestionType.MULTIPLE_CHOICE,
+                        com.cenedu.backend.global.common.enums.QuestionType.SHORT_INPUT), 1)
+                : visualProperties;
+        new VisualGenerationPolicy(properties).validate(
+                candidate.semanticModel().intent().visualRequired()
+                        ? new com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement(
+                        com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationMode.AUTO,
+                        com.cenedu.backend.domain.problem.authoring.visual.VisualReferenceKind.UNKNOWN_FIGURE)
+                        : com.cenedu.backend.domain.problem.authoring.visual.VisualGenerationRequirement.none(),
+                candidate.semanticModel());
         if (!Objects.equals(materialized.snapshot(), candidate.snapshot())
                 || !Objects.equals(materialized.assetPlans(), candidate.assetPlans())) {
             throw new IllegalArgumentException("의미 모델과 materialized 후보가 일치하지 않습니다.");
         }
+        new com.cenedu.backend.domain.problem.authoring.visual.VisualSnapshotConsistencyValidator()
+                .validate(candidate.semanticModel(), candidate.snapshot(), candidate.assetPlans());
         List<com.cenedu.backend.domain.problem.authoring.diagram.DiagramSpecV1> specs = candidate.assetPlans().stream()
                 .filter(plan -> plan.specification() != null && plan.specification().diagramSpec() != null)
                 .map(plan -> plan.specification().diagramSpec())
                 .toList();
-        new DiagramSpecValidator().validateAll(specs, Map.of());
+        Map<String, com.cenedu.backend.domain.problem.authoring.semantic.evaluation.SemanticResolvedValue> values =
+                materialized.assetPlans().stream()
+                        .filter(plan -> plan.specification() != null)
+                        .findFirst()
+                        .map(plan -> plan.specification().resolvedValues())
+                        .orElse(Map.of());
+        new DiagramSpecValidator().validateAll(specs, values);
+    }
+
+    /** 수정 대상 Version이 원래 semantic model을 갖고 있었는지 확인한다. */
+    private boolean parentHadSemanticModel(Long parentVersionId) {
+        if (parentVersionId == null) return false;
+        return versionRepository.findById(parentVersionId)
+                .map(version -> version.getSemanticModel() != null)
+                .orElse(false);
     }
 
     private SemanticMaterializationReport semanticReport(ProblemCandidateDraft candidate) {
