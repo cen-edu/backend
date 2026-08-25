@@ -60,15 +60,29 @@ public class ProblemQuestionSnapshotMapper {
                                          ProblemQuestionDetailResponse detail) {
         QuestionSnapshotV1 base = toSnapshot(question);
         if (detail == null) return base;
+        java.util.Map<String, String> legacyAssetDescriptions = detail.contentBlocks().stream()
+                .filter(block -> "FIGURE".equals(block.blockKind()))
+                .filter(block -> !isBlank(block.assetRef()) && !isBlank(block.text()))
+                .collect(java.util.stream.Collectors.toMap(
+                        ProblemContentBlockResponse::assetRef,
+                        ProblemContentBlockResponse::text,
+                        (first, second) -> first,
+                        java.util.LinkedHashMap::new));
         List<SnapshotContentBlock> blocks = new java.util.ArrayList<>();
         for (int i = 0; i < detail.contentBlocks().size(); i++) {
             ProblemContentBlockResponse block = detail.contentBlocks().get(i);
-            blocks.add(new SnapshotContentBlock("CB" + (i + 1),
-                    SnapshotBlockKind.valueOf(block.blockKind()), i,
-                    block.text(), block.assetRef(), block.markup()));
+            SnapshotBlockKind kind = SnapshotBlockKind.valueOf(block.blockKind());
+            // FIGURE·TABLE 블록의 설명 text는 스냅샷 계약상 null이어야 한다(설명은 자산 altText 또는
+            // markup에 담긴다). 임포트된 은행 문항 다수가 FIGURE 블록에 그림 설명 text를 담고 있어
+            // 구조 검증에서 탈락(reusable=false)해, 은행이 가득해도 재사용되지 못하고 대부분 생성으로
+            // 넘어갔다. 여기서 정규화해 그림·표 문항이 정상적으로 재사용되게 한다.
+            String text = kind == SnapshotBlockKind.TEXT ? block.text() : null;
+            blocks.add(new SnapshotContentBlock("CB" + (i + 1), kind, i,
+                    text, block.assetRef(), block.markup()));
         }
         List<SnapshotAssetReference> assets = detail.assets().stream()
-                .map(asset -> new SnapshotAssetReference(asset.assetKey(), asset.altText())).toList();
+                .map(asset -> new SnapshotAssetReference(asset.assetKey(), assetAltText(
+                        asset, legacyAssetDescriptions.get(asset.assetKey())))).toList();
         List<SnapshotChoice> choices = new java.util.ArrayList<>();
         for (int i = 0; i < detail.choices().size(); i++) {
             choices.add(new SnapshotChoice("C" + (i + 1), i, detail.choices().get(i).content()));
@@ -156,6 +170,17 @@ public class ProblemQuestionSnapshotMapper {
 
     private SnapshotLearningGuide guide(ProblemLearningGuideResponse guide) {
         return guide == null ? null : new SnapshotLearningGuide(guide.conceptTitle(), guide.summary(), guide.keyPoints());
+    }
+
+    /** 임포트 데이터의 빈 대체 텍스트를 의미 보존이 가능한 순서로 보완한다. */
+    private String assetAltText(ProblemAssetResponse asset, String legacyDescription) {
+        if (!isBlank(asset.altText())) return asset.altText();
+        if (!isBlank(legacyDescription)) return legacyDescription;
+        return "문제 그림 " + asset.assetKey();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /** 서술형 채점 기준을 버전 간 안정적인 R 논리 키로 변환한다. */
