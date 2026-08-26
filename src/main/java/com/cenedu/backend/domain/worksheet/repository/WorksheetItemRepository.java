@@ -2,6 +2,7 @@ package com.cenedu.backend.domain.worksheet.repository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import com.cenedu.backend.domain.worksheet.entity.WorksheetItem;
 import com.cenedu.backend.domain.worksheet.repository.row.WorksheetCountRow;
@@ -17,6 +18,13 @@ public interface WorksheetItemRepository extends JpaRepository<WorksheetItem, Lo
 
     /** 학습지 문항을 표시 순서대로 조회한다. */
     List<WorksheetItem> findAllByWorksheetIdOrderByDisplayOrderAsc(Long worksheetId);
+
+    /** 수정 작성 Session이 연결된 문항을 찾는다. 연결은 문항당 최대 하나다. */
+    Optional<WorksheetItem> findByEditingSessionId(Long editingSessionId);
+
+    /** 지정한 학습지에 담긴 문항 ID를 모두 반환한다. 교체 후보 제외에 쓴다. */
+    @Query("select i.questionId from WorksheetItem i where i.worksheet.id = :worksheetId")
+    List<Long> findQuestionIdsByWorksheetId(@Param("worksheetId") Long worksheetId);
 
     /**
      * 지정한 학습지들의 문항을 한 번에 조회한다. stages·totalUnits 배치 계산에 쓴다.

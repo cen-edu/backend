@@ -24,6 +24,9 @@ import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditInstruction;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemEditTargetRef;
 import com.cenedu.backend.domain.problem.authoring.edit.ProblemModificationCommand;
 import com.cenedu.backend.domain.problem.authoring.edit.ReplacementSourcePolicy;
+import com.cenedu.backend.domain.problem.authoring.generation.CurriculumScope;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationReference;
+import com.cenedu.backend.domain.problem.authoring.generation.GenerationReferenceRole;
 import com.cenedu.backend.domain.problem.authoring.model.QuestionSnapshotV1;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotBlockKind;
 import com.cenedu.backend.domain.problem.authoring.model.SnapshotContentBlock;
@@ -57,8 +60,11 @@ class ProblemModificationWorkerRetryFeedbackTest {
         when(processing.process(any())).thenReturn(failed(), passed());
         var worker = new ProblemModificationWorker(provider, processing,
                 mock(ProblemAuthoringSessionRepository.class), state);
+        var reference = new GenerationReference(
+                GenerationReferenceRole.EXAMPLE, 99L, candidate.snapshot());
         ProblemModificationCommand command = new ProblemModificationCommand(
-                UUID.randomUUID(), plan(), candidate.snapshot());
+                UUID.randomUUID(), plan(), candidate.snapshot(), null, List.of(),
+                scope(), List.of(reference), List.of());
 
         CandidateProcessingResult result = worker.execute(7L, command);
 
@@ -67,6 +73,8 @@ class ProblemModificationWorkerRetryFeedbackTest {
         org.mockito.Mockito.verify(port, org.mockito.Mockito.times(2)).modify(captor.capture());
         assertThat(captor.getAllValues().get(1).previousIssueCodes())
                 .containsExactly(VerificationIssueCode.EDIT_REQUIREMENT_MISSING);
+        assertThat(captor.getAllValues().get(1).references()).containsExactly(reference);
+        assertThat(captor.getAllValues().get(1).curriculum()).isEqualTo(scope());
         assertThat(result.promoted()).isTrue();
     }
 
@@ -110,5 +118,10 @@ class ProblemModificationWorkerRetryFeedbackTest {
                 List.of(), List.of(), List.of(), List.of(), "해설", null, List.of());
         return ProblemCandidateDraft.legacy(UUID.randomUUID(), snapshot, List.of(),
                 new CandidateProvenance(CandidateSourceType.AI_MODIFY, null, List.of()));
+    }
+
+    private CurriculumScope scope() {
+        return new CurriculumScope("2022_REVISED", "MIDDLE", 1, 1,
+                null, 10L, "수와 연산", "정수와 유리수", "유리수의 계산");
     }
 }

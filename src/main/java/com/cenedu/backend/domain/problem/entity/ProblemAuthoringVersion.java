@@ -155,6 +155,14 @@ public class ProblemAuthoringVersion extends BaseTimeEntity {
         semanticModelHash = document.sha256();
     }
 
+    /** domain 검증에서 손상된 기존 semantic document를 원본 Snapshot 재추출 결과로 교체한다. */
+    public void repairSemanticModel(SemanticModelDocument document) {
+        if (document == null) throw new IllegalArgumentException("복구할 semantic model이 필요합니다.");
+        semanticModelSchemaVersion = (short) document.schemaVersion();
+        semanticModel = document.json();
+        semanticModelHash = document.sha256();
+    }
+
     /** 임시 자산 생성 상태와 결과만 manifest에 반영하고 S1 스냅샷은 바꾸지 않는다. */
     public void updateAssetManifest(String assetManifest) {
         requireNotTerminal();

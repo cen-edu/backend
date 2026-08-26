@@ -41,8 +41,10 @@ public class ProblemSearchDocumentFactory {
         String strategy = snapshot == null ? "동일 성취기준의 핵심 풀이 전략" : strategy(snapshot.learningGuide());
         String summary = snapshot == null ? "동일 난이도의 풀이 구조" : summary(snapshot.learningGuide());
         String presentation = snapshot == null ? "text-only" : presentation(snapshot);
-        return document(query.curriculum(), snapshot, prompt, strategy, summary, presentation,
+        String document = document(query.curriculum(), snapshot, prompt, strategy, summary, presentation,
                 query.questionType().name(), query.difficulty());
+        return query.queryHint() == null ? document
+                : normalize(document + "\n[수정요청] " + query.queryHint());
     }
 
     private static String document(CurriculumScope curriculum, QuestionSnapshotV1 snapshot,

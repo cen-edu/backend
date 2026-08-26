@@ -5,6 +5,8 @@ import java.util.regex.Pattern;
 public final class ProblemSemanticPatchPath {
     private static final Pattern PARAM = Pattern.compile("/parameters/[A-Z][A-Z0-9_]{0,63}/(value|unit)");
     private static final Pattern ALLOWED = Pattern.compile("/presentation/(questionTemplate|explanationTemplate|learningGuide/(conceptTitleTemplate|summaryTemplate|keyPointTemplates/[0-9]+)|choices/[A-Z][A-Z0-9_]*/contentTemplate|steps/[A-Z][A-Z0-9_]*/labelTemplate|steps/[A-Z][A-Z0-9_]*/segments/[0-9]+/textTemplate|rubrics/[A-Z][A-Z0-9_]*/criterionTemplate)|/diagrams/[A-Z][A-Z0-9_]*/style/(strokeColor|fillColor|accentColor|strokeWidth|fontSize)|/diagrams/[A-Z][A-Z0-9_]*/labels/[A-Z][A-Z0-9_]*");
+    /** 보기 노출 순서. 내용을 건드리지 않으므로 표현 수정과 별도로 다룬다. */
+    private static final Pattern CHOICE_ORDER = Pattern.compile("/presentation/choices/[A-Za-z0-9_-]+/displayOrder");
 
     private ProblemSemanticPatchPath() {
     }
@@ -17,11 +19,15 @@ public final class ProblemSemanticPatchPath {
         return path != null && ALLOWED.matcher(path).matches();
     }
 
+    public static boolean isChoiceOrder(String path) {
+        return path != null && CHOICE_ORDER.matcher(path).matches();
+    }
+
     public static boolean isStructural(String path) {
         return path != null && (path.startsWith("/intent/") || path.startsWith("/curriculum/") || path.startsWith("/computations") || path.startsWith("/constraints") || path.startsWith("/assertions"));
     }
 
     public static boolean isAllowed(String path) {
-        return isParameter(path) || isPresentational(path);
+        return isParameter(path) || isPresentational(path) || isChoiceOrder(path);
     }
 }

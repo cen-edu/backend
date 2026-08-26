@@ -18,6 +18,7 @@ public final class ProblemStructuredOutputSchemas {
             normalizeOneOf(root);
             constrainEvaluationArea(root, mapper);
             constrainSemanticRequiredFields(root);
+            constrainSemanticParameterKeys(root);
             validateOpenAiSubset(root);
             return mapper.writeValueAsString(root);
         } catch (java.io.IOException e) { throw new IllegalStateException("semantic model schema를 읽을 수 없습니다.", e); }
@@ -54,6 +55,14 @@ public final class ProblemStructuredOutputSchemas {
             valueKey.remove("type");
             valueKey.put("type", "string");
             valueKey.put("pattern", "^[A-Z][A-Z0-9_]{0,63}$");
+        }
+    }
+
+    /** 후단 domain validator와 같은 대문자 논리 키 규칙을 provider 출력 단계에서 강제한다. */
+    private static void constrainSemanticParameterKeys(com.fasterxml.jackson.databind.JsonNode root) {
+        var key = root.path("$defs").path("parameter").path("properties").path("key");
+        if (key instanceof com.fasterxml.jackson.databind.node.ObjectNode object) {
+            object.put("pattern", "^[A-Z][A-Z0-9_]{0,63}$");
         }
     }
 
@@ -267,9 +276,18 @@ public final class ProblemStructuredOutputSchemas {
         if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.EXPLANATION)) fields.add("explanation");
         if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.LEARNING_GUIDE)) fields.add("learningGuide");
         if (targets.contains(com.cenedu.backend.domain.problem.authoring.edit.EditTargetType.RUBRIC_ITEM)) fields.add("rubricItems");
-        String props = fields.stream().map(field -> "\"" + field + "\":{\"type\":[\"object\",\"array\",\"string\",\"null\"]}")
-                .collect(java.util.stream.Collectors.joining(","));
-        return "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{" + props + "}}";
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var candidateProps = CANDIDATE_NODE.path("properties");
+        var root = mapper.createObjectNode();
+        root.put("type", "object");
+        root.put("additionalProperties", false);
+        var required = root.putArray("required");
+        var properties = root.putObject("properties");
+        for (String field : fields) {
+            properties.set(field, candidateProps.path(field).deepCopy());
+            required.add(field);
+        }
+        return root.toString();
     }
 
     /** CANDIDATE 스키마를 한 번만 파싱해 하위 스키마 재사용에 쓴다. */
@@ -355,11 +373,11 @@ public final class ProblemStructuredOutputSchemas {
                     }},
                     "semanticPatch":{"type":["object","null"],"additionalProperties":false,
                       "properties":{
-                        "mode":{"type":"string","enum":["PRESENTATIONAL_PATCH","PARAMETRIC_PATCH","STRUCTURAL_REGENERATION","RESTORE","REJECTED"]},
+                        "mode":{"type":"string","enum":["PRESENTATIONAL_PATCH","PARAMETRIC_PATCH","CHOICE_REORDER","STRUCTURAL_REGENERATION","RESTORE","REJECTED"]},
                         "operations":{"type":"array","items":{
                           "type":"object","additionalProperties":false,
                           "properties":{
-                            "type":{"type":"string","enum":["SET_PARAMETER_VALUE","SET_PARAMETER_UNIT","SET_TEMPLATE_TEXT","SET_DIAGRAM_STYLE","SET_LABEL_TEXT"]},
+                            "type":{"type":"string","enum":["SET_PARAMETER_VALUE","SET_PARAMETER_UNIT","SET_TEMPLATE_TEXT","SET_DIAGRAM_STYLE","SET_LABEL_TEXT","SET_CHOICE_ORDER"]},
                             "path":{"type":"string"},"expectedOldValue":{"type":["string","null"]},"newValue":{"type":"string"}
                           },
                           "required":["type","path","expectedOldValue","newValue"]
@@ -371,9 +389,12 @@ public final class ProblemStructuredOutputSchemas {
                     "requestedSpecification":{"type":["object","null"],"additionalProperties":false,
                       "properties":{
                         "questionType":{"type":["string","null"],"enum":["MULTIPLE_CHOICE","SHORT_INPUT","ESSAY","STEP_FILL",null]},
-                        "difficulty":{"type":["string","null"],"enum":["low","mid","high",null]}
+                        "difficulty":{"type":["string","null"],"enum":["low","mid","high",null]},
+                        "requiresAsset":{"type":["boolean","null"]},
+                        "differentProblemOnly":{"type":"boolean"},
+                        "requiresNewProblem":{"type":"boolean"}
                       },
-                      "required":["questionType","difficulty"]
+                      "required":["questionType","difficulty","requiresAsset","differentProblemOnly","requiresNewProblem"]
                     },
                     "assistantMessage":{"type":"string"}
                   },

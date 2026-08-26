@@ -34,6 +34,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class ProblemEditAgentRequestedSpecificationTest {
 
     @Test
+    void 요청_스펙을_JSON으로_직렬화해도_계산용_empty_필드가_생기지_않는다() throws Exception {
+        String json = new ObjectMapper().writeValueAsString(
+                new com.cenedu.backend.domain.problem.authoring.edit.RequestedProblemSpecification(
+                        null, "low", null, false, false));
+
+        assertThat(json).contains("\"difficulty\":\"low\"").doesNotContain("\"empty\"");
+    }
+
+    @Test
     void 난이도_변경값을_수정_대화_결과에_보존한다() {
         LlmClient client = mock(LlmClient.class);
         when(client.completeStructured(anyString(), anyList(), anyString())).thenReturn(new LlmResponse("""
@@ -63,6 +72,63 @@ class ProblemEditAgentRequestedSpecificationTest {
                 .get(ProblemEditAgentResultEnvelope.RESPONSE_KEY);
         assertThat(result.requestedSpecification().difficulty()).isEqualTo("high");
         assertThat(result.requestedSpecification().questionType()).isNull();
+    }
+
+    @Test
+    void 자료_유무_조건을_교체_스펙으로_보존한다() {
+        var result = handle("""
+                {"schemaVersion":2,"problemEditResult":{
+                  "action":"REQUEST_CONFIRMATION",
+                  "instructionDeltas":[],
+                  "semanticPatch":null,
+                  "requestedSpecification":{"questionType":null,"difficulty":null,
+                    "requiresAsset":true,"differentProblemOnly":false},
+                  "assistantMessage":"이미지가 있는 문제로 바꿀까요?"}}
+                """, "이미지가 있는 문제로 바꿔줘");
+
+        assertThat(result.requestedSpecification()).isNotNull();
+        assertThat(result.requestedSpecification().requiresAsset()).isTrue();
+    }
+
+    /**
+     * 바꿀 조건이 하나도 없는 "다른 문제로" 요청이 교체 요청으로 살아남는지 확인한다.
+     *
+     * <p>differentProblemOnly가 isEmpty 판정에 들어가지 않으면 이 스펙이 빈 스펙으로 취급돼
+     * null로 정규화되고, 교체 요청 자체가 조용히 사라진다.
+     */
+    @Test
+    void 같은_조건_다른_문제_요청은_교체_요청으로_남는다() {
+        var result = handle("""
+                {"schemaVersion":2,"problemEditResult":{
+                  "action":"REQUEST_CONFIRMATION",
+                  "instructionDeltas":[],
+                  "semanticPatch":null,
+                  "requestedSpecification":{"questionType":null,"difficulty":null,
+                    "requiresAsset":null,"differentProblemOnly":true},
+                  "assistantMessage":"다른 문제로 바꿀까요?"}}
+                """, "이 문제 말고 다른 걸로 줘");
+
+        assertThat(result.requestedSpecification()).isNotNull();
+        assertThat(result.requestedSpecification().differentProblemOnly()).isTrue();
+    }
+
+    private ProblemEditConversationResult handle(String response, String userInput) {
+        LlmClient client = mock(LlmClient.class);
+        when(client.completeStructured(anyString(), anyList(), anyString()))
+                .thenReturn(new LlmResponse(response, 0, 0, 0));
+        ObjectMapper mapper = new ObjectMapper();
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ObjectMapper> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable(any())).thenReturn(mapper);
+        ProblemEditAgent agent = new ProblemEditAgent(client, provider, new ProblemEditPromptFactory(provider));
+        var payload = new ProblemEditAgentPayload(ProblemEditAgentPayload.CURRENT_SCHEMA_VERSION,
+                UUID.randomUUID(), 1L, 2L, AuthoringInteractionStatus.COLLECTING,
+                null, snapshot(), null, List.of());
+
+        return (ProblemEditConversationResult) agent.handle(AgentRequest.of(AgentKind.PROBLEM_EDIT,
+                        new Actor(7L, Actor.Role.TEACHER), userInput,
+                        Map.of(ProblemEditAgent.REQUEST_KEY, payload)))
+                .data().get(ProblemEditAgentResultEnvelope.RESPONSE_KEY);
     }
 
     @Test

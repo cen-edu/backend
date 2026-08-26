@@ -44,6 +44,24 @@ class ProblemEditPolicySpecificationTest {
         assertThat(plan.semanticPatch().requestId()).isEqualTo(plan.requestId());
     }
 
+    /**
+     * 문제은행 조회 교체 정책이 실행 계획까지 그대로 전달되는지 확인한다.
+     *
+     * <p>{@code validate}가 BANK_FIRST를 거부하거나 계획이 정책을 갈아끼우면
+     * {@code ProblemModificationExecutionCoordinator}의 문제은행 조회 분기에 도달하지 못한다.
+     */
+    @Test
+    void 문제은행_조회_교체_정책을_실행_계획까지_그대로_전달한다() {
+        var command = new ConfirmedProblemEditCommand(REQUEST_ID, UUID.randomUUID(), 1L, 2L,
+                List.of(), parametricPatch(), difficulty("low"), null,
+                ReplacementSourcePolicy.BANK_FIRST);
+
+        var plan = policy.plan(command, snapshot(), null);
+
+        assertThat(plan.action()).isEqualTo(EditAction.REPLACE);
+        assertThat(plan.sourcePolicy()).isEqualTo(ReplacementSourcePolicy.BANK_FIRST);
+    }
+
     @Test
     void 스펙_요청이_없으면_파라메트릭_패치는_부분_수정으로_남는다() {
         var plan = policy.plan(command(parametricPatch(), null), snapshot(), null);

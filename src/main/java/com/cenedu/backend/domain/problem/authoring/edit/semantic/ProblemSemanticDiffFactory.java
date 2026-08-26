@@ -40,6 +40,12 @@ public class ProblemSemanticDiffFactory {
             || !Objects.equals(base.computations(), changed.computations())
             || !Objects.equals(base.parameters().stream().map(x -> x.key()).toList(), changed.parameters().stream().map(x -> x.key()).toList())
             || !Objects.equals(base.diagrams().stream().map(x -> x.kind()).toList(), changed.diagrams().stream().map(x -> x.kind()).toList());
+        // 보기 순서가 바뀌면 값은 그대로여도 정답이 가리키는 보기 키가 바뀐다.
+        // ANSWERS를 빼면 화면이 "정답은 그대로"라고 잘못 안내한다.
+        if (mode == SemanticEditMode.CHOICE_REORDER) {
+            areas.add(SemanticImpactArea.CHOICES);
+            areas.add(SemanticImpactArea.ANSWERS);
+        }
         boolean revalidation = structural || mode == SemanticEditMode.PARAMETRIC_PATCH || areas.contains(SemanticImpactArea.ASSETS) || areas.contains(SemanticImpactArea.ANSWERS);
         return new ProblemSemanticDiff(changes, areas, structural, revalidation);
     }
