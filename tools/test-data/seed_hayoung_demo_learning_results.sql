@@ -1,12 +1,7 @@
--- hayoung@naver.com 계정의 네 학습지를 시연 가능한 제출·채점 상태로 채운다.
---
--- 예외 시나리오
---   - "2026 1학기 종합 평가"의 김민준은 기존 제출과 풀이 시간을 그대로 보존한다.
---   - 김민준은 SUBMITTED / NOT_GRADED 상태를 유지한다.
---   - 같은 평가의 다른 9명은 GRADED지만, 반 전체 채점이 끝나지 않아 공개하지 않는다.
+-- hayoung@naver.com 계정의 여덟 학습지를 시연 가능한 제출·채점 상태로 채운다.
 --
 -- 완료 시나리오
---   - 나머지 세 학습지는 10명 모두 제출·채점·공개 완료로 만든다.
+--   - 여덟 학습지 모두 10명 전원을 제출·채점·공개 완료로 만든다.
 --   - 학생별 정답률과 문항별 풀이 시간을 다르게 구성한다.
 --   - 채점 완료 학생에게 상세 분석 화면용 시연 보고서와 문항별 문장을 만든다.
 --
@@ -32,23 +27,22 @@ WHERE teacher.login_id = 'hayoung@naver.com'
       '2026 1학기 종합 평가',
       '2026 1학기 종합 평가 - 2',
       '소인수 분해 외 4개 단원 일반 학습',
-      '유리수의 대소 관계 외 2개 단원 일반 학습'
+      '유리수의 대소 관계 외 2개 단원 일반 학습',
+      '소인수 분해 외 1개 단원 일반 학습',
+      '문자의 사용과 식의 계산 외 1개 단원 일반 학습',
+      '좌표평면과 그래프 외 1개 단원 일반 학습'
   );
 
 DO $$
 DECLARE
     target_count INTEGER;
     invalid_assignment_count INTEGER;
-    pending_student_count INTEGER;
-    pending_answer_count INTEGER;
-    pending_time_count INTEGER;
-    pending_graded_answer_count INTEGER;
     unsupported_unit_count INTEGER;
 BEGIN
     SELECT COUNT(*) INTO target_count
     FROM demo_target_assignment;
-    IF target_count <> 4 THEN
-        RAISE EXCEPTION '대상 학습지 배정은 정확히 4개여야 합니다. 현재: %', target_count;
+    IF target_count <> 8 THEN
+        RAISE EXCEPTION '대상 학습지 배정은 정확히 8개여야 합니다. 현재: %', target_count;
     END IF;
 
     SELECT COUNT(*) INTO invalid_assignment_count
@@ -62,50 +56,6 @@ BEGIN
     ) invalid_assignment;
     IF invalid_assignment_count <> 0 THEN
         RAISE EXCEPTION '각 대상 학습지에는 학생이 정확히 10명 배정되어 있어야 합니다.';
-    END IF;
-
-    SELECT COUNT(*) INTO pending_student_count
-    FROM demo_target_assignment target
-    JOIN worksheet_assignment_student assignment_student
-      ON assignment_student.assignment_id = target.assignment_id
-    JOIN member_account student
-      ON student.id = assignment_student.student_id
-    WHERE target.title = '2026 1학기 종합 평가'
-      AND student.name = '김민준'
-      AND assignment_student.status = 'SUBMITTED';
-    IF pending_student_count <> 1 THEN
-        RAISE EXCEPTION '김민준의 종합 평가 제출 대기 행이 정확히 하나여야 합니다.';
-    END IF;
-
-    SELECT COUNT(*),
-           COUNT(*) FILTER (WHERE answer.grading_status = 'GRADED')
-      INTO pending_answer_count, pending_graded_answer_count
-    FROM demo_target_assignment target
-    JOIN worksheet_assignment_student assignment_student
-      ON assignment_student.assignment_id = target.assignment_id
-    JOIN member_account student
-      ON student.id = assignment_student.student_id
-    JOIN submission_answer answer
-      ON answer.assignment_student_id = assignment_student.id
-    WHERE target.title = '2026 1학기 종합 평가'
-      AND student.name = '김민준';
-    IF pending_answer_count <> 10 OR pending_graded_answer_count <> 0 THEN
-        RAISE EXCEPTION '보존할 김민준 제출은 미채점 답안 10개여야 합니다. 답안: %, 채점: %',
-            pending_answer_count, pending_graded_answer_count;
-    END IF;
-
-    SELECT COUNT(*) INTO pending_time_count
-    FROM demo_target_assignment target
-    JOIN worksheet_assignment_student assignment_student
-      ON assignment_student.assignment_id = target.assignment_id
-    JOIN member_account student
-      ON student.id = assignment_student.student_id
-    JOIN submission_question_time question_time
-      ON question_time.assignment_student_id = assignment_student.id
-    WHERE target.title = '2026 1학기 종합 평가'
-      AND student.name = '김민준';
-    IF pending_time_count <> 10 THEN
-        RAISE EXCEPTION '보존할 김민준 제출은 풀이 시간 10개여야 합니다. 현재: %', pending_time_count;
     END IF;
 
     SELECT COUNT(*) INTO unsupported_unit_count
@@ -149,8 +99,7 @@ SELECT assignment_student.id AS assignment_student_id,
            WHEN '이도윤' THEN 40
            ELSE 70
        END AS accuracy_percent,
-       target.title = '2026 1학기 종합 평가'
-           AND student.name = '김민준' AS preserve_pending,
+       FALSE AS preserve_pending,
        target.assigned_at
            + INTERVAL '1 minute'
            + ROW_NUMBER() OVER (
@@ -234,7 +183,7 @@ BEGIN
 END
 $$;
 
--- 김민준의 보존 대상 제출을 제외한 모든 답안 칸을 채우고 채점한다.
+-- 모든 학생의 답안 칸을 채우고 채점한다.
 INSERT INTO submission_answer (
     assignment_student_id,
     answer_unit_id,
@@ -354,10 +303,7 @@ SET status = 'GRADED',
     END,
     submitted_at = target.demo_submitted_at,
     graded_at = target.demo_submitted_at + INTERVAL '45 seconds',
-    released_at = CASE
-        WHEN target.title = '2026 1학기 종합 평가' THEN NULL
-        ELSE target.demo_submitted_at + INTERVAL '75 seconds'
-    END,
+    released_at = target.demo_submitted_at + INTERVAL '75 seconds',
     total_score = CASE
         WHEN target.worksheet_type = 'COMPREHENSIVE_ASSESSMENT'
         THEN (
@@ -481,7 +427,6 @@ ON CONFLICT (analysis_report_id, worksheet_item_id) DO NOTHING;
 DO $$
 DECLARE
     invalid_completed_student_count INTEGER;
-    invalid_pending_student_count INTEGER;
     unreleased_completed_assignment_count INTEGER;
     report_count INTEGER;
 BEGIN
@@ -511,29 +456,11 @@ BEGIN
             invalid_completed_student_count;
     END IF;
 
-    SELECT COUNT(*) INTO invalid_pending_student_count
-    FROM demo_target_student target
-    JOIN worksheet_assignment_student assignment_student
-      ON assignment_student.id = target.assignment_student_id
-    JOIN submission_answer answer
-      ON answer.assignment_student_id = assignment_student.id
-    WHERE target.preserve_pending
-      AND (
-          assignment_student.status <> 'SUBMITTED'
-          OR assignment_student.graded_at IS NOT NULL
-          OR assignment_student.released_at IS NOT NULL
-          OR answer.grading_status <> 'NOT_GRADED'
-      );
-    IF invalid_pending_student_count <> 0 THEN
-        RAISE EXCEPTION '김민준의 보존 대상 제출 상태가 변경되었습니다.';
-    END IF;
-
     SELECT COUNT(*) INTO unreleased_completed_assignment_count
     FROM demo_target_student target
     JOIN worksheet_assignment_student assignment_student
       ON assignment_student.id = target.assignment_student_id
-    WHERE target.title <> '2026 1학기 종합 평가'
-      AND assignment_student.released_at IS NULL;
+    WHERE assignment_student.released_at IS NULL;
     IF unreleased_completed_assignment_count <> 0 THEN
         RAISE EXCEPTION '완료 대상 학습지에 공개되지 않은 학생 결과가 있습니다. 현재: %',
             unreleased_completed_assignment_count;
@@ -545,8 +472,8 @@ BEGIN
       ON report.assignment_student_id = target.assignment_student_id
     WHERE NOT target.preserve_pending
       AND report.generation_status = 'READY';
-    IF report_count <> 39 THEN
-        RAISE EXCEPTION '채점 완료 학생의 READY 분석 보고서는 39개여야 합니다. 현재: %', report_count;
+    IF report_count <> 80 THEN
+        RAISE EXCEPTION '채점 완료 학생의 READY 분석 보고서는 80개여야 합니다. 현재: %', report_count;
     END IF;
 END
 $$;
