@@ -50,6 +50,15 @@ public class ProblemSemanticExtractionPromptFactory {
                 모든 parameter를 editable=false로 두지 말라. 그러면 교사가 숫자 하나도 바꿀 수 없고
                 모든 수정이 문항 재생성으로 처리된다. 문제의 조건에 해당하는 값은 편집할 수 있어야 한다.
 
+                editable parameter와 계산 결과를 presentation에 숫자 문자열로 고정하지 말라.
+                원본 문항에 보이는 값은 questionTemplate·contentTemplate·explanationTemplate·step
+                template에 {{INITIAL_TEMP}}, {{EVENING_TEMP}}, {{INITIAL_TEMP_UNIT}}처럼 해당 key의
+                placeholder로 대체하라. 객관식 보기의 contentTemplate은 valueKey가 나타내는 값을
+                placeholder로 참조해야 한다. 예를 들어 valueKey가 EVENING_TEMP이면
+                {{EVENING_TEMP}}를 쓴다. diagram·table의 값은 문자열 숫자가 아니라
+                구조화된 key 필드로 참조하라. editable parameter를 바꿨을 때 문제 조건과
+                정답·보기·해설·도식이 같은 계산 그래프를 통해 다시 물질화될 수 있어야 한다.
+
                 parameter key는 반드시 영문 대문자로 시작하고 영문 대문자·숫자·밑줄만 사용한다.
                 예: RADIUS, LEFT_VALUE, X1. 한글·소문자·공백은 사용하지 않는다.
                 bounds는 INTEGER·DECIMAL·RATIONAL처럼 숫자로 해석 가능한 parameter에만 사용한다.

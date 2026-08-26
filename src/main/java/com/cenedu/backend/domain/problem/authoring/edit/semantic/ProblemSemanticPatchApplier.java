@@ -6,12 +6,15 @@ import com.cenedu.backend.domain.problem.authoring.semantic.materialization.Defa
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
+import com.cenedu.backend.domain.problem.authoring.semantic.validation.SemanticObservableDependencyValidator;
 
 /** 허용된 semantic path만 copy-on-write로 적용하고 기존 materializer로 재검증한다. */
 public class ProblemSemanticPatchApplier {
     private final ObjectMapper mapper = new ObjectMapper();
     private final ProblemSemanticPatchClassifier classifier;
     private final ProblemSemanticMaterializer materializer;
+    private final SemanticObservableDependencyValidator observableDependencies =
+            new SemanticObservableDependencyValidator();
     public ProblemSemanticPatchApplier() { this(new ProblemSemanticPatchClassifier(), new DefaultProblemSemanticMaterializer()); }
     public ProblemSemanticPatchApplier(ProblemSemanticPatchClassifier classifier, ProblemSemanticMaterializer materializer) { this.classifier=classifier; this.materializer=materializer; }
     public ProblemSemanticModelV1 apply(ProblemSemanticModelV1 model, ProblemSemanticPatch patch) {
@@ -20,6 +23,7 @@ public class ProblemSemanticPatchApplier {
         if (patch.mode()!=SemanticEditMode.PRESENTATIONAL_PATCH && patch.mode()!=SemanticEditMode.PARAMETRIC_PATCH
                 && patch.mode()!=SemanticEditMode.CHOICE_REORDER) throw new IllegalArgumentException("적용할 수 없는 patch mode입니다.");
         try {
+            if (patch.mode()==SemanticEditMode.PARAMETRIC_PATCH) observableDependencies.validate(model);
             JsonNode root=mapper.valueToTree(model);
             String beforePlaceholders = placeholders(root);
             var beforeMaterialized = materializer.materialize(model);
@@ -29,6 +33,11 @@ public class ProblemSemanticPatchApplier {
             if (patch.mode()==SemanticEditMode.PRESENTATIONAL_PATCH && !beforePlaceholders.equals(placeholders(root)))
                 throw new IllegalArgumentException("presentational patch가 placeholder를 변경했습니다.");
             var afterMaterialized = materializer.materialize(result);
+            if (patch.mode()==SemanticEditMode.PARAMETRIC_PATCH
+                    && Objects.equals(beforeMaterialized.snapshot().contentBlocks(), afterMaterialized.snapshot().contentBlocks())
+                    && Objects.equals(beforeMaterialized.snapshot().steps(), afterMaterialized.snapshot().steps())
+                    && Objects.equals(beforeMaterialized.assetPlans(), afterMaterialized.assetPlans()))
+                throw new IllegalArgumentException("파라미터 변경이 문제 조건이나 도식에 반영되지 않았습니다.");
             if ((patch.mode()==SemanticEditMode.PRESENTATIONAL_PATCH || patch.mode()==SemanticEditMode.CHOICE_REORDER)
                     && !Objects.equals(beforeMaterialized.report().resolvedValues(), afterMaterialized.report().resolvedValues()))
                 throw new IllegalArgumentException("계산된 semantic value를 바꾸지 않아야 하는 patch가 값을 변경했습니다.");

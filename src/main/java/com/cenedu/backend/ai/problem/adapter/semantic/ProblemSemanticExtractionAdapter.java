@@ -7,6 +7,7 @@ import com.cenedu.backend.domain.problem.authoring.port.ProblemSemanticMateriali
 import com.cenedu.backend.domain.problem.authoring.semantic.materialization.DefaultProblemSemanticMaterializer;
 import com.cenedu.backend.domain.problem.authoring.semantic.extraction.*;
 import com.cenedu.backend.domain.problem.authoring.semantic.model.ProblemSemanticModelV1;
+import com.cenedu.backend.domain.problem.authoring.semantic.validation.SemanticObservableDependencyValidator;
 import org.springframework.stereotype.Component;
 
 /** 시스템이 호출하는 legacy semantic extraction 경로이며 Dispatcher를 거치지 않는다. */
@@ -16,6 +17,8 @@ public class ProblemSemanticExtractionAdapter implements ProblemSemanticExtracti
     private final ProblemSemanticExtractionPromptFactory prompts;
     private final ProblemSemanticOutputParser parser;
     private final ProblemSemanticMaterializer materializer;
+    private final SemanticObservableDependencyValidator observableDependencies =
+            new SemanticObservableDependencyValidator();
 
     public ProblemSemanticExtractionAdapter(LlmClient client,
             ProblemSemanticExtractionPromptFactory prompts,
@@ -40,6 +43,7 @@ public class ProblemSemanticExtractionAdapter implements ProblemSemanticExtracti
             if (materializer != null) {
                 try {
                     materializer.materialize(model);
+                    observableDependencies.validate(model);
                 } catch (IllegalArgumentException validation) {
                     return correctOnce(command, validation);
                 }
@@ -69,6 +73,7 @@ public class ProblemSemanticExtractionAdapter implements ProblemSemanticExtracti
                     ProblemStructuredOutputSchemas.SEMANTIC_MODEL);
             ProblemSemanticModelV1 corrected = parser.parse(response.text());
             materializer.materialize(corrected);
+            observableDependencies.validate(corrected);
             return new SemanticExtractionResult(SemanticExtractionStatus.EXTRACTED,
                     corrected, java.util.List.of("semantic validation 1회 교정 완료"));
         } catch (IllegalArgumentException exception) {

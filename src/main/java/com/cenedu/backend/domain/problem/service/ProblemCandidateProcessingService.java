@@ -237,7 +237,8 @@ public class ProblemCandidateProcessingService {
             ProblemCandidateDraft repairedCandidate = ProblemCandidateDraft.legacy(
                     UUID.randomUUID(), repairedSnapshot, request.candidate().assetPlans(),
                     new CandidateProvenance(CandidateSourceType.AI_MODIFY,
-                            registered.versionId(), List.of(registered.versionId())));
+                            request.candidate().provenance().sourceQuestionId(),
+                            request.candidate().provenance().referenceQuestionIds()));
             CandidateProcessingRequest repairedRequest = new CandidateProcessingRequest(
                     request.ownerTeacherId(), request.sessionId(), registered.versionId(),
                     AuthoringOperationType.AI_MODIFY, request.verificationOperationType(), repairedCandidate,
@@ -294,19 +295,36 @@ public class ProblemCandidateProcessingService {
                 request.candidate().assetPlans());
         SemanticModelDocument semanticDocument = request.candidate().semanticModel() == null
                 ? null : semanticDocumentCodec.semanticModel(request.candidate().semanticModel());
+        Long sourceQuestionId = inheritedSourceQuestionId(request);
         ProblemAuthoringVersion version = ProblemAuthoringVersion.create(
                 request.sessionId(),
                 versionNo,
                 request.parentVersionId(),
                 request.candidate().requestId(),
                 request.operationType(),
-                request.candidate().provenance().sourceQuestionId(),
+                sourceQuestionId,
                 request.candidate().snapshot().schemaVersion(),
                 jsonCodec.write(request.candidate().snapshot()), semanticDocument,
                 jsonCodec.write(manifest), request.changeSummary());
         versionRepository.saveAndFlush(version);
         session.attachPendingVersion(version.getId());
         return new RegisteredCandidate(version.getId(), versionNo);
+    }
+
+    /** AI 수정 후보가 source를 생략해도 부모 계보의 가장 가까운 원본 question ID를 계승한다. */
+    private Long inheritedSourceQuestionId(CandidateProcessingRequest request) {
+        Long direct = request.candidate().provenance().sourceQuestionId();
+        if (direct != null || request.operationType() != AuthoringOperationType.AI_MODIFY) return direct;
+        Long parentId = request.parentVersionId();
+        java.util.Set<Long> visited = new java.util.HashSet<>();
+        while (parentId != null && visited.add(parentId)) {
+            ProblemAuthoringVersion parent = versionRepository
+                    .findByIdAndSessionId(parentId, request.sessionId()).orElse(null);
+            if (parent == null) break;
+            if (parent.getSourceQuestionId() != null) return parent.getSourceQuestionId();
+            parentId = parent.getParentVersionId();
+        }
+        return null;
     }
 
     private DraftAssetManifest produceAssets(CandidateProcessingRequest request,

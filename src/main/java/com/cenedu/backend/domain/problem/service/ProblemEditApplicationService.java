@@ -73,8 +73,7 @@ public class ProblemEditApplicationService {
         }
         List<ProblemEditInstruction> accumulated = accumulated(session);
         QuestionSnapshotV1 baseSnapshot = jsonCodec.read(version.getSnapshot(), QuestionSnapshotV1.class);
-        ProblemSemanticModelV1 semanticModel = version.getSemanticModel() == null ? null
-                : jsonCodec.read(version.getSemanticModel(), ProblemSemanticModelV1.class);
+        ProblemSemanticModelV1 semanticModel = null;
         // 확인 상태가 명시되면 자유 문장을 다시 LLM으로 해석하지 않고 저장된 명령만 실행한다.
         if (request.confirmed() != null) {
             if (!request.confirmed()) {
@@ -99,14 +98,14 @@ public class ProblemEditApplicationService {
             return ProblemEditTurnResponse.from(new ProblemEditConversationResult(
                     EditConversationAction.CONFIRM_EXECUTION, List.of(), "수정 요청을 실행했습니다."), confirmedExecutionResult);
         }
-        if (semanticModel == null && semanticExtractionService != null) {
+        if (semanticExtractionService != null) {
             var extraction = semanticExtractionService.ensureVersionSemantic(
                     teacherId, sessionId, baseVersionId, currentCurriculum(baseSnapshot));
             if (extraction.status() == SemanticExtractionStatus.EXTRACTED) {
-                version = versionRepository.findByIdAndSessionId(baseVersionId, sessionId).orElseThrow();
-                semanticModel = version.getSemanticModel() == null ? null
-                        : jsonCodec.read(version.getSemanticModel(), ProblemSemanticModelV1.class);
+                semanticModel = extraction.semanticModel();
             }
+        } else if (version.getSemanticModel() != null) {
+            semanticModel = jsonCodec.read(version.getSemanticModel(), ProblemSemanticModelV1.class);
         }
         ProblemEditAgentPayload payload = new ProblemEditAgentPayload(2, UUID.randomUUID(), sessionId, baseVersionId,
                 session.getInteractionStatus(), request.selectedTarget(),

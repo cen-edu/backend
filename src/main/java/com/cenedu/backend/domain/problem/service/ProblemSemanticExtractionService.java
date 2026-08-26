@@ -11,6 +11,7 @@ import com.cenedu.backend.domain.problem.authoring.semantic.persistence.ProblemS
 import com.cenedu.backend.domain.problem.entity.ProblemQuestion;
 import com.cenedu.backend.domain.problem.entity.ProblemAuthoringVersion;
 import com.cenedu.backend.domain.problem.authoring.semantic.extraction.ExtractionFinding;
+import com.cenedu.backend.domain.problem.authoring.semantic.validation.SemanticObservableDependencyValidator;
 import com.cenedu.backend.domain.problem.entity.enums.SemanticModelStatus;
 import com.cenedu.backend.domain.problem.repository.ProblemAuthoringVersionRepository;
 import com.cenedu.backend.domain.problem.repository.ProblemQuestionRepository;
@@ -19,11 +20,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 /** 기존 문항의 semantic model을 요청 시 한 번만 추출하고 원본 snapshot은 보존한다. */
 @Service
 public class ProblemSemanticExtractionService {
+    private static final Logger log = LoggerFactory.getLogger(ProblemSemanticExtractionService.class);
     private final ProblemQuestionRepository questionRepository;
     private final ProblemAuthoringVersionRepository versionRepository;
     private final ProblemAuthoringSessionRepository sessionRepository;
@@ -31,6 +35,8 @@ public class ProblemSemanticExtractionService {
     private final ProblemSemanticMaterializer materializer;
     private final ProblemSemanticDocumentCodec codec;
     private final TransactionTemplate transactionTemplate;
+    private final SemanticObservableDependencyValidator observableDependencies =
+            new SemanticObservableDependencyValidator();
 
     public ProblemSemanticExtractionService(ProblemQuestionRepository questionRepository,
             ProblemAuthoringVersionRepository versionRepository,
@@ -59,27 +65,43 @@ public class ProblemSemanticExtractionService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
-    /** Version의 원본 question을 확인한 뒤 semantic extraction 결과를 짧은 transaction으로 저장한다. */
+    /** Version semantic을 재검증하고 손상된 경우 현재 Version Snapshot으로만 재추출한다. */
     public SemanticExtractionResult ensureVersionSemantic(long ownerTeacherId, long sessionId,
             long versionId, CurriculumScope curriculum) {
         sessionRepository.findByIdAndOwnerTeacherId(sessionId, ownerTeacherId)
                 .orElseThrow(() -> new IllegalArgumentException("authoring session 소유권이 없습니다."));
         ProblemAuthoringVersion version = versionRepository.findByIdAndSessionId(versionId, sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("authoring version을 찾을 수 없습니다."));
-        Long sourceQuestionId = version.getSourceQuestionId();
-        var session = sessionRepository.findByIdAndOwnerTeacherId(sessionId, ownerTeacherId).orElse(null);
-        if (sourceQuestionId == null && session != null && session.getFinalizedQuestionId() != null) {
-            sourceQuestionId = session.getFinalizedQuestionId();
+        QuestionSnapshotV1 snapshot = readSnapshot(version.getSnapshot());
+        boolean repairing = version.getSemanticModel() != null;
+        if (repairing) {
+            try {
+                var model = codec.readSemanticModel(version.getSemanticModel());
+                materializer.materialize(model);
+                observableDependencies.validate(model);
+                return new SemanticExtractionResult(
+                        SemanticExtractionStatus.EXTRACTED, model, java.util.List.of());
+            } catch (RuntimeException ignored) {
+                // 이전 계약으로 READY가 된 document도 현재 domain 검증을 다시 통과해야 한다.
+                log.info("event=problem_semantic_cache outcome=INVALID versionId={} sessionId={}",
+                        versionId, sessionId);
+            }
         }
-        if (sourceQuestionId == null) {
-            return new SemanticExtractionResult(SemanticExtractionStatus.UNSUPPORTED, null,
-                    java.util.List.of("source question이 없습니다."));
-        }
-        SemanticExtractionResult result = ensureQuestionSemantic(sourceQuestionId, curriculum,
-                readSnapshot(version.getSnapshot()));
+        // 수정 Version의 snapshot을 원본 problem_question 캐시에 저장하면 원본이 변질된다.
+        // 반대로 READY 원본 캐시를 재사용하면 이 Version에 이미 반영된 수정이 사라진다.
+        // 따라서 Version 복구는 현재 snapshot을 비영속 추출하고 해당 Version만 갱신한다.
+        SemanticExtractionResult result = extractForCandidate(curriculum, snapshot);
         if (result.status() == SemanticExtractionStatus.EXTRACTED && result.semanticModel() != null) {
             transactionTemplate.executeWithoutResult(status -> versionRepository.findByIdAndSessionId(versionId, sessionId)
-                    .ifPresent(found -> found.attachSemanticModel(codec.semanticModel(result.semanticModel()))));
+                    .ifPresent(found -> {
+                        var document = codec.semanticModel(result.semanticModel());
+                        if (repairing) found.repairSemanticModel(document);
+                        else found.attachSemanticModel(document);
+                    }));
+            if (repairing) {
+                log.info("event=problem_semantic_cache outcome=REPAIRED versionId={} sessionId={}",
+                        versionId, sessionId);
+            }
         }
         return result;
     }
@@ -97,6 +119,7 @@ public class ProblemSemanticExtractionService {
             try {
                 var model = codec.readSemanticModel(stored.getSemanticModel());
                 materializer.materialize(model);
+                observableDependencies.validate(model);
                 return new SemanticExtractionResult(SemanticExtractionStatus.EXTRACTED, model, java.util.List.of());
             } catch (RuntimeException exception) {
                 // 손상된 READY document는 재추출 가능한 FAILED 상태로 되돌린다.
@@ -140,6 +163,7 @@ public class ProblemSemanticExtractionService {
         }
         try {
             MaterializedProblem materialized = materializer.materialize(extracted.semanticModel());
+            observableDependencies.validate(extracted.semanticModel());
             if (!sourceCompatible(materialized, snapshot)) {
                 return new SemanticExtractionResult(SemanticExtractionStatus.INVALID_SOURCE, null,
                         java.util.List.of(mismatchFinding(materialized, snapshot, "후보")));
@@ -161,6 +185,7 @@ public class ProblemSemanticExtractionService {
         if (result.status() == SemanticExtractionStatus.EXTRACTED && result.semanticModel() != null) {
             try {
                 MaterializedProblem materialized = materializer.materialize(result.semanticModel());
+                observableDependencies.validate(result.semanticModel());
                 if (!sourceCompatible(materialized, source)) {
                     finalResult = new SemanticExtractionResult(SemanticExtractionStatus.INVALID_SOURCE, null,
                             java.util.List.of(mismatchFinding(materialized, source, "원본")));
@@ -205,12 +230,16 @@ public class ProblemSemanticExtractionService {
                 + " choices=" + size(generated.choices()) + "/" + size(source.choices())
                 + " steps=" + size(generated.steps()) + "/" + size(source.steps())
                 + " rubrics=" + size(generated.rubricItems()) + "/" + size(source.rubricItems())
-                + " answerMatched=" + answerCompatible(materialized, source);
+                + " answerMatched=" + answerCompatible(materialized, source)
+                + " presentationMatched=" + presentationCompatible(generated, source);
     }
 
     /** 추출된 model이 원본과 같은 문항인지 정답과 구조 양쪽으로 확인한다. */
     private boolean sourceCompatible(MaterializedProblem materialized, QuestionSnapshotV1 source) {
-        return answerCompatible(materialized, source) && structureCompatible(materialized, source);
+        QuestionSnapshotV1 generated = materialized.snapshot();
+        return answerCompatible(materialized, source)
+                && structureCompatible(materialized, source)
+                && presentationCompatible(generated, source);
     }
 
     /**
@@ -226,6 +255,64 @@ public class ProblemSemanticExtractionService {
         return size(generated.choices()) == size(source.choices())
                 && size(generated.steps()) == size(source.steps())
                 && size(generated.rubricItems()) == size(source.rubricItems());
+    }
+
+    /** 재추출한 template을 첫 물질화했을 때 원본의 학생 노출 문구가 보존되는지 확인한다. */
+    private boolean presentationCompatible(QuestionSnapshotV1 generated, QuestionSnapshotV1 source) {
+        if (!java.util.Objects.equals(generated.metadata().difficulty(), source.metadata().difficulty())) return false;
+        if (!java.util.Objects.equals(generated.metadata().presentation(), source.metadata().presentation())) return false;
+        if (!contentBlockPresentation(generated).equals(contentBlockPresentation(source))) return false;
+        if (!assetPresentation(generated).equals(assetPresentation(source))) return false;
+        if (!generated.choices().stream().map(value -> normalize(value.content())).toList()
+                .equals(source.choices().stream().map(value -> normalize(value.content())).toList())) return false;
+        if (!stepPresentation(generated).equals(stepPresentation(source))) return false;
+        if (!java.util.Objects.equals(normalize(generated.explanation()), normalize(source.explanation()))) return false;
+        if (!learningGuidePresentation(generated).equals(learningGuidePresentation(source))) return false;
+        return generated.rubricItems().stream()
+                .map(value -> value.weightPercent() + ":" + normalize(value.criterion()))
+                .toList().equals(source.rubricItems().stream()
+                        .map(value -> value.weightPercent() + ":" + normalize(value.criterion())).toList());
+    }
+
+    private java.util.List<String> contentBlockPresentation(QuestionSnapshotV1 snapshot) {
+        return snapshot.contentBlocks().stream()
+                .sorted(java.util.Comparator.comparingInt(
+                        com.cenedu.backend.domain.problem.authoring.model.SnapshotContentBlock::displayOrder))
+                .map(value -> value.blockKind() + "|" + value.displayOrder() + "|"
+                        + normalize(value.text()) + "|" + normalize(value.assetRef()) + "|"
+                        + normalize(value.markup()))
+                .toList();
+    }
+
+    private java.util.List<String> assetPresentation(QuestionSnapshotV1 snapshot) {
+        return snapshot.assets().stream()
+                .map(value -> normalize(value.assetKey()) + "|" + normalize(value.altText()))
+                .sorted()
+                .toList();
+    }
+
+    private java.util.List<String> learningGuidePresentation(QuestionSnapshotV1 snapshot) {
+        var guide = snapshot.learningGuide();
+        if (guide == null) return java.util.List.of();
+        java.util.ArrayList<String> result = new java.util.ArrayList<>();
+        result.add(normalize(guide.conceptTitle()));
+        result.add(normalize(guide.summary()));
+        guide.keyPoints().stream().map(this::normalize).forEach(result::add);
+        return java.util.List.copyOf(result);
+    }
+
+    private java.util.List<String> stepPresentation(QuestionSnapshotV1 snapshot) {
+        return snapshot.steps().stream()
+                .sorted(java.util.Comparator.comparingInt(
+                        com.cenedu.backend.domain.problem.authoring.model.SnapshotStep::displayOrder))
+                .map(step -> normalize(step.label()) + "|" + step.segments().stream()
+                        .map(segment -> segment.type() + ":" + normalize(segment.text()))
+                        .collect(java.util.stream.Collectors.joining("|")))
+                .toList();
+    }
+
+    private String normalize(String value) {
+        return value == null ? null : value.replaceAll("\\s+", " ").trim();
     }
 
     private int size(java.util.List<?> values) {
