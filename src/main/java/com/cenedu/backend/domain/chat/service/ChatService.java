@@ -125,7 +125,7 @@ public class ChatService {
      * {@code "USER"} 를 보낼지는 계약 밖의 취향이고, 여기서 조용히 틀리게 하는 것보다
      * 받아 주는 편이 낫다. 그 둘이 아닌 값은 오타이므로 막는다.
      */
-    private static List<ChatMessage> toHistory(List<ChatHistoryMessage> messages) {
+    static List<ChatMessage> toHistory(List<ChatHistoryMessage> messages) {
         List<ChatHistoryMessage> kept = messages.size() <= MAX_HISTORY
                 ? messages
                 : messages.subList(messages.size() - MAX_HISTORY, messages.size());
